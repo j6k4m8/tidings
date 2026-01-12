@@ -1,0 +1,17 @@
+# tidings
+
+Tidings is a native, less-hideous email client for IMAP/SMTP/Exchange/JMAP servers, built using Flutter.
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for planned features.
+
+## Why
+
+As far as I can tell, there are three types of email clients available today:
+
+-   **Vendorlocked web apps (Gmail, Outlook.com)**. Ads. Tracking. Vendor lock-in. No offline access. No thanks.
+-   **FOSS hideous native clients (Thunderbird, etc.)**. Ugly, archaic looks, atrocious UX. No thanks.
+-   **Expensive gross AI clients (Superhuman, etc.)**. Subscription fees to your own email. No thanks.
+
+So that's three _no-thankses_ and zero _yes-thankses_. Tidings aims to be a fourth option: FOSS, native, beautiful, no sucky subscription fees.

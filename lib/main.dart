@@ -1,0 +1,1720 @@
+import 'package:flutter/material.dart';
+
+import 'data/email_provider.dart';
+import 'state/tidings_settings.dart';
+import 'theme/color_tokens.dart';
+import 'theme/glass.dart';
+import 'theme/theme_palette.dart';
+import 'theme/tidings_theme.dart';
+
+void main() {
+  runApp(const TidingsApp());
+}
+
+class TidingsApp extends StatefulWidget {
+  const TidingsApp({super.key});
+
+  @override
+  State<TidingsApp> createState() => _TidingsAppState();
+}
+
+class _TidingsAppState extends State<TidingsApp> {
+  late final TidingsSettings _settings = TidingsSettings();
+  late final EmailProvider _provider = MockEmailProvider();
+
+  @override
+  void dispose() {
+    _settings.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const account = MockAccount(
+      id: 'mock-account-01',
+      displayName: 'Jordan',
+      email: 'jordan@tidings.dev',
+    );
+    final accent = accentFromAccount(account.id);
+
+    return TidingsSettingsScope(
+      settings: _settings,
+      child: AnimatedBuilder(
+        animation: _settings,
+        builder: (context, _) {
+          return MaterialApp(
+            title: 'Tidings',
+            debugShowCheckedModeBanner: false,
+            themeMode: _settings.themeMode,
+            theme: TidingsTheme.lightTheme(
+              accentColor: accent,
+              paletteSource: _settings.paletteSource,
+              cornerRadiusScale: _settings.cornerRadiusScale,
+              fontScale: 1.0,
+            ),
+            darkTheme: TidingsTheme.darkTheme(
+              accentColor: accent,
+              paletteSource: _settings.paletteSource,
+              cornerRadiusScale: _settings.cornerRadiusScale,
+              fontScale: 1.0,
+            ),
+            home: TidingsHome(
+              account: account,
+              accent: accent,
+              provider: _provider,
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class TidingsHome extends StatefulWidget {
+  const TidingsHome({
+    super.key,
+    required this.account,
+    required this.accent,
+    required this.provider,
+  });
+
+  final MockAccount account;
+  final Color accent;
+  final EmailProvider provider;
+
+  @override
+  State<TidingsHome> createState() => _TidingsHomeState();
+}
+
+class _TidingsHomeState extends State<TidingsHome> {
+  int _selectedThreadIndex = 0;
+  int _navIndex = 0;
+  bool _showSettings = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= 1024;
+        final showSettings = _showSettings;
+
+        return Scaffold(
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButton: isWide
+              ? null
+              : GlassActionButton(
+                  accent: widget.accent,
+                  label: 'Compose',
+                  icon: Icons.edit_rounded,
+                  onTap: () {},
+                ),
+          bottomNavigationBar: isWide
+              ? null
+              : GlassBottomNav(
+                  accent: widget.accent,
+                  currentIndex: _navIndex,
+                  onTap: (index) => setState(() {
+                    _navIndex = index;
+                    _showSettings = index == 3;
+                  }),
+                ),
+          body: TidingsBackground(
+            accent: widget.accent,
+            child: SafeArea(
+              child: isWide
+                  ? _WideLayout(
+                      account: widget.account,
+                      accent: widget.accent,
+                      provider: widget.provider,
+                      selectedThreadIndex: _selectedThreadIndex,
+                      onThreadSelected: (index) =>
+                          setState(() => _selectedThreadIndex = index),
+                      navIndex: _navIndex,
+                      onNavSelected: (index) =>
+                          setState(() {
+                            _navIndex = index;
+                            _showSettings = false;
+                          }),
+                      onSettingsTap: () =>
+                          setState(() => _showSettings = true),
+                      showSettings: showSettings,
+                    )
+                  : showSettings
+                      ? SettingsScreen(accent: widget.accent)
+                      : _CompactLayout(
+                          account: widget.account,
+                          accent: widget.accent,
+                          provider: widget.provider,
+                          selectedThreadIndex: _selectedThreadIndex,
+                          onThreadSelected: (index) =>
+                              setState(() => _selectedThreadIndex = index),
+                        ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _WideLayout extends StatelessWidget {
+  const _WideLayout({
+    required this.account,
+    required this.accent,
+    required this.provider,
+    required this.selectedThreadIndex,
+    required this.onThreadSelected,
+    required this.navIndex,
+    required this.onNavSelected,
+    required this.onSettingsTap,
+    required this.showSettings,
+  });
+
+  final MockAccount account;
+  final Color accent;
+  final EmailProvider provider;
+  final int selectedThreadIndex;
+  final ValueChanged<int> onThreadSelected;
+  final int navIndex;
+  final ValueChanged<int> onNavSelected;
+  final VoidCallback onSettingsTap;
+  final bool showSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final threads = provider.threads;
+    final selectedThread = threads[selectedThreadIndex];
+    final padding = EdgeInsets.all(context.gutter(16));
+
+    return Padding(
+      padding: padding,
+      child: PageReveal(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _SideRail(
+              account: account,
+              accent: accent,
+              navIndex: navIndex,
+              onNavSelected: onNavSelected,
+              onSettingsTap: onSettingsTap,
+            ),
+            SizedBox(width: context.space(16)),
+            Expanded(
+              flex: 5,
+              child: ThreadListPanel(
+                accent: accent,
+                provider: provider,
+                threads: threads,
+                selectedIndex: selectedThreadIndex,
+                onSelected: onThreadSelected,
+                isCompact: false,
+              ),
+            ),
+            SizedBox(width: context.space(16)),
+            Expanded(
+              flex: 7,
+              child: showSettings
+                  ? SettingsPanel(accent: accent)
+                  : AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) => SizeTransition(
+                        sizeFactor: animation,
+                        axisAlignment: -1,
+                        child: FadeTransition(
+                          opacity: animation,
+                          child: child,
+                        ),
+                      ),
+                      child: CurrentThreadPanel(
+                        key: ValueKey(selectedThread.id),
+                        accent: accent,
+                        thread: selectedThread,
+                        messages:
+                            provider.messagesForThread(selectedThread.id),
+                        isCompact: false,
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CompactLayout extends StatelessWidget {
+  const _CompactLayout({
+    required this.account,
+    required this.accent,
+    required this.provider,
+    required this.selectedThreadIndex,
+    required this.onThreadSelected,
+  });
+
+  final MockAccount account;
+  final Color accent;
+  final EmailProvider provider;
+  final int selectedThreadIndex;
+  final ValueChanged<int> onThreadSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final threads = provider.threads;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        context.gutter(16),
+        context.space(12),
+        context.gutter(16),
+        0,
+      ),
+      child: PageReveal(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _CompactHeader(account: account, accent: accent),
+            SizedBox(height: context.space(16)),
+            _SearchRow(accent: accent),
+            SizedBox(height: context.space(16)),
+            _QuickChips(accent: accent),
+            SizedBox(height: context.space(16)),
+            Expanded(
+              child: ThreadListPanel(
+                accent: accent,
+                provider: provider,
+                threads: threads,
+                selectedIndex: selectedThreadIndex,
+                onSelected: (index) {
+                  onThreadSelected(index);
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => ThreadScreen(
+                        accent: accent,
+                        thread: threads[index],
+                        provider: provider,
+                      ),
+                    ),
+                  );
+                },
+                isCompact: true,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SideRail extends StatelessWidget {
+  const _SideRail({
+    required this.account,
+    required this.accent,
+    required this.navIndex,
+    required this.onNavSelected,
+    required this.onSettingsTap,
+  });
+
+  final MockAccount account;
+  final Color accent;
+  final int navIndex;
+  final ValueChanged<int> onNavSelected;
+  final VoidCallback onSettingsTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final items = [
+      _NavItem(icon: Icons.inbox_rounded, label: 'Inbox'),
+      _NavItem(icon: Icons.bolt_rounded, label: 'Focus'),
+      _NavItem(icon: Icons.edit_rounded, label: 'Drafts'),
+      _NavItem(icon: Icons.archive_rounded, label: 'Archive'),
+    ];
+
+    return GlassPanel(
+      borderRadius: BorderRadius.circular(context.radius(28)),
+      padding: EdgeInsets.symmetric(
+        vertical: context.space(14),
+        horizontal: context.space(10),
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.2),
+          blurRadius: 28,
+          offset: const Offset(0, 16),
+        ),
+      ],
+      child: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.all(context.space(4)),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: accent, width: 2),
+            ),
+            child: CircleAvatar(
+              radius: context.space(20),
+              backgroundColor: ColorTokens.cardFillStrong(context, 0.18),
+              child: Text(
+                account.displayName.substring(0, 1).toUpperCase(),
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+          ),
+          SizedBox(height: context.space(18)),
+          for (var index = 0; index < items.length; index++) ...[
+            _NavIcon(
+              item: items[index],
+              selected: index == navIndex,
+              accent: accent,
+              onTap: () => onNavSelected(index),
+            ),
+            SizedBox(height: context.space(12)),
+          ],
+          const Spacer(),
+          IconButton(
+            onPressed: onSettingsTap,
+            icon: const Icon(Icons.settings_rounded),
+            color: scheme.onSurface.withOpacity(0.7),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ThreadListPanel extends StatelessWidget {
+  const ThreadListPanel({
+    super.key,
+    required this.accent,
+    required this.provider,
+    required this.threads,
+    required this.selectedIndex,
+    required this.onSelected,
+    required this.isCompact,
+  });
+
+  final Color accent;
+  final EmailProvider provider;
+  final List<EmailThread> threads;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  final bool isCompact;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.tidingsSettings;
+    return GlassPanel(
+      borderRadius: BorderRadius.circular(context.radius(28)),
+      padding: EdgeInsets.all(isCompact ? 0 : context.space(18)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!isCompact) ...[
+            Row(
+              children: [
+                Text('Inbox', style: Theme.of(context).textTheme.displaySmall),
+                const Spacer(),
+                GlassPill(
+                  label: 'Focused',
+                  accent: accent,
+                  selected: true,
+                ),
+              ],
+            ),
+            SizedBox(height: context.space(12)),
+            _SearchRow(accent: accent),
+            SizedBox(height: context.space(12)),
+            _QuickChips(accent: accent),
+            SizedBox(height: context.space(16)),
+          ],
+          Expanded(
+            child: ListView.builder(
+              itemCount: threads.length,
+              itemBuilder: (context, index) {
+                final thread = threads[index];
+                final selected = index == selectedIndex;
+                final latestMessage =
+                    provider.latestMessageForThread(thread.id);
+
+                return StaggeredFadeIn(
+                  index: index,
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: context.space(10)),
+                    child: ThreadTile(
+                      thread: thread,
+                      latestMessage: latestMessage,
+                      accent: accent,
+                      selected: selected && !isCompact,
+                      onTap: () => onSelected(index),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class CurrentThreadPanel extends StatelessWidget {
+  const CurrentThreadPanel({
+    super.key,
+    required this.accent,
+    required this.thread,
+    required this.messages,
+    required this.isCompact,
+  });
+
+  final Color accent;
+  final EmailThread thread;
+  final List<EmailMessage> messages;
+  final bool isCompact;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.tidingsSettings;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tint =
+        isDark ? Colors.white.withOpacity(0.16) : Colors.white.withOpacity(0.82);
+    return GlassPanel(
+      borderRadius: BorderRadius.circular(context.radius(30)),
+      padding: EdgeInsets.all(isCompact ? context.space(16) : context.space(22)),
+      tint: tint,
+      borderOpacity: isDark ? 0.26 : 0.2,
+      highlightStrength: 0.8,
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.18),
+          blurRadius: 28,
+          offset: const Offset(0, 14),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  thread.subject,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+              ),
+              IconButton(
+                onPressed: () {},
+                icon: const Icon(Icons.star_border_rounded),
+              ),
+              IconButton(
+                onPressed: () {},
+                icon: const Icon(Icons.more_horiz_rounded),
+              ),
+            ],
+          ),
+          SizedBox(height: context.space(6)),
+          Text(
+            thread.participantSummary,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          SizedBox(height: context.space(16)),
+          Expanded(
+            child: ListView.separated(
+              itemCount: messages.length,
+              separatorBuilder: (_, __) => SizedBox(height: context.space(12)),
+              itemBuilder: (context, index) {
+                final message = messages[index];
+                final isLatest = index == messages.length - 1;
+                final shouldExpand = (settings.autoExpandLatest && isLatest) ||
+                    (settings.autoExpandUnread && message.isUnread);
+                return MessageCard(
+                  key: ValueKey(message.id),
+                  message: message,
+                  accent: accent,
+                  initiallyExpanded: shouldExpand,
+                );
+              },
+            ),
+          ),
+          SizedBox(height: context.space(12)),
+          ComposeBar(accent: accent),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactHeader extends StatelessWidget {
+  const _CompactHeader({required this.account, required this.accent});
+
+  final MockAccount account;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        GlassPanel(
+          borderRadius: BorderRadius.circular(context.radius(18)),
+          padding: EdgeInsets.all(context.space(6)),
+          child: CircleAvatar(
+            radius: context.space(18),
+            backgroundColor: accent.withOpacity(0.2),
+            child: Text(
+              account.displayName.substring(0, 1).toUpperCase(),
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+          ),
+        ),
+        SizedBox(width: context.space(12)),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Welcome back', style: Theme.of(context).textTheme.labelLarge),
+            Text(account.email, style: Theme.of(context).textTheme.bodyMedium),
+          ],
+        ),
+        const Spacer(),
+        IconButton(
+          onPressed: () {},
+          icon: const Icon(Icons.tune_rounded),
+        ),
+      ],
+    );
+  }
+}
+
+class _SearchRow extends StatelessWidget {
+  const _SearchRow({required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderRadius = BorderRadius.circular(context.radius(18));
+    final borderColor = isDark
+        ? Colors.white.withOpacity(0.16)
+        : Colors.black.withOpacity(0.12);
+    return TextField(
+      decoration: InputDecoration(
+        hintText: 'Search threads, people, or labels',
+        prefixIcon: const Icon(Icons.search_rounded),
+        filled: true,
+        fillColor: isDark
+            ? ColorTokens.cardFill(context, 0.14)
+            : ColorTokens.cardFillStrong(context, 0.2),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: borderRadius,
+          borderSide: BorderSide(color: borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: borderRadius,
+          borderSide: BorderSide(color: accent.withOpacity(0.6), width: 1.2),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickChips extends StatelessWidget {
+  const _QuickChips({required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: context.space(8),
+      runSpacing: context.space(8),
+      children: [
+        GlassPill(label: 'Unread', accent: accent, selected: true),
+        const GlassPill(label: 'Pinned'),
+        const GlassPill(label: 'Follow up'),
+        const GlassPill(label: 'Snoozed'),
+      ],
+    );
+  }
+}
+
+class ThreadTile extends StatelessWidget {
+  const ThreadTile({
+    super.key,
+    required this.thread,
+    required this.latestMessage,
+    required this.accent,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final EmailThread thread;
+  final EmailMessage? latestMessage;
+  final Color accent;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final subject = thread.subject;
+    final fill = selected
+        ? accent.withOpacity(0.18)
+        : ColorTokens.cardFill(context, 0.06);
+    final border = selected
+        ? accent.withOpacity(0.6)
+        : ColorTokens.border(context, 0.12);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.all(context.space(14)),
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(context.radius(18)),
+          border: Border.all(color: border),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: context.space(18),
+              backgroundColor: ColorTokens.cardFillStrong(context, 0.16),
+              child: Text(
+                thread.avatarLetter,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+            SizedBox(width: context.space(12)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          subject,
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(
+                                fontSize: 19,
+                                fontWeight: FontWeight.w600,
+                                color: thread.unread
+                                    ? scheme.onSurface
+                                    : scheme.onSurface.withOpacity(0.7),
+                              ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (thread.starred)
+                        Icon(Icons.star_rounded, color: accent, size: 18),
+                    ],
+                  ),
+                  SizedBox(height: context.space(6)),
+                  Text(
+                    latestMessage?.body ?? '',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  SizedBox(height: context.space(6)),
+                  Text(
+                    thread.time,
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class MessageCard extends StatefulWidget {
+  const MessageCard({
+    super.key,
+    required this.message,
+    required this.accent,
+    required this.initiallyExpanded,
+  });
+
+  final EmailMessage message;
+  final Color accent;
+  final bool initiallyExpanded;
+
+  @override
+  State<MessageCard> createState() => _MessageCardState();
+}
+
+class _MessageCardState extends State<MessageCard> {
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.initiallyExpanded;
+  }
+
+  @override
+  void didUpdateWidget(covariant MessageCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.message.id != widget.message.id) {
+      _expanded = widget.initiallyExpanded;
+    }
+  }
+
+  void _toggle() {
+    setState(() {
+      _expanded = !_expanded;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final cardColor = widget.message.isMe
+        ? widget.accent.withOpacity(0.18)
+        : ColorTokens.cardFill(context, 0.08);
+
+    return GestureDetector(
+      onTap: _toggle,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.all(context.space(14)),
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(context.radius(18)),
+          border: Border.all(color: ColorTokens.border(context, 0.12)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  widget.message.from.displayName,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                SizedBox(width: context.space(8)),
+                Text(
+                  widget.message.time,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const Spacer(),
+                Icon(Icons.more_horiz_rounded,
+                    color: scheme.onSurface.withOpacity(0.5)),
+              ],
+            ),
+            SizedBox(height: context.space(8)),
+            Text(
+              widget.message.subject,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            SizedBox(height: context.space(8)),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topLeft,
+              child: Text(
+                widget.message.body,
+                maxLines: _expanded ? null : 3,
+                overflow: _expanded ? null : TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ComposeBar extends StatelessWidget {
+  const ComposeBar({super.key, required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return GlassPanel(
+      borderRadius: BorderRadius.circular(context.radius(20)),
+      padding: EdgeInsets.all(context.space(12)),
+      tint: ColorTokens.cardFill(context, 0.1),
+      child: Column(
+        children: [
+          TextField(
+            minLines: 1,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              hintText: 'Write a reply...',
+              border: InputBorder.none,
+            ),
+          ),
+          SizedBox(height: context.space(8)),
+          Row(
+            children: [
+              Icon(Icons.attach_file_rounded,
+                  color: scheme.onSurface.withOpacity(0.7)),
+              SizedBox(width: context.space(8)),
+              Icon(Icons.emoji_emotions_outlined,
+                  color: scheme.onSurface.withOpacity(0.7)),
+              const Spacer(),
+              Text(
+                'Cmd + Enter to send',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ThreadScreen extends StatelessWidget {
+  const ThreadScreen({
+    super.key,
+    required this.accent,
+    required this.thread,
+    required this.provider,
+  });
+
+  final Color accent;
+  final EmailThread thread;
+  final EmailProvider provider;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        title: Text(thread.subject),
+      ),
+      body: TidingsBackground(
+        accent: accent,
+        child: SafeArea(
+          child: Padding(
+            padding: EdgeInsets.all(context.gutter(16)),
+            child: CurrentThreadPanel(
+              accent: accent,
+              thread: thread,
+              messages: provider.messagesForThread(thread.id),
+              isCompact: true,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({super.key, required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.all(context.gutter(16)),
+      child: SettingsPanel(accent: accent),
+    );
+  }
+}
+
+class SettingsPanel extends StatelessWidget {
+  const SettingsPanel({super.key, required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final segmentedStyle = ButtonStyle(
+      padding: WidgetStatePropertyAll(
+        EdgeInsets.symmetric(
+          horizontal: context.space(10),
+          vertical: context.space(6),
+        ),
+      ),
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(context.radius(12)),
+        ),
+      ),
+      backgroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return accent.withOpacity(0.18);
+        }
+        return ColorTokens.cardFill(context, 0.08);
+      }),
+      foregroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return accent;
+        }
+        return ColorTokens.textSecondary(context, 0.7);
+      }),
+      side: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return BorderSide(color: accent.withOpacity(0.5));
+        }
+        return BorderSide(color: ColorTokens.border(context, 0.1));
+      }),
+    );
+
+    return GlassPanel(
+      borderRadius: BorderRadius.circular(context.radius(28)),
+      padding: EdgeInsets.all(context.space(14)),
+      child: DefaultTabController(
+        length: 3,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Settings', style: Theme.of(context).textTheme.headlineSmall),
+            SizedBox(height: context.space(12)),
+            const _SettingsTabBar(),
+            SizedBox(height: context.space(12)),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _SettingsTab(
+                    child: _AppearanceSettings(
+                      accent: accent,
+                      segmentedStyle: segmentedStyle,
+                    ),
+                  ),
+                  _SettingsTab(
+                    child: _LayoutSettings(segmentedStyle: segmentedStyle),
+                  ),
+                  const _SettingsTab(
+                    child: _ThreadsSettings(),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsTabBar extends StatelessWidget {
+  const _SettingsTabBar();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(context.space(4)),
+      decoration: BoxDecoration(
+        color: ColorTokens.cardFill(context, 0.1),
+        borderRadius: BorderRadius.circular(context.radius(16)),
+        border: Border.all(color: ColorTokens.border(context, 0.12)),
+      ),
+      child: TabBar(
+        isScrollable: true,
+        labelPadding: EdgeInsets.symmetric(horizontal: context.space(6)),
+        labelColor: Theme.of(context).colorScheme.onSurface,
+        unselectedLabelColor: ColorTokens.textSecondary(context),
+        dividerColor: Colors.transparent,
+        indicator: BoxDecoration(
+          color: ColorTokens.cardFill(context, 0.2),
+          borderRadius: BorderRadius.circular(context.radius(12)),
+        ),
+        tabs: const [
+          _SettingsTabLabel(text: 'Appearance'),
+          _SettingsTabLabel(text: 'Layout'),
+          _SettingsTabLabel(text: 'Threads'),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsTabLabel extends StatelessWidget {
+  const _SettingsTabLabel({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tab(
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: context.space(18),
+          vertical: context.space(6),
+        ),
+        child: Text(text),
+      ),
+    );
+  }
+}
+
+class _SettingsTab extends StatelessWidget {
+  const _SettingsTab({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(horizontal: context.space(8)),
+      child: child,
+    );
+  }
+}
+
+class _AppearanceSettings extends StatelessWidget {
+  const _AppearanceSettings({
+    required this.accent,
+    required this.segmentedStyle,
+  });
+
+  final Color accent;
+  final ButtonStyle segmentedStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.tidingsSettings;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Appearance', style: Theme.of(context).textTheme.titleLarge),
+        SizedBox(height: context.space(12)),
+        _SettingRow(
+          title: 'Theme',
+          subtitle: 'Follow system appearance or set manually.',
+          trailing: SegmentedButton<ThemeMode>(
+            style: segmentedStyle,
+            segments: const [
+              ButtonSegment(value: ThemeMode.light, label: Text('Light')),
+              ButtonSegment(value: ThemeMode.dark, label: Text('Dark')),
+              ButtonSegment(value: ThemeMode.system, label: Text('System')),
+            ],
+            selected: {settings.themeMode},
+            onSelectionChanged: (selection) {
+              settings.setThemeMode(selection.first);
+            },
+          ),
+        ),
+        SizedBox(height: context.space(16)),
+        _SettingRow(
+          title: 'Theme palette',
+          subtitle: 'Neutral or account-accent gradients.',
+          trailing: SegmentedButton<ThemePaletteSource>(
+            style: segmentedStyle,
+            segments: ThemePaletteSource.values
+                .map(
+                  (source) => ButtonSegment(
+                    value: source,
+                    label: Text(source.label),
+                  ),
+                )
+                .toList(),
+            selected: {settings.paletteSource},
+            onSelectionChanged: (selection) {
+              settings.setPaletteSource(selection.first);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LayoutSettings extends StatelessWidget {
+  const _LayoutSettings({required this.segmentedStyle});
+
+  final ButtonStyle segmentedStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.tidingsSettings;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Layout', style: Theme.of(context).textTheme.titleLarge),
+        SizedBox(height: context.space(12)),
+        _SettingRow(
+          title: 'Layout density',
+          subtitle: 'Compactness and margins in one setting.',
+          trailing: SegmentedButton<LayoutDensity>(
+            style: segmentedStyle,
+            segments: LayoutDensity.values
+                .map(
+                  (density) => ButtonSegment(
+                    value: density,
+                    label: Text(density.label),
+                  ),
+                )
+                .toList(),
+            selected: {settings.layoutDensity},
+            onSelectionChanged: (selection) {
+              settings.setLayoutDensity(selection.first);
+            },
+          ),
+        ),
+        SizedBox(height: context.space(16)),
+        _SettingRow(
+          title: 'Corner radius',
+          subtitle: 'Dial in how rounded the UI feels.',
+          forceInline: true,
+          trailing: SizedBox(
+            width: 320,
+            child: Row(
+              children: CornerRadiusStyle.values
+                  .map(
+                    (style) => Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: context.space(4),
+                        ),
+                        child: _CornerRadiusOption(
+                          label: style.label,
+                          radius: context.space(18) * style.scale,
+                          selected: settings.cornerRadiusStyle == style,
+                          onTap: () => settings.setCornerRadiusStyle(style),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ThreadsSettings extends StatelessWidget {
+  const _ThreadsSettings();
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.tidingsSettings;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Threads', style: Theme.of(context).textTheme.titleLarge),
+        SizedBox(height: context.space(12)),
+        _SettingRow(
+          title: 'Auto-expand unread',
+          subtitle: 'Open unread threads to show the latest message.',
+          trailing: Switch.adaptive(
+            value: settings.autoExpandUnread,
+            onChanged: settings.setAutoExpandUnread,
+          ),
+        ),
+        SizedBox(height: context.space(16)),
+        _SettingRow(
+          title: 'Auto-expand latest',
+          subtitle: 'Keep the newest thread expanded in the list.',
+          trailing: Switch.adaptive(
+            value: settings.autoExpandLatest,
+            onChanged: settings.setAutoExpandLatest,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingRow extends StatelessWidget {
+  const _SettingRow({
+    required this.title,
+    required this.subtitle,
+    required this.trailing,
+    this.forceInline = false,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget trailing;
+  final bool forceInline;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 520;
+        final textBlock = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.bodyLarge),
+            SizedBox(height: context.space(4)),
+            Text(
+              subtitle,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: ColorTokens.textSecondary(context)),
+            ),
+          ],
+        );
+        if (isNarrow && !forceInline) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              textBlock,
+              SizedBox(height: context.space(12)),
+              trailing,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: textBlock),
+            SizedBox(width: context.space(16)),
+            trailing,
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _CornerRadiusOption extends StatelessWidget {
+  const _CornerRadiusOption({
+    required this.label,
+    required this.radius,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final double radius;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor =
+        selected ? Theme.of(context).colorScheme.primary : ColorTokens.border(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        height: context.space(52),
+        decoration: BoxDecoration(
+          color: selected
+              ? Theme.of(context).colorScheme.primary.withOpacity(0.12)
+              : Colors.transparent,
+          border: Border.all(color: borderColor),
+          borderRadius: BorderRadius.circular(radius),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: selected ? Theme.of(context).colorScheme.primary : null,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              ),
+        ),
+      ),
+    );
+  }
+}
+
+class TidingsBackground extends StatelessWidget {
+  const TidingsBackground({super.key, required this.accent, required this.child});
+
+  final Color accent;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseGradient = ColorTokens.backgroundGradient(context);
+    final heroGradient = ColorTokens.heroGradient(context);
+    final glow = accent.withOpacity(isDark ? 0.2 : 0.14);
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: baseGradient,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 220,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: heroGradient,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: -140,
+          right: -80,
+          child: _GlowBlob(color: glow, size: 280),
+        ),
+        Positioned(
+          bottom: -160,
+          left: -60,
+          child: _GlowBlob(
+            color: scheme.secondary.withOpacity(isDark ? 0.18 : 0.12),
+            size: 300,
+          ),
+        ),
+        child,
+      ],
+    );
+  }
+}
+
+class _GlowBlob extends StatelessWidget {
+  const _GlowBlob({required this.color, required this.size});
+
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [
+            color,
+            color.withOpacity(0.0),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class PageReveal extends StatelessWidget {
+  const PageReveal({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 700),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, _) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 12 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class StaggeredFadeIn extends StatelessWidget {
+  const StaggeredFadeIn({super.key, required this.index, required this.child});
+
+  final int index;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final start = (index * 0.08).clamp(0.0, 1.0);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 700),
+      curve: Interval(start, 1, curve: Curves.easeOutCubic),
+      builder: (context, value, _) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 16 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class GlassActionButton extends StatelessWidget {
+  const GlassActionButton({
+    super.key,
+    required this.accent,
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final Color accent;
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: GlassPanel(
+        borderRadius: BorderRadius.circular(context.radius(24)),
+        padding: EdgeInsets.symmetric(
+          horizontal: context.space(16),
+          vertical: context.space(12),
+        ),
+        tint: accent.withOpacity(0.18),
+        borderOpacity: 0.3,
+        boxShadow: [
+          BoxShadow(
+            color: accent.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 12),
+          ),
+        ],
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: accent),
+            SizedBox(width: context.space(8)),
+            Text(
+              label,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(color: accent),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class GlassBottomNav extends StatelessWidget {
+  const GlassBottomNav({
+    super.key,
+    required this.accent,
+    required this.currentIndex,
+    required this.onTap,
+  });
+
+  final Color accent;
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = const [
+      _NavItem(icon: Icons.inbox_rounded, label: 'Inbox'),
+      _NavItem(icon: Icons.bolt_rounded, label: 'Focus'),
+      _NavItem(icon: Icons.search_rounded, label: 'Search'),
+      _NavItem(icon: Icons.settings_rounded, label: 'Settings'),
+    ];
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          context.gutter(16),
+          0,
+          context.gutter(16),
+          context.space(16),
+        ),
+        child: GlassPanel(
+          borderRadius: BorderRadius.circular(context.radius(26)),
+          padding: EdgeInsets.symmetric(
+            horizontal: context.space(8),
+            vertical: context.space(10),
+          ),
+          child: Row(
+            children: List.generate(items.length, (index) {
+              final item = items[index];
+              final selected = index == currentIndex;
+              final textColor = selected
+                  ? accent
+                  : ColorTokens.textSecondary(context, 0.6);
+
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => onTap(index),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: EdgeInsets.symmetric(vertical: context.space(8)),
+                    decoration: BoxDecoration(
+                      color: selected ? accent.withOpacity(0.18) : null,
+                      borderRadius: BorderRadius.circular(context.radius(18)),
+                      border: Border.all(
+                        color: selected
+                            ? accent.withOpacity(0.5)
+                            : Colors.transparent,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(item.icon, color: textColor, size: 20),
+                        SizedBox(height: context.space(4)),
+                        Text(
+                          item.label,
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelLarge
+                              ?.copyWith(color: textColor),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class GlassPill extends StatelessWidget {
+  const GlassPill({
+    super.key,
+    required this.label,
+    this.accent,
+    this.selected = false,
+    this.dense = false,
+  });
+
+  final String label;
+  final Color? accent;
+  final bool selected;
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) {
+    final accentColor = accent ?? Theme.of(context).colorScheme.primary;
+    final brightness = Theme.of(context).brightness;
+    final hsl = HSLColor.fromColor(accentColor);
+    final adjustedLightness = brightness == Brightness.dark
+        ? (hsl.lightness + 0.2).clamp(0.55, 0.78)
+        : (hsl.lightness - 0.1).clamp(0.32, 0.56);
+    final displayAccent =
+        hsl.withLightness(adjustedLightness.toDouble()).toColor();
+    final textColor =
+        selected ? displayAccent : ColorTokens.textSecondary(context, 0.7);
+
+    return GlassPanel(
+      borderRadius: BorderRadius.circular(
+        dense ? context.radius(12) : context.radius(14),
+      ),
+      padding: EdgeInsets.symmetric(
+        horizontal: dense ? context.space(10) : context.space(12),
+        vertical: dense ? context.space(4) : context.space(6),
+      ),
+      blur: 18,
+      opacity: selected ? 0.2 : 0.14,
+      borderOpacity: selected ? 0.32 : 0.22,
+      borderColor: selected ? displayAccent.withOpacity(0.5) : null,
+      tint: selected ? displayAccent.withOpacity(0.22) : null,
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(color: textColor),
+      ),
+    );
+  }
+}
+
+class _NavItem {
+  const _NavItem({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+}
+
+class _NavIcon extends StatelessWidget {
+  const _NavIcon({
+    required this.item,
+    required this.selected,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final _NavItem item;
+  final bool selected;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Tooltip(
+      message: item.label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: EdgeInsets.all(context.space(12)),
+          decoration: BoxDecoration(
+            color: selected ? accent.withOpacity(0.2) : Colors.transparent,
+            borderRadius: BorderRadius.circular(context.radius(16)),
+            border: Border.all(
+              color: selected ? accent : Colors.transparent,
+            ),
+          ),
+          child: Icon(
+            item.icon,
+            color: selected ? accent : scheme.onSurface.withOpacity(0.7),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Color accentFromAccount(String id) {
+  var hash = 0;
+  for (final unit in id.codeUnits) {
+    hash = unit + ((hash << 5) - hash);
+  }
+  final hue = 205 + (hash % 40).abs().toDouble();
+  return HSLColor.fromAHSL(1, hue, 0.7, 0.68).toColor();
+}
+
+class MockAccount {
+  const MockAccount({
+    required this.id,
+    required this.displayName,
+    required this.email,
+  });
+
+  final String id;
+  final String displayName;
+  final String email;
+}
