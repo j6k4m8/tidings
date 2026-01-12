@@ -21,6 +21,20 @@ class EmailAddress {
   }
 }
 
+String _stripHtml(String html) {
+  var text = html;
+  text = text.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
+  text = text.replaceAll(RegExp(r'</p>', caseSensitive: false), '\n');
+  text = text.replaceAll(RegExp(r'<[^>]+>'), '');
+  text = text.replaceAll('&nbsp;', ' ');
+  text = text.replaceAll('&amp;', '&');
+  text = text.replaceAll('&lt;', '<');
+  text = text.replaceAll('&gt;', '>');
+  text = text.replaceAll('&quot;', '"');
+  text = text.replaceAll('&#39;', "'");
+  return text.trim();
+}
+
 abstract class EmailProvider {
   List<EmailThread> get threads;
   List<EmailMessage> messagesForThread(String threadId);
@@ -132,7 +146,7 @@ class MockEmailProvider implements EmailProvider {
         from: _ari,
         to: [_you, _sam],
         time: '8:10 AM',
-        body:
+        bodyText:
             'The playlist visuals are in. We can merge once the motion pass is done.',
         isMe: false,
         isUnread: false,
@@ -144,7 +158,7 @@ class MockEmailProvider implements EmailProvider {
         from: _you,
         to: [_ari, _sam],
         time: '8:22 AM',
-        body: 'Perfect. I will review the light mode screens after standup.',
+        bodyText: 'Perfect. I will review the light mode screens after standup.',
         isMe: true,
         isUnread: false,
       ),
@@ -155,7 +169,7 @@ class MockEmailProvider implements EmailProvider {
         from: _you,
         to: [_ari, _sam],
         time: '8:35 AM',
-        body:
+        bodyText:
             'Lets do it. Make sure the new accent mapping is enabled for all accounts. '
             'I want the live preview to be visible in the thread view and in settings, '
             'and we should validate contrast across the light gradient background. '
@@ -171,7 +185,7 @@ class MockEmailProvider implements EmailProvider {
         from: _sam,
         to: [_you, _ari],
         time: '8:42 AM',
-        body:
+        bodyText:
             'Got it. I will push a patch with the accent mapping and then verify '
             'the contrast across both themes. I will also drop a quick video into '
             'Slack so the press team can see the animation before we ship.',
@@ -187,7 +201,7 @@ class MockEmailProvider implements EmailProvider {
         from: _priya,
         to: [_you],
         time: '7:10 AM',
-        body:
+        bodyText:
             'We should finalize the offline queue replay semantics before mobile.',
         isMe: false,
         isUnread: false,
@@ -199,7 +213,7 @@ class MockEmailProvider implements EmailProvider {
         from: _priya,
         to: [_you],
         time: '7:18 AM',
-        body:
+        bodyText:
             'Also, can we add a note about the send queue ordering? The mobile '
             'team wants a deterministic rule for draft updates vs. send operations '
             'when we reconnect. I can draft the section if you want.',
@@ -215,7 +229,7 @@ class MockEmailProvider implements EmailProvider {
         from: _maya,
         to: [_you],
         time: 'Yesterday',
-        body: 'Updated screenshots are in the drive under /press/alpha.',
+        bodyText: 'Updated screenshots are in the drive under /press/alpha.',
         isMe: false,
         isUnread: false,
       ),
@@ -226,7 +240,12 @@ class MockEmailProvider implements EmailProvider {
         from: _you,
         to: [_maya],
         time: 'Yesterday',
-        body: 'Looks great. The new nav rail feels premium.',
+        bodyHtml:
+            '<p>Looks great. The new nav rail feels premium.</p>'
+            '<p>I added a few notes in <strong>bold</strong> and flagged the area '
+            'where the hero glow could be softened.</p>'
+            '<p>See the <a href="https://tidings.dev">Tidings folder</a> for the '
+            'latest exports.</p>',
         isMe: true,
         isUnread: false,
       ),
@@ -237,7 +256,7 @@ class MockEmailProvider implements EmailProvider {
         from: _maya,
         to: [_you],
         time: 'Yesterday',
-        body:
+        bodyText:
             'Thanks! I will prep a second pass with dark mode focus. '
             'I am also swapping the hero background to match the new '
             'glass highlight treatment, so the light mode cards read '
@@ -255,7 +274,7 @@ class MockEmailProvider implements EmailProvider {
         from: _dev,
         to: [_you],
         time: 'Yesterday',
-        body:
+        bodyText:
             'Mock provider latency is holding at 80ms with prefetch enabled.',
         isMe: false,
         isUnread: false,
@@ -267,7 +286,7 @@ class MockEmailProvider implements EmailProvider {
         from: _you,
         to: [_dev],
         time: 'Yesterday',
-        body:
+        bodyText:
             'Nice. Lets keep the status visible in the dashboard. '
             'I would like a quick breakdown of cache hits vs. cold fetches '
             'so we can set a realistic expectation for first load times. '
@@ -285,7 +304,7 @@ class MockEmailProvider implements EmailProvider {
         from: _sasha,
         to: [_you],
         time: 'Mon',
-        body: 'Added 12 new invites. We can onboard them Friday.',
+        bodyText: 'Added 12 new invites. We can onboard them Friday.',
         isMe: false,
         isUnread: false,
       ),
@@ -332,9 +351,10 @@ class EmailMessage {
     required this.from,
     required this.to,
     required this.time,
-    required this.body,
     required this.isMe,
     required this.isUnread,
+    this.bodyText,
+    this.bodyHtml,
   });
 
   final String id;
@@ -343,11 +363,22 @@ class EmailMessage {
   final EmailAddress from;
   final List<EmailAddress> to;
   final String time;
-  final String body;
   final bool isMe;
   final bool isUnread;
+  final String? bodyText;
+  final String? bodyHtml;
 
   String get toSummary {
     return to.map((recipient) => recipient.displayName).join(', ');
+  }
+
+  String get bodyPlainText {
+    if (bodyText != null && bodyText!.isNotEmpty) {
+      return bodyText!;
+    }
+    if (bodyHtml != null && bodyHtml!.isNotEmpty) {
+      return _stripHtml(bodyHtml!);
+    }
+    return '';
   }
 }

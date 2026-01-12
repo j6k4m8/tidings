@@ -31,11 +31,11 @@ class TidingsTheme {
     ),
     bodyLarge: TextStyle(
       fontSize: 15,
-      fontWeight: FontWeight.w500,
+      fontWeight: FontWeight.w400,
     ),
     bodyMedium: TextStyle(
       fontSize: 13,
-      fontWeight: FontWeight.w500,
+      fontWeight: FontWeight.w400,
     ),
     labelLarge: TextStyle(
       fontSize: 12,

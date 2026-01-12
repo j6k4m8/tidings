@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_html/flutter_html.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'data/email_provider.dart';
 import 'state/tidings_settings.dart';
@@ -99,6 +102,7 @@ class _TidingsHomeState extends State<TidingsHome> {
         final showSettings = _showSettings;
 
         return Scaffold(
+          extendBody: true,
           floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
           floatingActionButton: isWide
               ? null
@@ -121,6 +125,7 @@ class _TidingsHomeState extends State<TidingsHome> {
           body: TidingsBackground(
             accent: widget.accent,
             child: SafeArea(
+              bottom: false,
               child: isWide
                   ? _WideLayout(
                       account: widget.account,
@@ -579,10 +584,6 @@ class _CompactHeader extends StatelessWidget {
           ],
         ),
         const Spacer(),
-        IconButton(
-          onPressed: () {},
-          icon: const Icon(Icons.tune_rounded),
-        ),
       ],
     );
   }
@@ -719,7 +720,7 @@ class ThreadTile extends StatelessWidget {
                   ),
                   SizedBox(height: context.space(6)),
                   Text(
-                    latestMessage?.body ?? '',
+                    latestMessage?.bodyPlainText ?? '',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodyMedium,
@@ -778,9 +779,21 @@ class _MessageCardState extends State<MessageCard> {
     });
   }
 
+  Future<void> _handleLinkTap(String? url) async {
+    if (url == null || url.isEmpty) {
+      return;
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      return;
+    }
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final showSubject = !context.tidingsSettings.hideThreadSubjects;
     final cardColor = widget.message.isMe
         ? widget.accent.withOpacity(0.18)
         : ColorTokens.cardFill(context, 0.08);
@@ -816,23 +829,47 @@ class _MessageCardState extends State<MessageCard> {
               ],
             ),
             SizedBox(height: context.space(8)),
-            Text(
-              widget.message.subject,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-            SizedBox(height: context.space(8)),
+            if (showSubject) ...[
+              Text(
+                widget.message.subject,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              SizedBox(height: context.space(8)),
+            ],
             AnimatedSize(
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
               alignment: Alignment.topLeft,
-              child: Text(
-                widget.message.body,
-                maxLines: _expanded ? null : 3,
-                overflow: _expanded ? null : TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
+              child: _expanded && widget.message.bodyHtml != null
+                  ? Html(
+                      data: widget.message.bodyHtml,
+                      onLinkTap: (url, _, __) => _handleLinkTap(url),
+                      style: {
+                        'body': Style(
+                          margin: Margins.zero,
+                          padding: HtmlPaddings.zero,
+                          fontSize: FontSize(
+                            Theme.of(context).textTheme.bodyLarge?.fontSize ??
+                                14,
+                          ),
+                          fontWeight:
+                              Theme.of(context).textTheme.bodyLarge?.fontWeight,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                        'p': Style(margin: Margins.only(bottom: 8)),
+                        'a': Style(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      },
+                    )
+                  : Text(
+                      widget.message.bodyPlainText,
+                      maxLines: _expanded ? null : 3,
+                      overflow: _expanded ? null : TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
             ),
           ],
         ),
@@ -899,16 +936,36 @@ class ThreadScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        shadowColor: Colors.transparent,
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness:
+              isDark ? Brightness.light : Brightness.dark,
+          statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+        ),
         title: Text(thread.subject),
       ),
       body: TidingsBackground(
         accent: accent,
         child: SafeArea(
+          top: false,
           child: Padding(
-            padding: EdgeInsets.all(context.gutter(16)),
+            padding: EdgeInsets.fromLTRB(
+              context.gutter(16),
+              MediaQuery.of(context).padding.top +
+                  kToolbarHeight +
+                  context.space(8),
+              context.gutter(16),
+              context.gutter(16),
+            ),
             child: CurrentThreadPanel(
               accent: accent,
               thread: thread,
@@ -1226,6 +1283,15 @@ class _ThreadsSettings extends StatelessWidget {
           trailing: Switch.adaptive(
             value: settings.autoExpandLatest,
             onChanged: settings.setAutoExpandLatest,
+          ),
+        ),
+        SizedBox(height: context.space(16)),
+        _SettingRow(
+          title: 'Hide subject lines',
+          subtitle: 'Show only the message body in thread view.',
+          trailing: Switch.adaptive(
+            value: settings.hideThreadSubjects,
+            onChanged: settings.setHideThreadSubjects,
           ),
         ),
       ],

@@ -9,6 +9,7 @@ class TidingsSettings extends ChangeNotifier {
   CornerRadiusStyle _cornerRadiusStyle = CornerRadiusStyle.traditional;
   bool _autoExpandUnread = true;
   bool _autoExpandLatest = true;
+  bool _hideThreadSubjects = false;
 
   ThemeMode get themeMode => _themeMode;
   ThemePaletteSource get paletteSource => _paletteSource;
@@ -16,6 +17,7 @@ class TidingsSettings extends ChangeNotifier {
   CornerRadiusStyle get cornerRadiusStyle => _cornerRadiusStyle;
   bool get autoExpandUnread => _autoExpandUnread;
   bool get autoExpandLatest => _autoExpandLatest;
+  bool get hideThreadSubjects => _hideThreadSubjects;
 
   double get densityScale => _layoutDensity.scale;
   double get cornerRadiusScale => _cornerRadiusStyle.scale;
@@ -65,6 +67,14 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _autoExpandLatest = value;
+    notifyListeners();
+  }
+
+  void setHideThreadSubjects(bool value) {
+    if (_hideThreadSubjects == value) {
+      return;
+    }
+    _hideThreadSubjects = value;
     notifyListeners();
   }
 }
