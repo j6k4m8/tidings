@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_html/flutter_html.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'data/email_provider.dart';
@@ -90,9 +91,37 @@ class TidingsHome extends StatefulWidget {
 }
 
 class _TidingsHomeState extends State<TidingsHome> {
+  static const _threadPanelFractionKey = 'threadPanelFraction';
   int _selectedThreadIndex = 0;
   int _navIndex = 0;
   bool _showSettings = false;
+  double _threadPanelFraction = 0.58;
+  bool _threadPanelOpen = true;
+  SharedPreferences? _prefs;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadThreadPanelPrefs();
+  }
+
+  Future<void> _loadThreadPanelPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getDouble(_threadPanelFractionKey);
+    if (!mounted) {
+      return;
+    }
+    _prefs = prefs;
+    if (stored != null) {
+      setState(() {
+        _threadPanelFraction = stored.clamp(0.3, 0.8);
+      });
+    }
+  }
+
+  void _persistThreadPanelFraction(double value) {
+    _prefs?.setDouble(_threadPanelFractionKey, value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -126,14 +155,16 @@ class _TidingsHomeState extends State<TidingsHome> {
             accent: widget.accent,
             child: SafeArea(
               bottom: false,
-              child: isWide
+            child: isWide
                   ? _WideLayout(
                       account: widget.account,
                       accent: widget.accent,
                       provider: widget.provider,
                       selectedThreadIndex: _selectedThreadIndex,
-                      onThreadSelected: (index) =>
-                          setState(() => _selectedThreadIndex = index),
+                      onThreadSelected: (index) => setState(() {
+                        _selectedThreadIndex = index;
+                        _threadPanelOpen = true;
+                      }),
                       navIndex: _navIndex,
                       onNavSelected: (index) =>
                           setState(() {
@@ -143,6 +174,16 @@ class _TidingsHomeState extends State<TidingsHome> {
                       onSettingsTap: () =>
                           setState(() => _showSettings = true),
                       showSettings: showSettings,
+                      threadPanelFraction: _threadPanelFraction,
+                      threadPanelOpen: _threadPanelOpen,
+                      onThreadPanelResize: (fraction) {
+                        setState(() => _threadPanelFraction = fraction);
+                        _persistThreadPanelFraction(fraction);
+                      },
+                      onThreadPanelOpen: () =>
+                          setState(() => _threadPanelOpen = true),
+                      onThreadPanelClose: () =>
+                          setState(() => _threadPanelOpen = false),
                     )
                   : showSettings
                       ? SettingsScreen(accent: widget.accent)
@@ -151,8 +192,10 @@ class _TidingsHomeState extends State<TidingsHome> {
                           accent: widget.accent,
                           provider: widget.provider,
                           selectedThreadIndex: _selectedThreadIndex,
-                          onThreadSelected: (index) =>
-                              setState(() => _selectedThreadIndex = index),
+                          onThreadSelected: (index) => setState(() {
+                            _selectedThreadIndex = index;
+                            _threadPanelOpen = true;
+                          }),
                         ),
             ),
           ),
@@ -173,6 +216,11 @@ class _WideLayout extends StatelessWidget {
     required this.onNavSelected,
     required this.onSettingsTap,
     required this.showSettings,
+    required this.threadPanelFraction,
+    required this.threadPanelOpen,
+    required this.onThreadPanelResize,
+    required this.onThreadPanelOpen,
+    required this.onThreadPanelClose,
   });
 
   final MockAccount account;
@@ -184,6 +232,11 @@ class _WideLayout extends StatelessWidget {
   final ValueChanged<int> onNavSelected;
   final VoidCallback onSettingsTap;
   final bool showSettings;
+  final double threadPanelFraction;
+  final bool threadPanelOpen;
+  final ValueChanged<double> onThreadPanelResize;
+  final VoidCallback onThreadPanelOpen;
+  final VoidCallback onThreadPanelClose;
 
   @override
   Widget build(BuildContext context) {
@@ -206,44 +259,187 @@ class _WideLayout extends StatelessWidget {
             ),
             SizedBox(width: context.space(16)),
             Expanded(
-              flex: 5,
-              child: ThreadListPanel(
-                accent: accent,
-                provider: provider,
-                threads: threads,
-                selectedIndex: selectedThreadIndex,
-                onSelected: onThreadSelected,
-                isCompact: false,
-              ),
-            ),
-            SizedBox(width: context.space(16)),
-            Expanded(
-              flex: 7,
-              child: showSettings
-                  ? SettingsPanel(accent: accent)
-                  : AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) => SizeTransition(
-                        sizeFactor: animation,
-                        axisAlignment: -1,
-                        child: FadeTransition(
-                          opacity: animation,
-                          child: child,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final detailOpen = showSettings || threadPanelOpen;
+                  final handleWidth = context.space(12);
+                  if (!detailOpen) {
+                    final availableWidth = constraints.maxWidth;
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: ThreadListPanel(
+                            accent: accent,
+                            provider: provider,
+                            threads: threads,
+                            selectedIndex: selectedThreadIndex,
+                            onSelected: onThreadSelected,
+                            isCompact: false,
+                          ),
+                        ),
+                        IgnorePointer(
+                          ignoring: false,
+                          child: _ThreadPanelHint(
+                            accent: accent,
+                            width: handleWidth,
+                            onTap: onThreadPanelOpen,
+                            onDragUpdate: (delta) {
+                              onThreadPanelOpen();
+                              final nextFraction = (threadPanelFraction +
+                                      (-delta / availableWidth))
+                                  .clamp(0.3, 0.8);
+                              onThreadPanelResize(nextFraction);
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+
+                  final availableWidth = constraints.maxWidth - handleWidth;
+                  final minListWidth = context.space(280);
+                  final minDetailWidth = context.space(260);
+                  final snapThreshold = context.space(300);
+                  final maxDetailWidth = availableWidth - minListWidth;
+                  final boundedMaxDetailWidth = maxDetailWidth < minDetailWidth
+                      ? minDetailWidth
+                      : maxDetailWidth;
+                  final desiredDetailWidth = availableWidth * threadPanelFraction;
+                  final detailWidth = desiredDetailWidth.clamp(
+                    minDetailWidth,
+                    boundedMaxDetailWidth,
+                  );
+                  final listWidth = availableWidth - detailWidth;
+
+                  void handleResize(double delta) {
+                    final nextDetailWidth = detailWidth - delta;
+                    if (!showSettings && nextDetailWidth <= snapThreshold) {
+                      onThreadPanelClose();
+                      return;
+                    }
+                    final clampedWidth = nextDetailWidth.clamp(
+                      minDetailWidth,
+                      boundedMaxDetailWidth,
+                    );
+                    onThreadPanelResize(clampedWidth / availableWidth);
+                  }
+
+                  return Row(
+                    children: [
+                      SizedBox(
+                        width: listWidth,
+                        child: ThreadListPanel(
+                          accent: accent,
+                          provider: provider,
+                          threads: threads,
+                          selectedIndex: selectedThreadIndex,
+                          onSelected: onThreadSelected,
+                          isCompact: false,
                         ),
                       ),
-                      child: CurrentThreadPanel(
-                        key: ValueKey(selectedThread.id),
-                        accent: accent,
-                        thread: selectedThread,
-                        messages:
-                            provider.messagesForThread(selectedThread.id),
-                        isCompact: false,
+                      _ResizeHandle(onDragUpdate: handleResize),
+                      SizedBox(
+                        width: detailWidth,
+                        child: showSettings
+                            ? SettingsPanel(accent: accent)
+                            : AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 300),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                transitionBuilder:
+                                    (child, animation) => SizeTransition(
+                                  sizeFactor: animation,
+                                  axisAlignment: -1,
+                                  child: FadeTransition(
+                                    opacity: animation,
+                                    child: child,
+                                  ),
+                                ),
+                                child: CurrentThreadPanel(
+                                  key: ValueKey(selectedThread.id),
+                                  accent: accent,
+                                  thread: selectedThread,
+                                  messages: provider
+                                      .messagesForThread(selectedThread.id),
+                                  isCompact: false,
+                                ),
+                              ),
                       ),
-                    ),
+                    ],
+                  );
+                },
+              ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ResizeHandle extends StatelessWidget {
+  const _ResizeHandle({required this.onDragUpdate});
+
+  final ValueChanged<double> onDragUpdate;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeLeftRight,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragUpdate: (details) => onDragUpdate(details.delta.dx),
+        child: SizedBox(
+          width: context.space(12),
+          child: Center(
+            child: Container(
+              width: 3,
+              height: context.space(48),
+              decoration: BoxDecoration(
+                color: ColorTokens.border(context, 0.2),
+                borderRadius: BorderRadius.circular(context.radius(8)),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThreadPanelHint extends StatelessWidget {
+  const _ThreadPanelHint({
+    required this.accent,
+    required this.width,
+    required this.onTap,
+    required this.onDragUpdate,
+  });
+
+  final Color accent;
+  final double width;
+  final VoidCallback onTap;
+  final ValueChanged<double> onDragUpdate;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeLeftRight,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: onTap,
+        onHorizontalDragUpdate: (details) => onDragUpdate(details.delta.dx),
+        child: SizedBox(
+          width: width,
+          child: Center(
+            child: Container(
+              width: 3,
+              height: context.space(48),
+              decoration: BoxDecoration(
+                color: ColorTokens.border(context, 0.2),
+                borderRadius: BorderRadius.circular(context.radius(8)),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -411,58 +607,53 @@ class ThreadListPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settings = context.tidingsSettings;
-    return GlassPanel(
-      borderRadius: BorderRadius.circular(context.radius(28)),
-      padding: EdgeInsets.all(isCompact ? 0 : context.space(18)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!isCompact) ...[
-            Row(
-              children: [
-                Text('Inbox', style: Theme.of(context).textTheme.displaySmall),
-                const Spacer(),
-                GlassPill(
-                  label: 'Focused',
-                  accent: accent,
-                  selected: true,
-                ),
-              ],
-            ),
-            SizedBox(height: context.space(12)),
-            _SearchRow(accent: accent),
-            SizedBox(height: context.space(12)),
-            _QuickChips(accent: accent),
-            SizedBox(height: context.space(16)),
-          ],
-          Expanded(
-            child: ListView.builder(
-              itemCount: threads.length,
-              itemBuilder: (context, index) {
-                final thread = threads[index];
-                final selected = index == selectedIndex;
-                final latestMessage =
-                    provider.latestMessageForThread(thread.id);
-
-                return StaggeredFadeIn(
-                  index: index,
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: context.space(10)),
-                    child: ThreadTile(
-                      thread: thread,
-                      latestMessage: latestMessage,
-                      accent: accent,
-                      selected: selected && !isCompact,
-                      onTap: () => onSelected(index),
-                    ),
-                  ),
-                );
-              },
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!isCompact) ...[
+          Row(
+            children: [
+              Text('Inbox', style: Theme.of(context).textTheme.displaySmall),
+              const Spacer(),
+              GlassPill(
+                label: 'Focused',
+                accent: accent,
+                selected: true,
+              ),
+            ],
           ),
+          SizedBox(height: context.space(12)),
+          _SearchRow(accent: accent),
+          SizedBox(height: context.space(12)),
+          _QuickChips(accent: accent),
+          SizedBox(height: context.space(16)),
         ],
-      ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: threads.length,
+            itemBuilder: (context, index) {
+              final thread = threads[index];
+              final selected = index == selectedIndex;
+              final latestMessage =
+                  provider.latestMessageForThread(thread.id);
+
+              return StaggeredFadeIn(
+                index: index,
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: context.space(10)),
+                  child: ThreadTile(
+                    thread: thread,
+                    latestMessage: latestMessage,
+                    accent: accent,
+                    selected: selected && !isCompact,
+                    onTap: () => onSelected(index),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -505,6 +696,11 @@ class CurrentThreadPanel extends StatelessWidget {
         children: [
           Row(
             children: [
+              if (isCompact)
+                IconButton(
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                ),
               Expanded(
                 child: Text(
                   thread.subject,
@@ -662,12 +858,27 @@ class ThreadTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final subject = thread.subject;
+    final isUnread = thread.unread || (latestMessage?.isUnread ?? false);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final fill = selected
         ? accent.withOpacity(0.18)
-        : ColorTokens.cardFill(context, 0.06);
+        : isUnread
+            ? (isDark
+                ? Colors.white.withOpacity(0.14)
+                : Colors.white.withOpacity(0.7))
+        : ColorTokens.cardFill(context, 0.04);
     final border = selected
         ? accent.withOpacity(0.6)
         : ColorTokens.border(context, 0.12);
+    final baseParticipantStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: scheme.onSurface.withOpacity(isUnread ? 0.75 : 0.6),
+          fontWeight: FontWeight.w500,
+        );
+    final latestSender = latestMessage?.from.email;
+    final highlightParticipantStyle = baseParticipantStyle?.copyWith(
+      color: isUnread ? accent : scheme.onSurface.withOpacity(0.9),
+      fontWeight: FontWeight.w600,
+    );
 
     return GestureDetector(
       onTap: onTap,
@@ -698,17 +909,51 @@ class ThreadTile extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
+                        child: RichText(
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          text: TextSpan(
+                            children: [
+                              for (var i = 0;
+                                  i < thread.participants.length;
+                                  i++)
+                                TextSpan(
+                                  text: thread.participants[i].displayName +
+                                      (i == thread.participants.length - 1
+                                          ? ''
+                                          : ', '),
+                                  style:
+                                      thread.participants[i].email ==
+                                              latestSender
+                                          ? highlightParticipantStyle
+                                          : baseParticipantStyle,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: context.space(8)),
+                      Text(
+                        thread.time,
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: context.space(4)),
+                  Row(
+                    children: [
+                      Expanded(
                         child: Text(
                           subject,
                           style: Theme.of(context)
                               .textTheme
-                              .titleLarge
+                              .titleMedium
                               ?.copyWith(
-                                fontSize: 19,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w600,
                                 color: thread.unread
                                     ? scheme.onSurface
-                                    : scheme.onSurface.withOpacity(0.7),
+                                    : scheme.onSurface.withOpacity(0.5),
                               ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -723,12 +968,11 @@ class ThreadTile extends StatelessWidget {
                     latestMessage?.bodyPlainText ?? '',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  SizedBox(height: context.space(6)),
-                  Text(
-                    thread.time,
-                    style: Theme.of(context).textTheme.labelLarge,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurface.withOpacity(
+                            isUnread ? 0.7 : 0.42,
+                          ),
+                        ),
                   ),
                 ],
               ),
@@ -938,39 +1182,30 @@ class ThreadScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        shadowColor: Colors.transparent,
-        systemOverlayStyle: SystemUiOverlayStyle(
+      body: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           statusBarIconBrightness:
               isDark ? Brightness.light : Brightness.dark,
           statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
         ),
-        title: Text(thread.subject),
-      ),
-      body: TidingsBackground(
-        accent: accent,
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              context.gutter(16),
-              MediaQuery.of(context).padding.top +
-                  kToolbarHeight +
-                  context.space(8),
-              context.gutter(16),
-              context.gutter(16),
-            ),
-            child: CurrentThreadPanel(
-              accent: accent,
-              thread: thread,
-              messages: provider.messagesForThread(thread.id),
-              isCompact: true,
+        child: TidingsBackground(
+          accent: accent,
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                context.gutter(16),
+                MediaQuery.of(context).padding.top + context.space(12),
+                context.gutter(16),
+                context.gutter(16),
+              ),
+              child: CurrentThreadPanel(
+                accent: accent,
+                thread: thread,
+                messages: provider.messagesForThread(thread.id),
+                isCompact: true,
+              ),
             ),
           ),
         ),

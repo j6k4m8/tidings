@@ -4,7 +4,8 @@
 
 -   [ ] make the settings icon always a gear in responsive mobile too
 -   [ ] settings page switches should be refactored out into their own component, and should be styled with the accent color
--   [ ] mobile: header (subject) is white on white. get rid of header and just put a back button on mobile in front of the subject in the thread box card title.
+-   [x] mobile: header (subject) is white on white. get rid of header and just put a back button on mobile in front of the subject in the thread box card title.
+-   [ ] corner radius setting in settings, do the same thing as margins selector where it wraps to the next line if the screen is too narrow
 
 ## Product Definition
 
