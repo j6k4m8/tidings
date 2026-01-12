@@ -10,6 +10,8 @@ class TidingsSettings extends ChangeNotifier {
   bool _autoExpandUnread = true;
   bool _autoExpandLatest = true;
   bool _hideThreadSubjects = false;
+  bool _showFolderLabels = true;
+  bool _showFolderUnreadCounts = true;
 
   ThemeMode get themeMode => _themeMode;
   ThemePaletteSource get paletteSource => _paletteSource;
@@ -18,6 +20,8 @@ class TidingsSettings extends ChangeNotifier {
   bool get autoExpandUnread => _autoExpandUnread;
   bool get autoExpandLatest => _autoExpandLatest;
   bool get hideThreadSubjects => _hideThreadSubjects;
+  bool get showFolderLabels => _showFolderLabels;
+  bool get showFolderUnreadCounts => _showFolderUnreadCounts;
 
   double get densityScale => _layoutDensity.scale;
   double get cornerRadiusScale => _cornerRadiusStyle.scale;
@@ -75,6 +79,22 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _hideThreadSubjects = value;
+    notifyListeners();
+  }
+
+  void setShowFolderLabels(bool value) {
+    if (_showFolderLabels == value) {
+      return;
+    }
+    _showFolderLabels = value;
+    notifyListeners();
+  }
+
+  void setShowFolderUnreadCounts(bool value) {
+    if (_showFolderUnreadCounts == value) {
+      return;
+    }
+    _showFolderUnreadCounts = value;
     notifyListeners();
   }
 }

@@ -93,8 +93,10 @@ class TidingsHome extends StatefulWidget {
 class _TidingsHomeState extends State<TidingsHome> {
   static const _threadPanelFractionKey = 'threadPanelFraction';
   int _selectedThreadIndex = 0;
+  int _selectedFolderIndex = 0;
   int _navIndex = 0;
   bool _showSettings = false;
+  bool _sidebarCollapsed = false;
   double _threadPanelFraction = 0.58;
   bool _threadPanelOpen = true;
   SharedPreferences? _prefs;
@@ -155,7 +157,7 @@ class _TidingsHomeState extends State<TidingsHome> {
             accent: widget.accent,
             child: SafeArea(
               bottom: false,
-            child: isWide
+              child: isWide
                   ? _WideLayout(
                       account: widget.account,
                       accent: widget.accent,
@@ -165,14 +167,19 @@ class _TidingsHomeState extends State<TidingsHome> {
                         _selectedThreadIndex = index;
                         _threadPanelOpen = true;
                       }),
+                      selectedFolderIndex: _selectedFolderIndex,
+                      onFolderSelected: (index) =>
+                          setState(() => _selectedFolderIndex = index),
+                      sidebarCollapsed: _sidebarCollapsed,
+                      onSidebarToggle: () => setState(() {
+                        _sidebarCollapsed = !_sidebarCollapsed;
+                      }),
                       navIndex: _navIndex,
-                      onNavSelected: (index) =>
-                          setState(() {
-                            _navIndex = index;
-                            _showSettings = false;
-                          }),
-                      onSettingsTap: () =>
-                          setState(() => _showSettings = true),
+                      onNavSelected: (index) => setState(() {
+                        _navIndex = index;
+                        _showSettings = false;
+                      }),
+                      onSettingsTap: () => setState(() => _showSettings = true),
                       showSettings: showSettings,
                       threadPanelFraction: _threadPanelFraction,
                       threadPanelOpen: _threadPanelOpen,
@@ -186,17 +193,20 @@ class _TidingsHomeState extends State<TidingsHome> {
                           setState(() => _threadPanelOpen = false),
                     )
                   : showSettings
-                      ? SettingsScreen(accent: widget.accent)
-                      : _CompactLayout(
-                          account: widget.account,
-                          accent: widget.accent,
-                          provider: widget.provider,
-                          selectedThreadIndex: _selectedThreadIndex,
-                          onThreadSelected: (index) => setState(() {
-                            _selectedThreadIndex = index;
-                            _threadPanelOpen = true;
-                          }),
-                        ),
+                  ? SettingsScreen(accent: widget.accent)
+                  : _CompactLayout(
+                      account: widget.account,
+                      accent: widget.accent,
+                      provider: widget.provider,
+                      selectedThreadIndex: _selectedThreadIndex,
+                      onThreadSelected: (index) => setState(() {
+                        _selectedThreadIndex = index;
+                        _threadPanelOpen = true;
+                      }),
+                      selectedFolderIndex: _selectedFolderIndex,
+                      onFolderSelected: (index) =>
+                          setState(() => _selectedFolderIndex = index),
+                    ),
             ),
           ),
         );
@@ -212,6 +222,10 @@ class _WideLayout extends StatelessWidget {
     required this.provider,
     required this.selectedThreadIndex,
     required this.onThreadSelected,
+    required this.selectedFolderIndex,
+    required this.onFolderSelected,
+    required this.sidebarCollapsed,
+    required this.onSidebarToggle,
     required this.navIndex,
     required this.onNavSelected,
     required this.onSettingsTap,
@@ -228,6 +242,10 @@ class _WideLayout extends StatelessWidget {
   final EmailProvider provider;
   final int selectedThreadIndex;
   final ValueChanged<int> onThreadSelected;
+  final int selectedFolderIndex;
+  final ValueChanged<int> onFolderSelected;
+  final bool sidebarCollapsed;
+  final VoidCallback onSidebarToggle;
   final int navIndex;
   final ValueChanged<int> onNavSelected;
   final VoidCallback onSettingsTap;
@@ -250,13 +268,29 @@ class _WideLayout extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _SideRail(
-              account: account,
-              accent: accent,
-              navIndex: navIndex,
-              onNavSelected: onNavSelected,
-              onSettingsTap: onSettingsTap,
-            ),
+            sidebarCollapsed
+                ? SizedBox(
+                    width: context.space(72),
+                    child: _SidebarRail(
+                      account: account,
+                      accent: accent,
+                      selectedIndex: selectedFolderIndex,
+                      onSelected: onFolderSelected,
+                      onExpand: onSidebarToggle,
+                      onSettingsTap: onSettingsTap,
+                    ),
+                  )
+                : SizedBox(
+                    width: context.space(240),
+                    child: SidebarPanel(
+                      account: account,
+                      accent: accent,
+                      selectedIndex: selectedFolderIndex,
+                      onSelected: onFolderSelected,
+                      onSettingsTap: onSettingsTap,
+                      onCollapse: onSidebarToggle,
+                    ),
+                  ),
             SizedBox(width: context.space(16)),
             Expanded(
               child: LayoutBuilder(
@@ -285,9 +319,10 @@ class _WideLayout extends StatelessWidget {
                             onTap: onThreadPanelOpen,
                             onDragUpdate: (delta) {
                               onThreadPanelOpen();
-                              final nextFraction = (threadPanelFraction +
-                                      (-delta / availableWidth))
-                                  .clamp(0.3, 0.8);
+                              final nextFraction =
+                                  (threadPanelFraction +
+                                          (-delta / availableWidth))
+                                      .clamp(0.3, 0.8);
                               onThreadPanelResize(nextFraction);
                             },
                           ),
@@ -304,7 +339,8 @@ class _WideLayout extends StatelessWidget {
                   final boundedMaxDetailWidth = maxDetailWidth < minDetailWidth
                       ? minDetailWidth
                       : maxDetailWidth;
-                  final desiredDetailWidth = availableWidth * threadPanelFraction;
+                  final desiredDetailWidth =
+                      availableWidth * threadPanelFraction;
                   final detailWidth = desiredDetailWidth.clamp(
                     minDetailWidth,
                     boundedMaxDetailWidth,
@@ -346,21 +382,22 @@ class _WideLayout extends StatelessWidget {
                                 duration: const Duration(milliseconds: 300),
                                 switchInCurve: Curves.easeOutCubic,
                                 switchOutCurve: Curves.easeInCubic,
-                                transitionBuilder:
-                                    (child, animation) => SizeTransition(
-                                  sizeFactor: animation,
-                                  axisAlignment: -1,
-                                  child: FadeTransition(
-                                    opacity: animation,
-                                    child: child,
-                                  ),
-                                ),
+                                transitionBuilder: (child, animation) =>
+                                    SizeTransition(
+                                      sizeFactor: animation,
+                                      axisAlignment: -1,
+                                      child: FadeTransition(
+                                        opacity: animation,
+                                        child: child,
+                                      ),
+                                    ),
                                 child: CurrentThreadPanel(
                                   key: ValueKey(selectedThread.id),
                                   accent: accent,
                                   thread: selectedThread,
-                                  messages: provider
-                                      .messagesForThread(selectedThread.id),
+                                  messages: provider.messagesForThread(
+                                    selectedThread.id,
+                                  ),
                                   isCompact: false,
                                 ),
                               ),
@@ -453,6 +490,8 @@ class _CompactLayout extends StatelessWidget {
     required this.provider,
     required this.selectedThreadIndex,
     required this.onThreadSelected,
+    required this.selectedFolderIndex,
+    required this.onFolderSelected,
   });
 
   final MockAccount account;
@@ -460,52 +499,91 @@ class _CompactLayout extends StatelessWidget {
   final EmailProvider provider;
   final int selectedThreadIndex;
   final ValueChanged<int> onThreadSelected;
+  final int selectedFolderIndex;
+  final ValueChanged<int> onFolderSelected;
 
   @override
   Widget build(BuildContext context) {
     final threads = provider.threads;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        context.gutter(16),
-        context.space(12),
-        context.gutter(16),
-        0,
-      ),
-      child: PageReveal(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _CompactHeader(account: account, accent: accent),
-            SizedBox(height: context.space(16)),
-            _SearchRow(accent: accent),
-            SizedBox(height: context.space(16)),
-            _QuickChips(accent: accent),
-            SizedBox(height: context.space(16)),
-            Expanded(
-              child: ThreadListPanel(
-                accent: accent,
-                provider: provider,
-                threads: threads,
-                selectedIndex: selectedThreadIndex,
-                onSelected: (index) {
-                  onThreadSelected(index);
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => ThreadScreen(
-                        accent: accent,
-                        thread: threads[index],
-                        provider: provider,
-                      ),
-                    ),
-                  );
-                },
-                isCompact: true,
-              ),
+    return Stack(
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            context.gutter(16),
+            context.space(12),
+            context.gutter(16),
+            0,
+          ),
+          child: PageReveal(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _CompactHeader(
+                  account: account,
+                  accent: accent,
+                  selectedFolderIndex: selectedFolderIndex,
+                  onFolderSelected: onFolderSelected,
+                ),
+                SizedBox(height: context.space(16)),
+                _SearchRow(accent: accent),
+                SizedBox(height: context.space(16)),
+                _QuickChips(accent: accent),
+                SizedBox(height: context.space(16)),
+                Expanded(
+                  child: ThreadListPanel(
+                    accent: accent,
+                    provider: provider,
+                    threads: threads,
+                    selectedIndex: selectedThreadIndex,
+                    onSelected: (index) {
+                      onThreadSelected(index);
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => ThreadScreen(
+                            accent: accent,
+                            thread: threads[index],
+                            provider: provider,
+                          ),
+                        ),
+                      );
+                    },
+                    isCompact: true,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
+        Positioned(
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: context.space(18),
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragEnd: (details) {
+              final velocity = details.primaryVelocity ?? 0;
+              if (velocity > 300) {
+                _showFolderSheet(
+                  context,
+                  accent: accent,
+                  selectedFolderIndex: selectedFolderIndex,
+                  onFolderSelected: onFolderSelected,
+                );
+              }
+            },
+            onTap: () {
+              _showFolderSheet(
+                context,
+                accent: accent,
+                selectedFolderIndex: selectedFolderIndex,
+                onFolderSelected: onFolderSelected,
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -615,11 +693,7 @@ class ThreadListPanel extends StatelessWidget {
             children: [
               Text('Inbox', style: Theme.of(context).textTheme.displaySmall),
               const Spacer(),
-              GlassPill(
-                label: 'Focused',
-                accent: accent,
-                selected: true,
-              ),
+              GlassPill(label: 'Focused', accent: accent, selected: true),
             ],
           ),
           SizedBox(height: context.space(12)),
@@ -634,8 +708,7 @@ class ThreadListPanel extends StatelessWidget {
             itemBuilder: (context, index) {
               final thread = threads[index];
               final selected = index == selectedIndex;
-              final latestMessage =
-                  provider.latestMessageForThread(thread.id);
+              final latestMessage = provider.latestMessageForThread(thread.id);
 
               return StaggeredFadeIn(
                 index: index,
@@ -658,6 +731,508 @@ class ThreadListPanel extends StatelessWidget {
   }
 }
 
+class SidebarPanel extends StatelessWidget {
+  const SidebarPanel({
+    super.key,
+    required this.account,
+    required this.accent,
+    required this.selectedIndex,
+    required this.onSelected,
+    required this.onSettingsTap,
+    required this.onCollapse,
+  });
+
+  final MockAccount account;
+  final Color accent;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  final VoidCallback onSettingsTap;
+  final VoidCallback onCollapse;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassPanel(
+      borderRadius: BorderRadius.circular(context.radius(22)),
+      padding: EdgeInsets.fromLTRB(
+        context.space(14),
+        context.space(16),
+        context.space(14),
+        context.space(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(context.space(4)),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: accent, width: 2),
+                ),
+                child: CircleAvatar(
+                  radius: context.space(18),
+                  backgroundColor: accent.withOpacity(0.2),
+                  child: Text(
+                    account.displayName.substring(0, 1).toUpperCase(),
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+              ),
+              SizedBox(width: context.space(10)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      account.displayName,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    Text(
+                      account.email,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: ColorTokens.textSecondary(context)),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: onCollapse,
+                icon: const Icon(Icons.chevron_left_rounded),
+                tooltip: 'Collapse',
+              ),
+            ],
+          ),
+          SizedBox(height: context.space(14)),
+          Expanded(
+            child: FolderList(
+              accent: accent,
+              selectedIndex: selectedIndex,
+              onSelected: onSelected,
+            ),
+          ),
+          SizedBox(height: context.space(8)),
+          Row(
+            children: [
+              IconButton(
+                onPressed: onSettingsTap,
+                icon: const Icon(Icons.settings_rounded),
+                tooltip: 'Settings',
+              ),
+              const Spacer(),
+              OutlinedButton.icon(
+                onPressed: () {},
+                icon: const Icon(Icons.edit_rounded, size: 16),
+                label: const Text('Compose'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class FolderList extends StatelessWidget {
+  const FolderList({
+    super.key,
+    required this.accent,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final Color accent;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.tidingsSettings;
+    final sections = settings.showFolderLabels
+        ? _folderSections
+        : _folderSections
+            .where((section) => section.title != 'Labels')
+            .toList();
+
+    return ListView.builder(
+      itemCount: sections.length,
+      itemBuilder: (context, sectionIndex) {
+        final section = sections[sectionIndex];
+        return _FolderSection(
+          section: section,
+          accent: accent,
+          selectedIndex: selectedIndex,
+          onSelected: onSelected,
+        );
+      },
+    );
+  }
+}
+
+class _FolderSheet extends StatelessWidget {
+  const _FolderSheet({
+    required this.accent,
+    required this.selectedFolderIndex,
+    required this.onFolderSelected,
+  });
+
+  final Color accent;
+  final int selectedFolderIndex;
+  final ValueChanged<int> onFolderSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.all(context.gutter(16)),
+        child: GlassPanel(
+          borderRadius: BorderRadius.circular(context.radius(24)),
+          padding: EdgeInsets.all(context.space(16)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Folders', style: Theme.of(context).textTheme.titleLarge),
+              SizedBox(height: context.space(12)),
+              Expanded(
+                child: FolderList(
+                  accent: accent,
+                  selectedIndex: selectedFolderIndex,
+                  onSelected: (index) {
+                    onFolderSelected(index);
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FolderSection extends StatelessWidget {
+  const _FolderSection({
+    required this.section,
+    required this.accent,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final FolderSection section;
+  final Color accent;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: context.space(12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            section.title,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: ColorTokens.textSecondary(context, 0.6),
+                  letterSpacing: 0.6,
+                ),
+          ),
+          SizedBox(height: context.space(8)),
+          ...section.items.map((item) {
+            return _FolderRow(
+              item: item,
+              accent: accent,
+              selected: item.index == selectedIndex,
+              onTap: () => onSelected(item.index),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+class _FolderRow extends StatelessWidget {
+  const _FolderRow({
+    required this.item,
+    required this.accent,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final FolderItem item;
+  final Color accent;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final unread = item.unreadCount > 0;
+    final showUnreadCounts =
+        context.tidingsSettings.showFolderUnreadCounts;
+    final baseColor = Theme.of(context).colorScheme.onSurface;
+    final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: unread ? baseColor : baseColor.withOpacity(0.65),
+          fontWeight: unread ? FontWeight.w600 : FontWeight.w500,
+        );
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: EdgeInsets.only(bottom: context.space(6)),
+        padding: EdgeInsets.fromLTRB(
+          context.space(6) + item.depth * context.space(12),
+          context.space(7),
+          context.space(6),
+          context.space(7),
+        ),
+        decoration: BoxDecoration(
+          color: selected ? accent.withOpacity(0.14) : Colors.transparent,
+          borderRadius: BorderRadius.circular(context.radius(12)),
+        ),
+        child: Row(
+          children: [
+            if (selected)
+              Container(
+                width: 2,
+                height: context.space(16),
+                margin: EdgeInsets.only(right: context.space(8)),
+                decoration: BoxDecoration(
+                  color: accent,
+                  borderRadius: BorderRadius.circular(context.radius(8)),
+                ),
+              )
+            else
+              SizedBox(width: context.space(10)),
+            if (item.icon != null) ...[
+              Icon(
+                item.icon,
+                size: 16,
+                color: unread
+                    ? baseColor.withOpacity(0.8)
+                    : baseColor.withOpacity(0.55),
+              ),
+              SizedBox(width: context.space(8)),
+            ],
+            Expanded(
+              child: Text(
+                item.name,
+                style: textStyle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (unread && showUnreadCounts)
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.space(6),
+                  vertical: context.space(2),
+                ),
+                decoration: BoxDecoration(
+                  color: accent.withOpacity(0.16),
+                  borderRadius: BorderRadius.circular(context.radius(999)),
+                ),
+                child: Text(
+                  item.unreadCount.toString(),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: accent,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SidebarRail extends StatelessWidget {
+  const _SidebarRail({
+    required this.account,
+    required this.accent,
+    required this.selectedIndex,
+    required this.onSelected,
+    required this.onExpand,
+    required this.onSettingsTap,
+  });
+
+  final MockAccount account;
+  final Color accent;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  final VoidCallback onExpand;
+  final VoidCallback onSettingsTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassPanel(
+      borderRadius: BorderRadius.circular(context.radius(22)),
+      padding: EdgeInsets.symmetric(
+        vertical: context.space(12),
+        horizontal: context.space(8),
+      ),
+      child: Column(
+        children: [
+          CircleAvatar(
+            radius: context.space(18),
+            backgroundColor: accent.withOpacity(0.2),
+            child: Text(
+              account.displayName.substring(0, 1).toUpperCase(),
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+          ),
+          SizedBox(height: context.space(16)),
+          _RailIconButton(
+            icon: Icons.inbox_rounded,
+            selected: selectedIndex == 0,
+            accent: accent,
+            onTap: () => onSelected(0),
+            label: 'Inbox',
+          ),
+          _RailIconButton(
+            icon: Icons.archive_rounded,
+            selected: selectedIndex == 1,
+            accent: accent,
+            onTap: () => onSelected(1),
+            label: 'Archive',
+          ),
+          _RailIconButton(
+            icon: Icons.drafts_rounded,
+            selected: selectedIndex == 2,
+            accent: accent,
+            onTap: () => onSelected(2),
+            label: 'Drafts',
+          ),
+          _RailIconButton(
+            icon: Icons.send_rounded,
+            selected: selectedIndex == 3,
+            accent: accent,
+            onTap: () => onSelected(3),
+            label: 'Sent',
+          ),
+          const Spacer(),
+          IconButton(
+            onPressed: onSettingsTap,
+            icon: const Icon(Icons.settings_rounded),
+            tooltip: 'Settings',
+          ),
+          IconButton(
+            onPressed: onExpand,
+            icon: const Icon(Icons.chevron_right_rounded),
+            tooltip: 'Expand',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RailIconButton extends StatelessWidget {
+  const _RailIconButton({
+    required this.icon,
+    required this.selected,
+    required this.accent,
+    required this.onTap,
+    required this.label,
+  });
+
+  final IconData icon;
+  final bool selected;
+  final Color accent;
+  final VoidCallback onTap;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onTap,
+      icon: Icon(icon),
+      color: selected ? accent : Theme.of(context).colorScheme.onSurface,
+      tooltip: label,
+    );
+  }
+}
+
+class FolderSection {
+  const FolderSection({
+    required this.title,
+    required this.items,
+  });
+
+  final String title;
+  final List<FolderItem> items;
+}
+
+class FolderItem {
+  const FolderItem({
+    required this.index,
+    required this.name,
+    this.depth = 0,
+    this.unreadCount = 0,
+    this.icon,
+  });
+
+  final int index;
+  final String name;
+  final int depth;
+  final int unreadCount;
+  final IconData? icon;
+}
+
+const List<FolderSection> _folderSections = [
+  FolderSection(
+    title: 'Mailboxes',
+    items: [
+      FolderItem(
+        index: 0,
+        name: 'Inbox',
+        unreadCount: 12,
+        icon: Icons.inbox_rounded,
+      ),
+      FolderItem(
+        index: 1,
+        name: 'Archive',
+        unreadCount: 0,
+        icon: Icons.archive_rounded,
+      ),
+      FolderItem(
+        index: 2,
+        name: 'Drafts',
+        unreadCount: 3,
+        icon: Icons.drafts_rounded,
+      ),
+      FolderItem(
+        index: 3,
+        name: 'Sent',
+        unreadCount: 0,
+        icon: Icons.send_rounded,
+      ),
+    ],
+  ),
+  FolderSection(
+    title: 'Folders',
+    items: [
+      FolderItem(index: 4, name: 'Product', unreadCount: 6),
+      FolderItem(index: 5, name: 'Launch notes', depth: 1, unreadCount: 2),
+      FolderItem(index: 6, name: 'Hiring', unreadCount: 1),
+      FolderItem(index: 7, name: 'Press', unreadCount: 0),
+      FolderItem(index: 8, name: 'Receipts', unreadCount: 0),
+    ],
+  ),
+  FolderSection(
+    title: 'Labels',
+    items: [
+      FolderItem(index: 9, name: 'VIP', unreadCount: 4),
+      FolderItem(index: 10, name: 'Later', unreadCount: 1),
+      FolderItem(index: 11, name: 'Follow up', unreadCount: 2),
+    ],
+  ),
+];
+
 class CurrentThreadPanel extends StatelessWidget {
   const CurrentThreadPanel({
     super.key,
@@ -676,11 +1251,14 @@ class CurrentThreadPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = context.tidingsSettings;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tint =
-        isDark ? Colors.white.withOpacity(0.16) : Colors.white.withOpacity(0.82);
+    final tint = isDark
+        ? Colors.white.withOpacity(0.16)
+        : Colors.white.withOpacity(0.82);
     return GlassPanel(
       borderRadius: BorderRadius.circular(context.radius(30)),
-      padding: EdgeInsets.all(isCompact ? context.space(16) : context.space(22)),
+      padding: EdgeInsets.all(
+        isCompact ? context.space(16) : context.space(22),
+      ),
       tint: tint,
       borderOpacity: isDark ? 0.26 : 0.2,
       highlightStrength: 0.8,
@@ -730,7 +1308,8 @@ class CurrentThreadPanel extends StatelessWidget {
               itemBuilder: (context, index) {
                 final message = messages[index];
                 final isLatest = index == messages.length - 1;
-                final shouldExpand = (settings.autoExpandLatest && isLatest) ||
+                final shouldExpand =
+                    (settings.autoExpandLatest && isLatest) ||
                     (settings.autoExpandUnread && message.isUnread);
                 return MessageCard(
                   key: ValueKey(message.id),
@@ -750,10 +1329,17 @@ class CurrentThreadPanel extends StatelessWidget {
 }
 
 class _CompactHeader extends StatelessWidget {
-  const _CompactHeader({required this.account, required this.accent});
+  const _CompactHeader({
+    required this.account,
+    required this.accent,
+    required this.selectedFolderIndex,
+    required this.onFolderSelected,
+  });
 
   final MockAccount account;
   final Color accent;
+  final int selectedFolderIndex;
+  final ValueChanged<int> onFolderSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -780,6 +1366,16 @@ class _CompactHeader extends StatelessWidget {
           ],
         ),
         const Spacer(),
+        IconButton(
+          onPressed: () => _showFolderSheet(
+            context,
+            accent: accent,
+            selectedFolderIndex: selectedFolderIndex,
+            onFolderSelected: onFolderSelected,
+          ),
+          icon: const Icon(Icons.folder_open_rounded),
+          tooltip: 'Folders',
+        ),
       ],
     );
   }
@@ -863,14 +1459,15 @@ class ThreadTile extends StatelessWidget {
     final fill = selected
         ? accent.withOpacity(0.18)
         : isUnread
-            ? (isDark
-                ? Colors.white.withOpacity(0.14)
-                : Colors.white.withOpacity(0.7))
+        ? (isDark
+              ? Colors.white.withOpacity(0.14)
+              : Colors.white.withOpacity(0.7))
         : ColorTokens.cardFill(context, 0.04);
     final border = selected
         ? accent.withOpacity(0.6)
         : ColorTokens.border(context, 0.12);
-    final baseParticipantStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+    final baseParticipantStyle = Theme.of(context).textTheme.bodySmall
+        ?.copyWith(
           color: scheme.onSurface.withOpacity(isUnread ? 0.75 : 0.6),
           fontWeight: FontWeight.w500,
         );
@@ -914,19 +1511,22 @@ class ThreadTile extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           text: TextSpan(
                             children: [
-                              for (var i = 0;
-                                  i < thread.participants.length;
-                                  i++)
+                              for (
+                                var i = 0;
+                                i < thread.participants.length;
+                                i++
+                              )
                                 TextSpan(
-                                  text: thread.participants[i].displayName +
+                                  text:
+                                      thread.participants[i].displayName +
                                       (i == thread.participants.length - 1
                                           ? ''
                                           : ', '),
                                   style:
                                       thread.participants[i].email ==
-                                              latestSender
-                                          ? highlightParticipantStyle
-                                          : baseParticipantStyle,
+                                          latestSender
+                                      ? highlightParticipantStyle
+                                      : baseParticipantStyle,
                                 ),
                             ],
                           ),
@@ -945,9 +1545,7 @@ class ThreadTile extends StatelessWidget {
                       Expanded(
                         child: Text(
                           subject,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
+                          style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
@@ -969,10 +1567,10 @@ class ThreadTile extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurface.withOpacity(
-                            isUnread ? 0.7 : 0.42,
-                          ),
-                        ),
+                      color: scheme.onSurface.withOpacity(
+                        isUnread ? 0.7 : 0.42,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -1068,17 +1666,19 @@ class _MessageCardState extends State<MessageCard> {
                   style: Theme.of(context).textTheme.labelLarge,
                 ),
                 const Spacer(),
-                Icon(Icons.more_horiz_rounded,
-                    color: scheme.onSurface.withOpacity(0.5)),
+                Icon(
+                  Icons.more_horiz_rounded,
+                  color: scheme.onSurface.withOpacity(0.5),
+                ),
               ],
             ),
             SizedBox(height: context.space(8)),
             if (showSubject) ...[
               Text(
                 widget.message.subject,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
               ),
               SizedBox(height: context.space(8)),
             ],
@@ -1098,8 +1698,9 @@ class _MessageCardState extends State<MessageCard> {
                             Theme.of(context).textTheme.bodyLarge?.fontSize ??
                                 14,
                           ),
-                          fontWeight:
-                              Theme.of(context).textTheme.bodyLarge?.fontWeight,
+                          fontWeight: Theme.of(
+                            context,
+                          ).textTheme.bodyLarge?.fontWeight,
                           color: Theme.of(context).colorScheme.onSurface,
                         ),
                         'p': Style(margin: Margins.only(bottom: 8)),
@@ -1148,11 +1749,15 @@ class ComposeBar extends StatelessWidget {
           SizedBox(height: context.space(8)),
           Row(
             children: [
-              Icon(Icons.attach_file_rounded,
-                  color: scheme.onSurface.withOpacity(0.7)),
+              Icon(
+                Icons.attach_file_rounded,
+                color: scheme.onSurface.withOpacity(0.7),
+              ),
               SizedBox(width: context.space(8)),
-              Icon(Icons.emoji_emotions_outlined,
-                  color: scheme.onSurface.withOpacity(0.7)),
+              Icon(
+                Icons.emoji_emotions_outlined,
+                color: scheme.onSurface.withOpacity(0.7),
+              ),
               const Spacer(),
               Text(
                 'Cmd + Enter to send',
@@ -1185,8 +1790,7 @@ class ThreadScreen extends StatelessWidget {
       body: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
-          statusBarIconBrightness:
-              isDark ? Brightness.light : Brightness.dark,
+          statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
           statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
         ),
         child: TidingsBackground(
@@ -1271,7 +1875,7 @@ class SettingsPanel extends StatelessWidget {
       borderRadius: BorderRadius.circular(context.radius(28)),
       padding: EdgeInsets.all(context.space(14)),
       child: DefaultTabController(
-        length: 3,
+        length: 4,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1291,8 +1895,9 @@ class SettingsPanel extends StatelessWidget {
                   _SettingsTab(
                     child: _LayoutSettings(segmentedStyle: segmentedStyle),
                   ),
-                  const _SettingsTab(
-                    child: _ThreadsSettings(),
+                  const _SettingsTab(child: _ThreadsSettings()),
+                  _SettingsTab(
+                    child: _FoldersSettings(accent: accent),
                   ),
                 ],
               ),
@@ -1330,6 +1935,7 @@ class _SettingsTabBar extends StatelessWidget {
           _SettingsTabLabel(text: 'Appearance'),
           _SettingsTabLabel(text: 'Layout'),
           _SettingsTabLabel(text: 'Threads'),
+          _SettingsTabLabel(text: 'Folders'),
         ],
       ),
     );
@@ -1410,10 +2016,8 @@ class _AppearanceSettings extends StatelessWidget {
             style: segmentedStyle,
             segments: ThemePaletteSource.values
                 .map(
-                  (source) => ButtonSegment(
-                    value: source,
-                    label: Text(source.label),
-                  ),
+                  (source) =>
+                      ButtonSegment(value: source, label: Text(source.label)),
                 )
                 .toList(),
             selected: {settings.paletteSource},
@@ -1447,10 +2051,8 @@ class _LayoutSettings extends StatelessWidget {
             style: segmentedStyle,
             segments: LayoutDensity.values
                 .map(
-                  (density) => ButtonSegment(
-                    value: density,
-                    label: Text(density.label),
-                  ),
+                  (density) =>
+                      ButtonSegment(value: density, label: Text(density.label)),
                 )
                 .toList(),
             selected: {settings.layoutDensity},
@@ -1506,7 +2108,8 @@ class _ThreadsSettings extends StatelessWidget {
         _SettingRow(
           title: 'Auto-expand unread',
           subtitle: 'Open unread threads to show the latest message.',
-          trailing: Switch.adaptive(
+          trailing: AccentSwitch(
+            accent: Theme.of(context).colorScheme.primary,
             value: settings.autoExpandUnread,
             onChanged: settings.setAutoExpandUnread,
           ),
@@ -1515,7 +2118,8 @@ class _ThreadsSettings extends StatelessWidget {
         _SettingRow(
           title: 'Auto-expand latest',
           subtitle: 'Keep the newest thread expanded in the list.',
-          trailing: Switch.adaptive(
+          trailing: AccentSwitch(
+            accent: Theme.of(context).colorScheme.primary,
             value: settings.autoExpandLatest,
             onChanged: settings.setAutoExpandLatest,
           ),
@@ -1524,9 +2128,47 @@ class _ThreadsSettings extends StatelessWidget {
         _SettingRow(
           title: 'Hide subject lines',
           subtitle: 'Show only the message body in thread view.',
-          trailing: Switch.adaptive(
+          trailing: AccentSwitch(
+            accent: Theme.of(context).colorScheme.primary,
             value: settings.hideThreadSubjects,
             onChanged: settings.setHideThreadSubjects,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FoldersSettings extends StatelessWidget {
+  const _FoldersSettings({required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.tidingsSettings;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Folders', style: Theme.of(context).textTheme.titleLarge),
+        SizedBox(height: context.space(12)),
+        _SettingRow(
+          title: 'Show labels',
+          subtitle: 'Include the Labels section in the sidebar.',
+          trailing: AccentSwitch(
+            accent: accent,
+            value: settings.showFolderLabels,
+            onChanged: settings.setShowFolderLabels,
+          ),
+        ),
+        SizedBox(height: context.space(16)),
+        _SettingRow(
+          title: 'Unread counts',
+          subtitle: 'Show unread badge counts next to folders.',
+          trailing: AccentSwitch(
+            accent: accent,
+            value: settings.showFolderUnreadCounts,
+            onChanged: settings.setShowFolderUnreadCounts,
           ),
         ),
       ],
@@ -1559,10 +2201,9 @@ class _SettingRow extends StatelessWidget {
             SizedBox(height: context.space(4)),
             Text(
               subtitle,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: ColorTokens.textSecondary(context)),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: ColorTokens.textSecondary(context),
+              ),
             ),
           ],
         );
@@ -1589,6 +2230,30 @@ class _SettingRow extends StatelessWidget {
   }
 }
 
+class AccentSwitch extends StatelessWidget {
+  const AccentSwitch({
+    super.key,
+    required this.accent,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final Color accent;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Switch.adaptive(
+      value: value,
+      onChanged: onChanged,
+      activeColor: accent,
+      activeTrackColor: accent.withOpacity(0.35),
+      inactiveTrackColor: ColorTokens.cardFill(context, 0.2),
+    );
+  }
+}
+
 class _CornerRadiusOption extends StatelessWidget {
   const _CornerRadiusOption({
     required this.label,
@@ -1604,8 +2269,9 @@ class _CornerRadiusOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor =
-        selected ? Theme.of(context).colorScheme.primary : ColorTokens.border(context);
+    final borderColor = selected
+        ? Theme.of(context).colorScheme.primary
+        : ColorTokens.border(context);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -1623,9 +2289,9 @@ class _CornerRadiusOption extends StatelessWidget {
           label,
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: selected ? Theme.of(context).colorScheme.primary : null,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              ),
+            color: selected ? Theme.of(context).colorScheme.primary : null,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+          ),
         ),
       ),
     );
@@ -1633,7 +2299,11 @@ class _CornerRadiusOption extends StatelessWidget {
 }
 
 class TidingsBackground extends StatelessWidget {
-  const TidingsBackground({super.key, required this.accent, required this.child});
+  const TidingsBackground({
+    super.key,
+    required this.accent,
+    required this.child,
+  });
 
   final Color accent;
   final Widget child;
@@ -1706,12 +2376,7 @@ class _GlowBlob extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [
-            color,
-            color.withOpacity(0.0),
-          ],
-        ),
+        gradient: RadialGradient(colors: [color, color.withOpacity(0.0)]),
       ),
     );
   }
@@ -1807,10 +2472,9 @@ class GlassActionButton extends StatelessWidget {
             SizedBox(width: context.space(8)),
             Text(
               label,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(color: accent),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(color: accent),
             ),
           ],
         ),
@@ -1885,10 +2549,9 @@ class GlassBottomNav extends StatelessWidget {
                         SizedBox(height: context.space(4)),
                         Text(
                           item.label,
-                          style: Theme.of(context)
-                              .textTheme
-                              .labelLarge
-                              ?.copyWith(color: textColor),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.labelLarge?.copyWith(color: textColor),
                         ),
                       ],
                     ),
@@ -1925,10 +2588,12 @@ class GlassPill extends StatelessWidget {
     final adjustedLightness = brightness == Brightness.dark
         ? (hsl.lightness + 0.2).clamp(0.55, 0.78)
         : (hsl.lightness - 0.1).clamp(0.32, 0.56);
-    final displayAccent =
-        hsl.withLightness(adjustedLightness.toDouble()).toColor();
-    final textColor =
-        selected ? displayAccent : ColorTokens.textSecondary(context, 0.7);
+    final displayAccent = hsl
+        .withLightness(adjustedLightness.toDouble())
+        .toColor();
+    final textColor = selected
+        ? displayAccent
+        : ColorTokens.textSecondary(context, 0.7);
 
     return GlassPanel(
       borderRadius: BorderRadius.circular(
@@ -1945,7 +2610,9 @@ class GlassPill extends StatelessWidget {
       tint: selected ? displayAccent.withOpacity(0.22) : null,
       child: Text(
         label,
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(color: textColor),
+        style: Theme.of(
+          context,
+        ).textTheme.labelLarge?.copyWith(color: textColor),
       ),
     );
   }
@@ -1985,9 +2652,7 @@ class _NavIcon extends StatelessWidget {
           decoration: BoxDecoration(
             color: selected ? accent.withOpacity(0.2) : Colors.transparent,
             borderRadius: BorderRadius.circular(context.radius(16)),
-            border: Border.all(
-              color: selected ? accent : Colors.transparent,
-            ),
+            border: Border.all(color: selected ? accent : Colors.transparent),
           ),
           child: Icon(
             item.icon,
@@ -2006,6 +2671,24 @@ Color accentFromAccount(String id) {
   }
   final hue = 205 + (hash % 40).abs().toDouble();
   return HSLColor.fromAHSL(1, hue, 0.7, 0.68).toColor();
+}
+
+void _showFolderSheet(
+  BuildContext context, {
+  required Color accent,
+  required int selectedFolderIndex,
+  required ValueChanged<int> onFolderSelected,
+}) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _FolderSheet(
+      accent: accent,
+      selectedFolderIndex: selectedFolderIndex,
+      onFolderSelected: onFolderSelected,
+    ),
+  );
 }
 
 class MockAccount {
