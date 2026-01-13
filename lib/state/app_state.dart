@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 
@@ -9,6 +10,7 @@ import '../providers/imap_email_provider.dart';
 import '../providers/mock_email_provider.dart';
 
 class AppState extends ChangeNotifier {
+  final Random _random = Random();
   final List<EmailAccount> _accounts = [];
   final Map<String, EmailProvider> _providers = {};
   int _selectedAccountIndex = 0;
@@ -81,8 +83,11 @@ class AppState extends ChangeNotifier {
           password: password,
         );
       }
-      final account =
-          EmailAccount.fromStorageJson(map, imapConfig: imapConfig);
+      var account = EmailAccount.fromStorageJson(map, imapConfig: imapConfig);
+      if (account.accentColorValue == null) {
+        account = account.copyWith(accentColorValue: _randomAccentValue());
+        needsPersist = true;
+      }
       final provider = account.providerType == EmailProviderType.imap
           ? ImapEmailProvider(config: imapConfig!, email: account.email)
           : MockEmailProvider();
@@ -108,6 +113,7 @@ class AppState extends ChangeNotifier {
       displayName: 'Jordan',
       email: 'jordan@tidings.dev',
       providerType: EmailProviderType.mock,
+      accentColorValue: _randomAccentValue(),
     );
     _addAccount(account, MockEmailProvider());
     await _persistConfig();
@@ -125,6 +131,7 @@ class AppState extends ChangeNotifier {
       email: email,
       providerType: EmailProviderType.imap,
       imapConfig: config,
+      accentColorValue: _randomAccentValue(),
     );
     final provider = ImapEmailProvider(config: config, email: email);
     _addAccount(account, provider);
@@ -152,6 +159,28 @@ class AppState extends ChangeNotifier {
     if (removed == null) {
       return;
     }
+    await _persistConfig();
+  }
+
+  Future<void> setAccountAccentColor(String accountId, Color color) async {
+    final index = _accounts.indexWhere((account) => account.id == accountId);
+    if (index == -1) {
+      return;
+    }
+    _accounts[index] =
+        _accounts[index].copyWith(accentColorValue: color.value);
+    notifyListeners();
+    await _persistConfig();
+  }
+
+  Future<void> randomizeAccountAccentColor(String accountId) async {
+    final index = _accounts.indexWhere((account) => account.id == accountId);
+    if (index == -1) {
+      return;
+    }
+    _accounts[index] =
+        _accounts[index].copyWith(accentColorValue: _randomAccentValue());
+    notifyListeners();
     await _persistConfig();
   }
 
@@ -241,6 +270,13 @@ class AppState extends ChangeNotifier {
       await dir.create(recursive: true);
     }
     return File('${dir.path}/tidings.yml');
+  }
+
+  int _randomAccentValue() {
+    final hue = _random.nextInt(360).toDouble();
+    final saturation = 0.6 + _random.nextDouble() * 0.2;
+    final lightness = 0.5 + _random.nextDouble() * 0.12;
+    return HSLColor.fromAHSL(1, hue, saturation, lightness).toColor().value;
   }
 
   Future<void> _writeConfig(File file, Map<String, Object?> payload) async {

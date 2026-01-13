@@ -9,29 +9,6 @@ class ColorTokens {
     return (opacity + bump).clamp(0.0, 0.6);
   }
 
-  /// Subtle highlight gradient for glass surfaces.
-  static LinearGradient glassHighlight(
-    BuildContext context, [
-    double strength = 0.6,
-  ]) {
-    final brightness = Theme.of(context).brightness;
-    final top = brightness == Brightness.dark
-        ? Colors.white.withOpacity(0.18 * strength)
-        : Colors.white.withOpacity(0.28 * strength);
-    final bottom = brightness == Brightness.dark
-        ? Colors.black.withOpacity(0.22 * strength)
-        : Colors.black.withOpacity(0.08 * strength);
-    return LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        top,
-        Colors.transparent,
-        bottom,
-      ],
-    );
-  }
-
   /// Gradient colors for the app background.
   static List<Color> backgroundGradient(BuildContext context) {
     final palette = Theme.of(context).extension<TidingsPalette>();
@@ -40,15 +17,15 @@ class ColorTokens {
     }
     if (Theme.of(context).brightness == Brightness.dark) {
       return const [
-        Color(0xFF0E1016),
-        Color(0xFF141A23),
-        Color(0xFF0B0D12),
+        Color(0xFF0D1117),
+        Color(0xFF0C1118),
+        Color(0xFF0A0E13),
       ];
     }
     return const [
-      Color(0xFFF6F4EE),
-      Color(0xFFF1F3F8),
-      Color(0xFFEFF2FA),
+      Color(0xFFF5F6FA),
+      Color(0xFFEFF2F7),
+      Color(0xFFE9ECF4),
     ];
   }
 
@@ -122,13 +99,13 @@ class ColorTokens {
     final brightness = Theme.of(context).brightness;
     if (brightness == Brightness.dark) {
       return [
-        const Color(0xFF1F2433),
-        Colors.white.withOpacity(0.03),
+        const Color(0xFF151A24),
+        Colors.white.withOpacity(0.06),
       ];
     }
     return const [
       Color(0xFFFFFFFF),
-      Color(0xFFF0F2F9),
+      Color(0xFFEFF2F9),
     ];
   }
 }

@@ -8,6 +8,8 @@
 -   [ ] corner radius setting in settings, do the same thing as margins selector where it wraps to the next line if the screen is too narrow
 -   [ ] hover/pressed states for thread tiles to feel more tactile
 -   [ ] in message lists show time if today, else show date + time.
+-   [ ] in message list, unread messages should have a colored dot on the left side of the tile, aligned with the sender name.
+-   [ ] in message list, vertically spread the senders' avatar circles in a vertical line with the most recent message at the top, so it's visually clear who sent what in a thread. like a deck of cards, so that if there's only one sender in the thread it's just a single circle, but if there are multiple senders you can see the stack of circles.
 
 ## Product Definition
 

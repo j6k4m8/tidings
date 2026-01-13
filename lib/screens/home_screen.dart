@@ -12,6 +12,7 @@ import '../state/app_state.dart';
 import '../state/tidings_settings.dart';
 import '../theme/color_tokens.dart';
 import '../theme/glass.dart';
+import '../theme/account_accent.dart';
 import '../theme/theme_palette.dart';
 import '../widgets/tidings_background.dart';
 import 'onboarding_screen.dart';
@@ -173,6 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
               bottom: false,
               child: isWide
                   ? _WideLayout(
+                      appState: widget.appState,
                       account: account,
                       accent: widget.accent,
                       provider: provider,
@@ -216,6 +218,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   : showSettings
                   ? SettingsScreen(
                       accent: widget.accent,
+                      appState: widget.appState,
                       onClose: () => setState(() {
                         _showSettings = false;
                         _navIndex = 0;
@@ -249,6 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class _WideLayout extends StatelessWidget {
   const _WideLayout({
+    required this.appState,
     required this.account,
     required this.accent,
     required this.provider,
@@ -271,6 +275,7 @@ class _WideLayout extends StatelessWidget {
     required this.onThreadPanelClose,
   });
 
+  final AppState appState;
   final EmailAccount account;
   final Color accent;
   final EmailProvider provider;
@@ -352,6 +357,7 @@ class _WideLayout extends StatelessWidget {
                             selectedIndex: selectedThreadIndex,
                             onSelected: onThreadSelected,
                             isCompact: false,
+                            currentUserEmail: account.email,
                           ),
                         ),
                         IgnorePointer(
@@ -413,6 +419,7 @@ class _WideLayout extends StatelessWidget {
                           selectedIndex: selectedThreadIndex,
                           onSelected: onThreadSelected,
                           isCompact: false,
+                          currentUserEmail: account.email,
                         ),
                       ),
                       _ResizeHandle(onDragUpdate: handleResize),
@@ -421,6 +428,7 @@ class _WideLayout extends StatelessWidget {
                         child: showSettings
                             ? SettingsPanel(
                                 accent: accent,
+                                appState: appState,
                                 onClose: onSettingsClose,
                               )
                             : AnimatedSwitcher(
@@ -638,6 +646,7 @@ class _CompactLayout extends StatelessWidget {
                       );
                     },
                     isCompact: true,
+                    currentUserEmail: account.email,
                   ),
                 ),
               ],
@@ -687,6 +696,7 @@ class ThreadListPanel extends StatelessWidget {
     required this.selectedIndex,
     required this.onSelected,
     required this.isCompact,
+    required this.currentUserEmail,
   });
 
   final Color accent;
@@ -694,6 +704,7 @@ class ThreadListPanel extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onSelected;
   final bool isCompact;
+  final String currentUserEmail;
 
   @override
   Widget build(BuildContext context) {
@@ -733,6 +744,11 @@ class ThreadListPanel extends StatelessWidget {
                     final selected = index == selectedIndex;
                     final latestMessage =
                         provider.latestMessageForThread(thread.id);
+                    final participants = _filterParticipants(
+                      thread.participants,
+                      currentUserEmail,
+                      context.tidingsSettings.hideSelfInThreadList,
+                    );
 
                     return StaggeredFadeIn(
                       index: index,
@@ -740,6 +756,7 @@ class ThreadListPanel extends StatelessWidget {
                         padding: EdgeInsets.only(bottom: context.space(10)),
                         child: ThreadTile(
                           thread: thread,
+                          participants: participants,
                           latestMessage: latestMessage,
                           accent: accent,
                           selected: selected && !isCompact,
@@ -845,6 +862,7 @@ class SidebarPanel extends StatelessWidget {
         context.space(14),
         context.space(12),
       ),
+      variant: GlassVariant.panel,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -993,6 +1011,7 @@ class _FolderSheet extends StatelessWidget {
         child: GlassPanel(
           borderRadius: BorderRadius.circular(context.radius(24)),
           padding: EdgeInsets.all(context.space(16)),
+          variant: GlassVariant.sheet,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1185,6 +1204,7 @@ class _SidebarRail extends StatelessWidget {
         vertical: context.space(12),
         horizontal: context.space(8),
       ),
+      variant: GlassVariant.panel,
       child: Column(
         children: [
           CircleAvatar(
@@ -1267,10 +1287,6 @@ class CurrentThreadPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.tidingsSettings;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tint = isDark
-        ? Colors.white.withOpacity(0.16)
-        : Colors.white.withOpacity(0.82);
     return AnimatedBuilder(
       animation: provider,
       builder: (context, _) {
@@ -1280,16 +1296,7 @@ class CurrentThreadPanel extends StatelessWidget {
           padding: EdgeInsets.all(
             isCompact ? context.space(16) : context.space(22),
           ),
-          tint: tint,
-          borderOpacity: isDark ? 0.26 : 0.2,
-          highlightStrength: 0.8,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.18),
-              blurRadius: 28,
-              offset: const Offset(0, 14),
-            ),
-          ],
+          variant: GlassVariant.sheet,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1383,6 +1390,7 @@ class _CompactHeader extends StatelessWidget {
         GlassPanel(
           borderRadius: BorderRadius.circular(context.radius(18)),
           padding: EdgeInsets.all(context.space(6)),
+          variant: GlassVariant.pill,
           child: CircleAvatar(
             radius: context.space(18),
             backgroundColor: accent.withOpacity(0.2),
@@ -1475,10 +1483,11 @@ class _QuickChips extends StatelessWidget {
   }
 }
 
-class ThreadTile extends StatelessWidget {
+class ThreadTile extends StatefulWidget {
   const ThreadTile({
     super.key,
     required this.thread,
+    required this.participants,
     required this.latestMessage,
     required this.accent,
     required this.selected,
@@ -1486,26 +1495,56 @@ class ThreadTile extends StatelessWidget {
   });
 
   final EmailThread thread;
+  final List<EmailAddress> participants;
   final EmailMessage? latestMessage;
   final Color accent;
   final bool selected;
   final VoidCallback onTap;
 
   @override
+  State<ThreadTile> createState() => _ThreadTileState();
+}
+
+class _ThreadTileState extends State<ThreadTile> {
+  bool _hovered = false;
+  bool _pressed = false;
+
+  void _setHovered(bool value) {
+    if (_hovered == value) {
+      return;
+    }
+    setState(() => _hovered = value);
+  }
+
+  void _setPressed(bool value) {
+    if (_pressed == value) {
+      return;
+    }
+    setState(() => _pressed = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final subject = thread.subject;
-    final isUnread = thread.unread || (latestMessage?.isUnread ?? false);
+    final subject = widget.thread.subject;
+    final latestMessage = widget.latestMessage;
+    final isUnread = widget.thread.unread || (latestMessage?.isUnread ?? false);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final fill = selected
-        ? accent.withOpacity(0.18)
+    final baseFill = widget.selected
+        ? widget.accent.withOpacity(0.18)
         : isUnread
         ? (isDark
               ? Colors.white.withOpacity(0.14)
               : Colors.white.withOpacity(0.7))
         : ColorTokens.cardFill(context, 0.04);
-    final border = selected
-        ? accent.withOpacity(0.6)
+    final hoverOverlay = isDark
+        ? Colors.white.withOpacity(_pressed ? 0.1 : 0.06)
+        : Colors.black.withOpacity(_pressed ? 0.08 : 0.04);
+    final fill = _hovered || _pressed
+        ? Color.alphaBlend(hoverOverlay, baseFill)
+        : baseFill;
+    final border = widget.selected
+        ? widget.accent.withOpacity(0.6)
         : ColorTokens.border(context, 0.12);
     final baseParticipantStyle = Theme.of(context).textTheme.bodySmall
         ?.copyWith(
@@ -1514,114 +1553,276 @@ class ThreadTile extends StatelessWidget {
         );
     final latestSender = latestMessage?.from.email;
     final highlightParticipantStyle = baseParticipantStyle?.copyWith(
-      color: isUnread ? accent : scheme.onSurface.withOpacity(0.9),
+      color: isUnread ? widget.accent : scheme.onSurface.withOpacity(0.9),
       fontWeight: FontWeight.w600,
     );
+    final displayTime = _formatThreadTimestamp(
+      widget.thread.receivedAt ?? latestMessage?.receivedAt,
+      widget.thread.time,
+    );
+    final participants = _orderedParticipants(
+      widget.participants,
+      latestSender,
+    );
 
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: EdgeInsets.all(context.space(14)),
-        decoration: BoxDecoration(
-          color: fill,
-          borderRadius: BorderRadius.circular(context.radius(18)),
-          border: Border.all(color: border),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              radius: context.space(18),
-              backgroundColor: ColorTokens.cardFillStrong(context, 0.16),
-              child: Text(
-                thread.avatarLetter,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+    return MouseRegion(
+      onEnter: (_) => _setHovered(true),
+      onExit: (_) => _setHovered(false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        onTapDown: (_) => _setPressed(true),
+        onTapCancel: () => _setPressed(false),
+        onTapUp: (_) => _setPressed(false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: EdgeInsets.all(context.space(14)),
+          decoration: BoxDecoration(
+            color: fill,
+            borderRadius: BorderRadius.circular(context.radius(18)),
+            border: Border.all(color: border),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+            _SenderStack(
+              participants: participants,
             ),
-            SizedBox(width: context.space(12)),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: RichText(
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          text: TextSpan(
-                            children: [
-                              for (
-                                var i = 0;
-                                i < thread.participants.length;
+              SizedBox(width: context.space(12)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        if (isUnread)
+                          Container(
+                            width: context.space(6),
+                            height: context.space(6),
+                            margin: EdgeInsets.only(right: context.space(6)),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: widget.accent,
+                            ),
+                          )
+                        else
+                          SizedBox(width: context.space(12)),
+                        Expanded(
+                          child: RichText(
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            text: TextSpan(
+                              children: [
+                                for (
+                                  var i = 0;
+                                i < widget.participants.length;
                                 i++
                               )
                                 TextSpan(
                                   text:
-                                      thread.participants[i].displayName +
-                                      (i == thread.participants.length - 1
+                                      widget.participants[i]
+                                              .normalizedDisplayName +
+                                      (i ==
+                                              widget.participants.length -
+                                          1
                                           ? ''
                                           : ', '),
                                   style:
-                                      thread.participants[i].email ==
+                                      widget.participants[i].email ==
                                           latestSender
                                       ? highlightParticipantStyle
                                       : baseParticipantStyle,
                                 ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                      SizedBox(width: context.space(8)),
-                      Text(
-                        thread.time,
-                        style: Theme.of(context).textTheme.labelSmall,
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: context.space(4)),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          subject,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: thread.unread
-                                    ? scheme.onSurface
-                                    : scheme.onSurface.withOpacity(0.5),
-                              ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        SizedBox(width: context.space(8)),
+                        Text(
+                          displayTime,
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: context.space(4)),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            subject,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: widget.thread.unread
+                                      ? scheme.onSurface
+                                      : scheme.onSurface.withOpacity(0.5),
+                                ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (widget.thread.starred)
+                          Icon(
+                            Icons.star_rounded,
+                            color: widget.accent,
+                            size: 18,
+                          ),
+                      ],
+                    ),
+                    SizedBox(height: context.space(6)),
+                    Text(
+                      latestMessage?.bodyPlainText ?? '',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurface.withOpacity(
+                          isUnread ? 0.7 : 0.42,
                         ),
                       ),
-                      if (thread.starred)
-                        Icon(Icons.star_rounded, color: accent, size: 18),
-                    ],
-                  ),
-                  SizedBox(height: context.space(6)),
-                  Text(
-                    latestMessage?.bodyPlainText ?? '',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurface.withOpacity(
-                        isUnread ? 0.7 : 0.42,
-                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
+
+List<EmailAddress> _orderedParticipants(
+  List<EmailAddress> participants,
+  String? latestSender,
+) {
+  if (latestSender == null) {
+    return participants;
+  }
+  final index =
+      participants.indexWhere((participant) => participant.email == latestSender);
+  if (index <= 0) {
+    return participants;
+  }
+  final ordered = List<EmailAddress>.from(participants);
+  final sender = ordered.removeAt(index);
+  ordered.insert(0, sender);
+  return ordered;
+}
+
+List<EmailAddress> _filterParticipants(
+  List<EmailAddress> participants,
+  String currentUserEmail,
+  bool hideSelf,
+) {
+  if (!hideSelf) {
+    return participants;
+  }
+  final filtered = participants
+      .where((participant) => participant.email != currentUserEmail)
+      .toList();
+  return filtered.isEmpty ? participants : filtered;
+}
+
+class _SenderStack extends StatelessWidget {
+  const _SenderStack({
+    required this.participants,
+  });
+
+  final List<EmailAddress> participants;
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = participants.take(4).toList();
+    final scheme = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : context.space(72);
+        final count = visible.length.clamp(1, 4);
+        final maxCircle = context.space(40);
+        final minCircle = context.space(30);
+        final circleSize = (maxHeight / count).clamp(minCircle, maxCircle);
+        final spacing =
+            count == 1 ? 0 : (maxHeight - circleSize) / (count - 1);
+        final width = circleSize + 6;
+        return SizedBox(
+          width: width,
+          height: maxHeight,
+          child: Stack(
+            children: [
+              for (var i = 0; i < visible.length; i++)
+                Positioned(
+                  top: (i * spacing).toDouble(),
+                  child: Container(
+                    width: circleSize,
+                    height: circleSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: scheme.surface,
+                      border: Border.all(
+                        color: ColorTokens.border(context, 0.2),
+                        width: 1,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        visible[i].initial,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+String _formatThreadTimestamp(DateTime? timestamp, String fallback) {
+  if (timestamp == null) {
+    return fallback;
+  }
+  final now = DateTime.now();
+  final isToday = timestamp.year == now.year &&
+      timestamp.month == now.month &&
+      timestamp.day == now.day;
+  final time = _formatClock(timestamp);
+  if (isToday) {
+    return time;
+  }
+  final month = _monthAbbrev[timestamp.month - 1];
+  return '$month ${timestamp.day} $time';
+}
+
+String _formatClock(DateTime timestamp) {
+  var hour = timestamp.hour;
+  final minute = timestamp.minute;
+  final suffix = hour >= 12 ? 'PM' : 'AM';
+  hour = hour % 12;
+  if (hour == 0) {
+    hour = 12;
+  }
+  final minuteLabel = minute.toString().padLeft(2, '0');
+  return '$hour:$minuteLabel $suffix';
+}
+
+const List<String> _monthAbbrev = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
 class MessageCard extends StatefulWidget {
   const MessageCard({
@@ -1723,12 +1924,15 @@ class _MessageCardState extends State<MessageCard> {
               ),
               SizedBox(height: context.space(8)),
             ],
-            AnimatedSize(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topLeft,
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) =>
+                  FadeTransition(opacity: animation, child: child),
               child: _expanded && widget.message.bodyHtml != null
                   ? LayoutBuilder(
+                      key: const ValueKey('html-body'),
                       builder: (context, constraints) {
                         final boundedWidth = constraints.maxWidth.isFinite;
                         return ConstrainedBox(
@@ -1769,6 +1973,7 @@ class _MessageCardState extends State<MessageCard> {
                     )
                   : Text(
                       widget.message.bodyPlainText,
+                      key: const ValueKey('text-body'),
                       maxLines: _expanded ? null : 3,
                       overflow: _expanded ? null : TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodyLarge,
@@ -1793,7 +1998,7 @@ class ComposeBar extends StatelessWidget {
     return GlassPanel(
       borderRadius: BorderRadius.circular(context.radius(20)),
       padding: EdgeInsets.all(context.space(12)),
-      tint: ColorTokens.cardFill(context, 0.1),
+      variant: GlassVariant.sheet,
       child: Column(
         children: [
           TextField(
@@ -1877,24 +2082,40 @@ class ThreadScreen extends StatelessWidget {
 }
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, required this.accent, this.onClose});
+  const SettingsScreen({
+    super.key,
+    required this.accent,
+    required this.appState,
+    this.onClose,
+  });
 
   final Color accent;
+  final AppState appState;
   final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.all(context.gutter(16)),
-      child: SettingsPanel(accent: accent, onClose: onClose),
+      child: SettingsPanel(
+        accent: accent,
+        appState: appState,
+        onClose: onClose,
+      ),
     );
   }
 }
 
 class SettingsPanel extends StatelessWidget {
-  const SettingsPanel({super.key, required this.accent, this.onClose});
+  const SettingsPanel({
+    super.key,
+    required this.accent,
+    required this.appState,
+    this.onClose,
+  });
 
   final Color accent;
+  final AppState appState;
   final VoidCallback? onClose;
 
   @override
@@ -1934,8 +2155,9 @@ class SettingsPanel extends StatelessWidget {
     return GlassPanel(
       borderRadius: BorderRadius.circular(context.radius(28)),
       padding: EdgeInsets.all(context.space(14)),
+      variant: GlassVariant.sheet,
       child: DefaultTabController(
-        length: 4,
+        length: 5,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1974,6 +2196,11 @@ class SettingsPanel extends StatelessWidget {
                   _SettingsTab(
                     child: _FoldersSettings(accent: accent),
                   ),
+                  _SettingsTab(
+                    child: _AccountsSettings(
+                      appState: appState,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -2011,6 +2238,7 @@ class _SettingsTabBar extends StatelessWidget {
           _SettingsTabLabel(text: 'Layout'),
           _SettingsTabLabel(text: 'Threads'),
           _SettingsTabLabel(text: 'Folders'),
+          _SettingsTabLabel(text: 'Accounts'),
         ],
       ),
     );
@@ -2140,16 +2368,17 @@ class _LayoutSettings extends StatelessWidget {
         _SettingRow(
           title: 'Corner radius',
           subtitle: 'Dial in how rounded the UI feels.',
-          forceInline: true,
-          trailing: SizedBox(
-            width: 320,
-            child: Row(
-              children: CornerRadiusStyle.values
+          trailing: LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 420;
+              final children = CornerRadiusStyle.values
                   .map(
-                    (style) => Expanded(
+                    (style) => SizedBox(
+                      width: isNarrow ? 160 : 120,
                       child: Padding(
                         padding: EdgeInsets.symmetric(
                           horizontal: context.space(4),
+                          vertical: context.space(4),
                         ),
                         child: _CornerRadiusOption(
                           label: style.label,
@@ -2160,8 +2389,13 @@ class _LayoutSettings extends StatelessWidget {
                       ),
                     ),
                   )
-                  .toList(),
-            ),
+                  .toList();
+              return Wrap(
+                spacing: context.space(4),
+                runSpacing: context.space(4),
+                children: children,
+              );
+            },
           ),
         ),
       ],
@@ -2209,6 +2443,16 @@ class _ThreadsSettings extends StatelessWidget {
             onChanged: settings.setHideThreadSubjects,
           ),
         ),
+        SizedBox(height: context.space(16)),
+        _SettingRow(
+          title: 'Hide yourself in thread list',
+          subtitle: 'Remove your address from sender rows.',
+          trailing: AccentSwitch(
+            accent: Theme.of(context).colorScheme.primary,
+            value: settings.hideSelfInThreadList,
+            onChanged: settings.setHideSelfInThreadList,
+          ),
+        ),
       ],
     );
   }
@@ -2247,6 +2491,141 @@ class _FoldersSettings extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _AccountsSettings extends StatelessWidget {
+  const _AccountsSettings({
+    required this.appState,
+  });
+
+  final AppState appState;
+
+  @override
+  Widget build(BuildContext context) {
+    final account = appState.selectedAccount;
+    if (account == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Accounts', style: Theme.of(context).textTheme.titleLarge),
+          SizedBox(height: context.space(12)),
+          Text(
+            'No account selected.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: ColorTokens.textSecondary(context),
+                ),
+          ),
+        ],
+      );
+    }
+    final baseAccent = account.accentColorValue == null
+        ? accentFromAccount(account.id)
+        : Color(account.accentColorValue!);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Accounts', style: Theme.of(context).textTheme.titleLarge),
+        SizedBox(height: context.space(12)),
+        Text(
+          account.email,
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        SizedBox(height: context.space(16)),
+        Text(
+          'Accent color',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        SizedBox(height: context.space(8)),
+        Wrap(
+          spacing: context.space(12),
+          runSpacing: context.space(8),
+          children: [
+            for (final preset in _accentPresets)
+              _AccentSwatch(
+                label: preset.label,
+                color: resolveAccent(preset.color, Theme.of(context).brightness),
+                selected: preset.color.value == baseAccent.value,
+                onTap: () => appState.setAccountAccentColor(
+                  account.id,
+                  preset.color,
+                ),
+              ),
+          ],
+        ),
+        SizedBox(height: context.space(12)),
+        OutlinedButton.icon(
+          onPressed: () => appState.randomizeAccountAccentColor(account.id),
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Shuffle'),
+        ),
+      ],
+    );
+  }
+}
+
+class _AccentPreset {
+  const _AccentPreset(this.label, this.color);
+
+  final String label;
+  final Color color;
+}
+
+const List<_AccentPreset> _accentPresets = [
+  _AccentPreset('Indigo', Color(0xFF6F7BFF)),
+  _AccentPreset('Mint', Color(0xFF45D6B4)),
+  _AccentPreset('Coral', Color(0xFFFF7A59)),
+  _AccentPreset('Amber', Color(0xFFFFB347)),
+  _AccentPreset('Teal', Color(0xFF35B7C3)),
+  _AccentPreset('Rose', Color(0xFFF06292)),
+];
+
+class _AccentSwatch extends StatelessWidget {
+  const _AccentSwatch({
+    required this.label,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ringColor =
+        selected ? Theme.of(context).colorScheme.primary : Colors.transparent;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: context.space(22),
+              height: context.space(22),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color,
+                border: Border.all(
+                  color: ringColor,
+                  width: 2,
+                ),
+              ),
+            ),
+            SizedBox(width: context.space(8)),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -2447,15 +2826,9 @@ class GlassActionButton extends StatelessWidget {
           horizontal: context.space(16),
           vertical: context.space(12),
         ),
-        tint: accent.withOpacity(0.18),
-        borderOpacity: 0.3,
-        boxShadow: [
-          BoxShadow(
-            color: accent.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 12),
-          ),
-        ],
+        variant: GlassVariant.action,
+        accent: accent,
+        selected: true,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -2510,6 +2883,7 @@ class GlassBottomNav extends StatelessWidget {
             horizontal: context.space(8),
             vertical: context.space(10),
           ),
+          variant: GlassVariant.nav,
           child: Row(
             children: List.generate(items.length, (index) {
               final item = items[index];
@@ -2594,11 +2968,9 @@ class GlassPill extends StatelessWidget {
         horizontal: dense ? context.space(10) : context.space(12),
         vertical: dense ? context.space(4) : context.space(6),
       ),
-      blur: 18,
-      opacity: selected ? 0.2 : 0.14,
-      borderOpacity: selected ? 0.32 : 0.22,
-      borderColor: selected ? displayAccent.withOpacity(0.5) : null,
-      tint: selected ? displayAccent.withOpacity(0.22) : null,
+      variant: GlassVariant.pill,
+      accent: selected ? displayAccent : null,
+      selected: selected,
       child: Text(
         label,
         style: Theme.of(

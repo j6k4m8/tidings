@@ -37,21 +37,29 @@ class _TidingsAppState extends State<TidingsApp> {
             animation: Listenable.merge([_settings, _appState]),
             builder: (context, _) {
               final account = _appState.selectedAccount;
-              final accent = account == null
+              final baseAccent = account == null
                   ? TidingsTheme.defaultAccent
-                  : accentFromAccount(account.id);
+                  : account.accentColorValue == null
+                      ? accentFromAccount(account.id)
+                      : Color(account.accentColorValue!);
+              final brightness = _settings.themeMode == ThemeMode.system
+                  ? WidgetsBinding.instance.platformDispatcher.platformBrightness
+                  : (_settings.themeMode == ThemeMode.dark
+                      ? Brightness.dark
+                      : Brightness.light);
+              final accent = resolveAccent(baseAccent, brightness);
               return MaterialApp(
                 title: 'Tidings',
                 debugShowCheckedModeBanner: false,
                 themeMode: _settings.themeMode,
                 theme: TidingsTheme.lightTheme(
-                  accentColor: accent,
+                  accentColor: resolveAccent(baseAccent, Brightness.light),
                   paletteSource: _settings.paletteSource,
                   cornerRadiusScale: _settings.cornerRadiusScale,
                   fontScale: 1.0,
                 ),
                 darkTheme: TidingsTheme.darkTheme(
-                  accentColor: accent,
+                  accentColor: resolveAccent(baseAccent, Brightness.dark),
                   paletteSource: _settings.paletteSource,
                   cornerRadiusScale: _settings.cornerRadiusScale,
                   fontScale: 1.0,

@@ -64,6 +64,7 @@ class EmailAccount {
     required this.email,
     required this.providerType,
     this.imapConfig,
+    this.accentColorValue,
   });
 
   final String id;
@@ -71,6 +72,23 @@ class EmailAccount {
   final String email;
   final EmailProviderType providerType;
   final ImapAccountConfig? imapConfig;
+  final int? accentColorValue;
+
+  EmailAccount copyWith({
+    String? displayName,
+    String? email,
+    ImapAccountConfig? imapConfig,
+    int? accentColorValue,
+  }) {
+    return EmailAccount(
+      id: id,
+      displayName: displayName ?? this.displayName,
+      email: email ?? this.email,
+      providerType: providerType,
+      imapConfig: imapConfig ?? this.imapConfig,
+      accentColorValue: accentColorValue ?? this.accentColorValue,
+    );
+  }
 
   Map<String, Object?> toStorageJson() {
     return {
@@ -79,6 +97,7 @@ class EmailAccount {
       'email': email,
       'providerType': providerType.name,
       'imapConfig': imapConfig?.toStorageJson(),
+      'accentColorValue': accentColorValue,
     };
   }
 
@@ -95,6 +114,7 @@ class EmailAccount {
         orElse: () => EmailProviderType.mock,
       ),
       imapConfig: imapConfig,
+      accentColorValue: (json['accentColorValue'] as num?)?.toInt(),
     );
   }
 }

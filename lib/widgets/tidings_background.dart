@@ -17,8 +17,16 @@ class TidingsBackground extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final baseGradient = ColorTokens.backgroundGradient(context);
-    final heroGradient = ColorTokens.heroGradient(context);
     final glow = accent.withOpacity(isDark ? 0.2 : 0.14);
+    final topOverlayColors = isDark
+        ? [
+            const Color(0xFF0F141C).withOpacity(0.92),
+            Colors.transparent,
+          ]
+        : [
+            Colors.white.withOpacity(0.8),
+            Colors.transparent,
+          ];
 
     return Stack(
       children: [
@@ -26,8 +34,8 @@ class TidingsBackground extends StatelessWidget {
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
                 colors: baseGradient,
               ),
             ),
@@ -37,13 +45,13 @@ class TidingsBackground extends StatelessWidget {
           top: 0,
           left: 0,
           right: 0,
-          height: 220,
+          height: 240,
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: heroGradient,
+                colors: topOverlayColors,
               ),
             ),
           ),

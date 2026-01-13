@@ -10,6 +10,7 @@ class TidingsSettings extends ChangeNotifier {
   bool _autoExpandUnread = true;
   bool _autoExpandLatest = true;
   bool _hideThreadSubjects = false;
+  bool _hideSelfInThreadList = false;
   bool _showFolderLabels = true;
   bool _showFolderUnreadCounts = true;
 
@@ -20,6 +21,7 @@ class TidingsSettings extends ChangeNotifier {
   bool get autoExpandUnread => _autoExpandUnread;
   bool get autoExpandLatest => _autoExpandLatest;
   bool get hideThreadSubjects => _hideThreadSubjects;
+  bool get hideSelfInThreadList => _hideSelfInThreadList;
   bool get showFolderLabels => _showFolderLabels;
   bool get showFolderUnreadCounts => _showFolderUnreadCounts;
 
@@ -79,6 +81,14 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _hideThreadSubjects = value;
+    notifyListeners();
+  }
+
+  void setHideSelfInThreadList(bool value) {
+    if (_hideSelfInThreadList == value) {
+      return;
+    }
+    _hideSelfInThreadList = value;
     notifyListeners();
   }
 

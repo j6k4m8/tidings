@@ -219,11 +219,16 @@ class ImapEmailProvider extends EmailProvider {
           time: latest.time,
           unread: messages.any((message) => message.isUnread),
           starred: false,
+          receivedAt: latest.receivedAt,
         ),
       );
     }
 
-    _threads.sort((a, b) => b.time.compareTo(a.time));
+    _threads.sort((a, b) {
+      final aTime = a.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bTime = b.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bTime.compareTo(aTime);
+    });
   }
 
   Future<void> _loadFolders() async {

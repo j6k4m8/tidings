@@ -2,6 +2,15 @@
 
 Tidings is a native, less-hideous email client for IMAP/SMTP/Exchange/JMAP servers, built using Flutter.
 
+## Features
+
+-   IMAP account onboarding with multi-account support
+-   Mock inbox for exploring the UI without a server
+-   Threaded inbox + thread detail view with HTML rendering
+-   Per-account accent colors and glass UI styling
+-   Responsive layout for desktop and mobile with folder navigation
+-   Appearance settings (theme, palette, density, corner radius, threads)
+
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md) for planned features.

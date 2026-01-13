@@ -16,10 +16,15 @@ class MockEmailProvider extends EmailProvider {
     final filtered = _threads.where((thread) {
       return _threadFolders[thread.id] == _selectedFolderPath;
     }).toList();
-    if (filtered.isNotEmpty) {
-      return filtered;
-    }
-    return _selectedFolderPath == 'INBOX' ? _threads : const [];
+    final active = filtered.isNotEmpty
+        ? filtered
+        : (_selectedFolderPath == 'INBOX' ? _threads : <EmailThread>[]);
+    active.sort((a, b) {
+      final aTime = a.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bTime = b.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bTime.compareTo(aTime);
+    });
+    return active;
   }
 
   @override
@@ -102,14 +107,19 @@ class MockEmailProvider extends EmailProvider {
     email: 'sasha@tidings.dev',
   );
 
-  static const List<EmailThread> _threads = [
-    EmailThread(
+  static final List<EmailThread> _threads = _buildThreads();
+
+  static List<EmailThread> _buildThreads() {
+    final now = DateTime.now();
+    return [
+      EmailThread(
       id: 'thread-01',
       subject: 'Launch playlist visuals for the beta build',
       participants: [_ari, _sam, _you],
       time: '8:42 AM',
       unread: true,
       starred: true,
+      receivedAt: now.subtract(const Duration(minutes: 18)),
     ),
     EmailThread(
       id: 'thread-02',
@@ -118,6 +128,7 @@ class MockEmailProvider extends EmailProvider {
       time: '7:18 AM',
       unread: true,
       starred: false,
+      receivedAt: now.subtract(const Duration(hours: 2)),
     ),
     EmailThread(
       id: 'thread-03',
@@ -126,6 +137,7 @@ class MockEmailProvider extends EmailProvider {
       time: 'Yesterday',
       unread: false,
       starred: false,
+      receivedAt: now.subtract(const Duration(days: 1, hours: 3)),
     ),
     EmailThread(
       id: 'thread-04',
@@ -134,6 +146,7 @@ class MockEmailProvider extends EmailProvider {
       time: 'Mon',
       unread: false,
       starred: false,
+      receivedAt: now.subtract(const Duration(days: 3, hours: 2)),
     ),
     EmailThread(
       id: 'thread-05',
@@ -142,8 +155,10 @@ class MockEmailProvider extends EmailProvider {
       time: 'Mon',
       unread: false,
       starred: false,
+      receivedAt: now.subtract(const Duration(days: 4, hours: 1)),
     ),
-  ];
+    ];
+  }
 
   static const Map<String, String> _threadFolders = {
     'thread-01': 'INBOX',

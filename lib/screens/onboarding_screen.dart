@@ -27,6 +27,7 @@ class OnboardingScreen extends StatelessWidget {
             child: GlassPanel(
               borderRadius: BorderRadius.circular(28),
               padding: const EdgeInsets.all(24),
+              variant: GlassVariant.sheet,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -179,6 +180,7 @@ class _AccountPickerSheet extends StatelessWidget {
         child: GlassPanel(
           borderRadius: BorderRadius.circular(24),
           padding: const EdgeInsets.all(16),
+          variant: GlassVariant.sheet,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -310,6 +312,7 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
         child: GlassPanel(
           borderRadius: BorderRadius.circular(24),
           padding: const EdgeInsets.all(16),
+          variant: GlassVariant.sheet,
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

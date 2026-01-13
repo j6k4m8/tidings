@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/contact_utils.dart';
+
 @immutable
 class EmailAddress {
   const EmailAddress({
@@ -10,14 +12,14 @@ class EmailAddress {
   final String name;
   final String email;
 
-  String get displayName => name.isNotEmpty ? name : email;
+  String get displayName => normalizeContactName(name.isNotEmpty ? name : email);
 
   String get initial {
-    final value = displayName.trim();
-    if (value.isEmpty) {
-      return '?';
-    }
-    return value.substring(0, 1).toUpperCase();
+    return avatarInitial(displayName.isNotEmpty ? displayName : email);
+  }
+
+  String get normalizedDisplayName {
+    return normalizeContactName(displayName);
   }
 }
 
@@ -30,6 +32,7 @@ class EmailThread {
     required this.time,
     required this.unread,
     required this.starred,
+    this.receivedAt,
   });
 
   final String id;
@@ -38,6 +41,7 @@ class EmailThread {
   final String time;
   final bool unread;
   final bool starred;
+  final DateTime? receivedAt;
 
   String get participantSummary {
     return participants.map((participant) => participant.displayName).join(', ');
