@@ -63,6 +63,8 @@ class EmailMessage {
     required this.subject,
     required this.from,
     required this.to,
+    this.cc = const [],
+    this.bcc = const [],
     required this.time,
     required this.isMe,
     required this.isUnread,
@@ -78,6 +80,8 @@ class EmailMessage {
   final String subject;
   final EmailAddress from;
   final List<EmailAddress> to;
+  final List<EmailAddress> cc;
+  final List<EmailAddress> bcc;
   final String time;
   final bool isMe;
   final bool isUnread;

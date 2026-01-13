@@ -13,6 +13,7 @@ class TidingsSettings extends ChangeNotifier {
   bool _hideSelfInThreadList = false;
   bool _showFolderLabels = true;
   bool _showFolderUnreadCounts = true;
+  final Set<String> _pinnedFolderPaths = {};
 
   ThemeMode get themeMode => _themeMode;
   ThemePaletteSource get paletteSource => _paletteSource;
@@ -24,6 +25,7 @@ class TidingsSettings extends ChangeNotifier {
   bool get hideSelfInThreadList => _hideSelfInThreadList;
   bool get showFolderLabels => _showFolderLabels;
   bool get showFolderUnreadCounts => _showFolderUnreadCounts;
+  Set<String> get pinnedFolderPaths => Set.unmodifiable(_pinnedFolderPaths);
 
   double get densityScale => _layoutDensity.scale;
   double get cornerRadiusScale => _cornerRadiusStyle.scale;
@@ -105,6 +107,19 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _showFolderUnreadCounts = value;
+    notifyListeners();
+  }
+
+  bool isFolderPinned(String path) {
+    return _pinnedFolderPaths.contains(path);
+  }
+
+  void toggleFolderPinned(String path) {
+    if (_pinnedFolderPaths.contains(path)) {
+      _pinnedFolderPaths.remove(path);
+    } else {
+      _pinnedFolderPaths.add(path);
+    }
     notifyListeners();
   }
 }

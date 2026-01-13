@@ -26,6 +26,18 @@ abstract class EmailProvider extends ChangeNotifier {
   Future<void> sendMessage({
     EmailThread? thread,
     required String toLine,
+    String? ccLine,
+    String? bccLine,
+    required String subject,
+    required String bodyHtml,
+    required String bodyText,
+  });
+
+  Future<void> saveDraft({
+    EmailThread? thread,
+    required String toLine,
+    String? ccLine,
+    String? bccLine,
     required String subject,
     required String bodyHtml,
     required String bodyText,

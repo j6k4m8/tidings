@@ -398,6 +398,8 @@ class MockEmailProvider extends EmailProvider {
   Future<void> sendMessage({
     EmailThread? thread,
     required String toLine,
+    String? ccLine,
+    String? bccLine,
     required String subject,
     required String bodyHtml,
     required String bodyText,
@@ -405,12 +407,14 @@ class MockEmailProvider extends EmailProvider {
     final now = DateTime.now();
     final timeLabel = _formatTime(now);
     final recipients = _parseRecipients(toLine);
+    final ccRecipients = _parseRecipients(ccLine ?? '');
+    final bccRecipients = _parseRecipients(bccLine ?? '');
     if (thread == null) {
       final threadId = 'thread-${now.microsecondsSinceEpoch}';
       final newThread = EmailThread(
         id: threadId,
         subject: subject,
-        participants: [_you, ...recipients],
+        participants: [_you, ...recipients, ...ccRecipients, ...bccRecipients],
         time: timeLabel,
         unread: false,
         starred: false,
@@ -425,6 +429,8 @@ class MockEmailProvider extends EmailProvider {
           subject: subject,
           from: _you,
           to: recipients,
+          cc: ccRecipients,
+          bcc: bccRecipients,
           time: timeLabel,
           bodyText: bodyText,
           bodyHtml: bodyHtml,
@@ -445,6 +451,8 @@ class MockEmailProvider extends EmailProvider {
         subject: subject,
         from: _you,
         to: recipients,
+        cc: ccRecipients,
+        bcc: bccRecipients,
         time: timeLabel,
         bodyText: bodyText,
         bodyHtml: bodyHtml,
@@ -465,6 +473,57 @@ class MockEmailProvider extends EmailProvider {
         receivedAt: now,
       );
     }
+    notifyListeners();
+  }
+
+  @override
+  Future<void> saveDraft({
+    EmailThread? thread,
+    required String toLine,
+    String? ccLine,
+    String? bccLine,
+    required String subject,
+    required String bodyHtml,
+    required String bodyText,
+  }) async {
+    final now = DateTime.now();
+    final timeLabel = _formatTime(now);
+    final recipients = _parseRecipients(toLine);
+    final ccRecipients = _parseRecipients(ccLine ?? '');
+    final bccRecipients = _parseRecipients(bccLine ?? '');
+    final threadId = thread?.id ?? 'draft-${now.microsecondsSinceEpoch}';
+    final isNewThread = thread == null || !_messages.containsKey(threadId);
+    if (isNewThread) {
+      final newThread = EmailThread(
+        id: threadId,
+        subject: subject,
+        participants: [_you, ...recipients, ...ccRecipients, ...bccRecipients],
+        time: timeLabel,
+        unread: false,
+        starred: false,
+        receivedAt: now,
+      );
+      _threads.insert(0, newThread);
+      _threadFolders[threadId] = 'Drafts';
+      _messages[threadId] = [];
+    }
+    _messages[threadId]?.add(
+      EmailMessage(
+        id: 'draft-${now.microsecondsSinceEpoch}',
+        threadId: threadId,
+        subject: subject,
+        from: _you,
+        to: recipients,
+        cc: ccRecipients,
+        bcc: bccRecipients,
+        time: timeLabel,
+        bodyText: bodyText,
+        bodyHtml: bodyHtml,
+        isMe: true,
+        isUnread: false,
+        receivedAt: now,
+      ),
+    );
     notifyListeners();
   }
 

@@ -330,6 +330,10 @@ class _WideLayout extends StatelessWidget {
         ? 0
         : _selectedIndex(selectedThreadIndex, threads.length);
     final selectedThread = threads.isEmpty ? null : threads[safeIndex];
+    final pinnedItems = _pinnedItems(
+      folderSections,
+      context.tidingsSettings.pinnedFolderPaths,
+    );
     final padding = EdgeInsets.all(context.gutter(16));
 
     return Padding(
@@ -345,6 +349,7 @@ class _WideLayout extends StatelessWidget {
                       account: account,
                       accent: accent,
                       mailboxItems: _mailboxItems(folderSections),
+                      pinnedItems: pinnedItems,
                       selectedIndex: selectedFolderIndex,
                       onSelected: onFolderSelected,
                       onExpand: onSidebarToggle,
@@ -508,6 +513,24 @@ List<FolderItem> _mailboxItems(List<FolderSection> sections) {
     }
   }
   return const [];
+}
+
+List<FolderItem> _pinnedItems(
+  List<FolderSection> sections,
+  Set<String> pinnedPaths,
+) {
+  if (pinnedPaths.isEmpty) {
+    return const [];
+  }
+  final items = <FolderItem>[];
+  for (final section in sections) {
+    for (final item in section.items) {
+      if (pinnedPaths.contains(item.path)) {
+        items.add(item);
+      }
+    }
+  }
+  return items;
 }
 
 const List<FolderItem> _fallbackRailItems = [
@@ -817,10 +840,11 @@ class SidebarPanel extends StatelessWidget {
                 tooltip: 'Settings',
               ),
               const Spacer(),
-              OutlinedButton.icon(
-                onPressed: onCompose,
-                icon: const Icon(Icons.edit_rounded, size: 16),
-                label: const Text('Compose'),
+              GlassActionButton(
+                accent: accent,
+                label: 'Compose',
+                icon: Icons.edit_rounded,
+                onTap: onCompose,
               ),
             ],
           ),
@@ -971,9 +995,10 @@ class _FolderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final settings = context.tidingsSettings;
     final unread = item.unreadCount > 0;
-    final showUnreadCounts =
-        context.tidingsSettings.showFolderUnreadCounts;
+    final showUnreadCounts = settings.showFolderUnreadCounts;
+    final isPinned = settings.isFolderPinned(item.path);
     final baseColor = Theme.of(context).colorScheme.onSurface;
     final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
           color: unread ? baseColor : baseColor.withValues(alpha: 0.65),
@@ -1027,6 +1052,17 @@ class _FolderRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            IconButton(
+              onPressed: () => settings.toggleFolderPinned(item.path),
+              icon: Icon(
+                isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                size: 16,
+              ),
+              color: isPinned
+                  ? accent
+                  : ColorTokens.textSecondary(context, 0.7),
+              tooltip: isPinned ? 'Unpin from rail' : 'Pin to rail',
+            ),
             if (unread && showUnreadCounts)
               Container(
                 padding: EdgeInsets.symmetric(
@@ -1057,6 +1093,7 @@ class _SidebarRail extends StatelessWidget {
     required this.account,
     required this.accent,
     required this.mailboxItems,
+    required this.pinnedItems,
     required this.selectedIndex,
     required this.onSelected,
     required this.onExpand,
@@ -1067,6 +1104,7 @@ class _SidebarRail extends StatelessWidget {
   final EmailAccount account;
   final Color accent;
   final List<FolderItem> mailboxItems;
+  final List<FolderItem> pinnedItems;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
   final VoidCallback onExpand;
@@ -1075,7 +1113,17 @@ class _SidebarRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = mailboxItems.isEmpty ? _fallbackRailItems : mailboxItems;
+    final baseItems = mailboxItems.isEmpty ? _fallbackRailItems : mailboxItems;
+    final items = <FolderItem>[];
+    for (final item in baseItems) {
+      items.add(item);
+    }
+    for (final item in pinnedItems) {
+      if (items.any((existing) => existing.path == item.path)) {
+        continue;
+      }
+      items.add(item);
+    }
     return GlassPanel(
       borderRadius: BorderRadius.circular(context.radius(22)),
       padding: EdgeInsets.symmetric(
@@ -1091,7 +1139,7 @@ class _SidebarRail extends StatelessWidget {
             onTap: onAccountTap,
           ),
           SizedBox(height: context.space(16)),
-          for (final item in items.take(4))
+          for (final item in items.take(6))
             _RailIconButton(
               icon: item.icon ?? Icons.mail_outline_rounded,
               selected: selectedIndex == item.index,

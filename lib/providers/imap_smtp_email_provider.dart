@@ -126,6 +126,8 @@ class ImapSmtpEmailProvider extends EmailProvider {
   Future<void> sendMessage({
     EmailThread? thread,
     required String toLine,
+    String? ccLine,
+    String? bccLine,
     required String subject,
     required String bodyHtml,
     required String bodyText,
@@ -140,19 +142,27 @@ class ImapSmtpEmailProvider extends EmailProvider {
         ? config.password
         : config.smtpPassword;
     final recipients = _parseRecipients(toLine);
+    final ccRecipients = _parseRecipients(ccLine ?? '');
+    final bccRecipients = _parseRecipients(bccLine ?? '');
     if (recipients.isEmpty) {
       throw StateError('No recipients provided.');
     }
 
     final from = MailAddress(null, email);
     final builder =
-        MessageBuilder.prepareMultipartAlternativeMessage(
+      MessageBuilder.prepareMultipartAlternativeMessage(
             plainText: bodyText,
             htmlText: bodyHtml,
           )
           ..from = [from]
           ..to = recipients
           ..subject = subject;
+    if (ccRecipients.isNotEmpty) {
+      builder.cc = ccRecipients;
+    }
+    if (bccRecipients.isNotEmpty) {
+      builder.bcc = bccRecipients;
+    }
 
     final original = _replySource(thread);
     if (original != null) {
@@ -177,6 +187,16 @@ class ImapSmtpEmailProvider extends EmailProvider {
       ..subject = subject
       ..text = bodyText
       ..html = bodyHtml;
+    if (ccRecipients.isNotEmpty) {
+      mailerMessage.ccRecipients = ccRecipients.map((recipient) {
+        return Address(recipient.email, recipient.personalName);
+      }).toList();
+    }
+    if (bccRecipients.isNotEmpty) {
+      mailerMessage.bccRecipients = bccRecipients.map((recipient) {
+        return Address(recipient.email, recipient.personalName);
+      }).toList();
+    }
     final replyHeaders = _replyHeaders(thread);
     if (replyHeaders.isNotEmpty) {
       mailerMessage.headers.addAll(replyHeaders);
@@ -196,6 +216,51 @@ class ImapSmtpEmailProvider extends EmailProvider {
       refresh(),
       const Duration(seconds: 12),
       'Refreshing after send timed out.',
+    );
+  }
+
+  @override
+  Future<void> saveDraft({
+    EmailThread? thread,
+    required String toLine,
+    String? ccLine,
+    String? bccLine,
+    required String subject,
+    required String bodyHtml,
+    required String bodyText,
+  }) async {
+    final recipients = _parseRecipients(toLine);
+    final ccRecipients = _parseRecipients(ccLine ?? '');
+    final bccRecipients = _parseRecipients(bccLine ?? '');
+    final from = MailAddress(null, email);
+    final builder =
+        MessageBuilder.prepareMultipartAlternativeMessage(
+            plainText: bodyText,
+            htmlText: bodyHtml,
+          )
+          ..from = [from]
+          ..to = recipients
+          ..subject = subject;
+    if (ccRecipients.isNotEmpty) {
+      builder.cc = ccRecipients;
+    }
+    if (bccRecipients.isNotEmpty) {
+      builder.bcc = bccRecipients;
+    }
+    final original = _replySource(thread);
+    if (original != null) {
+      builder.originalMessage = original;
+    }
+    final message = builder.buildMimeMessage();
+    await _withTimeout(
+      _appendToDrafts(message),
+      const Duration(seconds: 12),
+      'Saving draft timed out.',
+    );
+    await _withTimeout(
+      refresh(),
+      const Duration(seconds: 12),
+      'Refreshing after draft timed out.',
     );
   }
 
@@ -278,6 +343,26 @@ class ImapSmtpEmailProvider extends EmailProvider {
               )
               .toList() ??
           const [];
+      final cc =
+          envelope.cc
+              ?.map(
+                (recipient) => EmailAddress(
+                  name: recipient.personalName ?? '',
+                  email: recipient.email,
+                ),
+              )
+              .toList() ??
+          const [];
+      final bcc =
+          envelope.bcc
+              ?.map(
+                (recipient) => EmailAddress(
+                  name: recipient.personalName ?? '',
+                  email: recipient.email,
+                ),
+              )
+              .toList() ??
+          const [];
       final timestamp = envelope.date?.toLocal();
       final timeLabel = timestamp == null ? '' : _formatTime(timestamp);
       final isUnread = !(message.flags?.contains(MessageFlags.seen) ?? false);
@@ -294,6 +379,8 @@ class ImapSmtpEmailProvider extends EmailProvider {
         subject: subject,
         from: from,
         to: to,
+        cc: cc,
+        bcc: bcc,
         time: timeLabel,
         bodyText: bodyText,
         bodyHtml: bodyHtml,
@@ -450,6 +537,24 @@ class ImapSmtpEmailProvider extends EmailProvider {
       await client.appendMessage(
         message,
         flags: const [MessageFlags.seen],
+        targetMailboxPath: path,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _appendToDrafts(MimeMessage message) async {
+    final client = _client;
+    if (client == null) {
+      return;
+    }
+    final path = _draftsMailboxPath ?? _sentMailboxPath;
+    if (path == null || path.isEmpty) {
+      return;
+    }
+    try {
+      await client.appendMessage(
+        message,
+        flags: const [MessageFlags.draft],
         targetMailboxPath: path,
       );
     } catch (_) {}

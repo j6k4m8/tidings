@@ -6,11 +6,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
 import '../../state/tidings_settings.dart';
-import '../../theme/account_accent.dart';
 import '../../theme/color_tokens.dart';
 import '../../theme/glass.dart';
 import '../../widgets/tidings_background.dart';
-import '../compose/compose_sheet.dart';
+import '../compose/inline_reply_composer.dart';
 import 'provider_body.dart';
 
 class CurrentThreadPanel extends StatelessWidget {
@@ -297,33 +296,11 @@ class ComposeBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = accentTokensFor(context, accent);
-    return GlassPanel(
-      borderRadius: BorderRadius.circular(context.radius(20)),
-      padding: EdgeInsets.all(context.space(12)),
-      variant: GlassVariant.sheet,
-      child: Row(
-        children: [
-          Icon(Icons.reply_rounded, color: tokens.onSurface),
-          SizedBox(width: context.space(10)),
-          Expanded(
-            child: Text(
-              'Reply with rich formatting',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ),
-          FilledButton(
-            onPressed: () => showComposeSheet(
-              context,
-              provider: provider,
-              accent: accent,
-              thread: thread,
-              currentUserEmail: currentUserEmail,
-            ),
-            child: const Text('Reply'),
-          ),
-        ],
-      ),
+    return InlineReplyComposer(
+      accent: accent,
+      provider: provider,
+      thread: thread,
+      currentUserEmail: currentUserEmail,
     );
   }
 }

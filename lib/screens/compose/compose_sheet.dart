@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_quill/flutter_quill.dart';
-import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
 import '../../theme/glass.dart';
+import 'compose_editor.dart';
+import '../../widgets/tidings_background.dart';
+import 'compose_utils.dart';
 
 Future<void> showComposeSheet(
   BuildContext context, {
@@ -26,6 +28,7 @@ Future<void> showComposeSheet(
         thread: thread,
         currentUserEmail: currentUserEmail,
         isSheet: true,
+        allowPopOut: true,
       ),
     );
   }
@@ -43,7 +46,27 @@ Future<void> showComposeSheet(
           thread: thread,
           currentUserEmail: currentUserEmail,
           isSheet: false,
+          allowPopOut: false,
         ),
+      ),
+    ),
+  );
+}
+
+Future<void> showComposeWindow(
+  BuildContext context, {
+  required EmailProvider provider,
+  required Color accent,
+  EmailThread? thread,
+  String? currentUserEmail,
+}) {
+  return Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => _ComposeScreen(
+        provider: provider,
+        accent: accent,
+        thread: thread,
+        currentUserEmail: currentUserEmail,
       ),
     ),
   );
@@ -57,6 +80,7 @@ class ComposeSheet extends StatefulWidget {
     this.thread,
     this.currentUserEmail,
     required this.isSheet,
+    required this.allowPopOut,
   });
 
   final EmailProvider provider;
@@ -64,6 +88,7 @@ class ComposeSheet extends StatefulWidget {
   final EmailThread? thread;
   final String? currentUserEmail;
   final bool isSheet;
+  final bool allowPopOut;
 
   @override
   State<ComposeSheet> createState() => _ComposeSheetState();
@@ -72,18 +97,21 @@ class ComposeSheet extends StatefulWidget {
 class _ComposeSheetState extends State<ComposeSheet> {
   late final QuillController _controller;
   final TextEditingController _toController = TextEditingController();
+  final TextEditingController _ccController = TextEditingController();
+  final TextEditingController _bccController = TextEditingController();
   final TextEditingController _subjectController = TextEditingController();
-  bool _showToolbar = false;
   bool _isSending = false;
+  bool _isSaving = false;
   String? _sendError;
+  String? _draftError;
 
   @override
   void initState() {
     super.initState();
     _controller = QuillController.basic();
     if (widget.thread != null) {
-      _subjectController.text = _replySubject(widget.thread!.subject);
-      _toController.text = _replyRecipients(
+      _subjectController.text = replySubject(widget.thread!.subject);
+      _toController.text = replyRecipients(
         widget.thread!.participants,
         widget.currentUserEmail,
       );
@@ -94,16 +122,18 @@ class _ComposeSheetState extends State<ComposeSheet> {
   void dispose() {
     _controller.dispose();
     _toController.dispose();
+    _ccController.dispose();
+    _bccController.dispose();
     _subjectController.dispose();
     super.dispose();
   }
 
   Future<void> _send() async {
-    if (_isSending) {
+    if (_isSending || _isSaving) {
       return;
     }
     final delta = _controller.document.toDelta();
-    final html = _deltaToHtml(delta);
+    final html = deltaToHtml(delta);
     final plain = _controller.document.toPlainText().trim();
 
     if (plain.isEmpty) {
@@ -113,17 +143,22 @@ class _ComposeSheetState extends State<ComposeSheet> {
     setState(() {
       _isSending = true;
       _sendError = null;
+      _draftError = null;
     });
 
     final subject = _subjectController.text.trim().isEmpty
         ? '(No subject)'
         : _subjectController.text.trim();
     final to = _toController.text.trim();
+    final cc = _ccController.text.trim();
+    final bcc = _bccController.text.trim();
 
     try {
       await widget.provider.sendMessage(
         thread: widget.thread,
         toLine: to,
+        ccLine: cc,
+        bccLine: bcc,
         subject: subject,
         bodyHtml: html,
         bodyText: plain,
@@ -147,10 +182,72 @@ class _ComposeSheetState extends State<ComposeSheet> {
     }
   }
 
+  Future<void> _saveDraft() async {
+    if (_isSending || _isSaving) {
+      return;
+    }
+    setState(() {
+      _isSaving = true;
+      _sendError = null;
+      _draftError = null;
+    });
+
+    final subject = _subjectController.text.trim();
+    final to = _toController.text.trim();
+    final cc = _ccController.text.trim();
+    final bcc = _bccController.text.trim();
+    final delta = _controller.document.toDelta();
+    final html = deltaToHtml(delta);
+    final plain = _controller.document.toPlainText();
+
+    try {
+      await widget.provider.saveDraft(
+        thread: widget.thread,
+        toLine: to,
+        ccLine: cc,
+        bccLine: bcc,
+        subject: subject,
+        bodyHtml: html,
+        bodyText: plain,
+      );
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Save draft failed: $error')),
+        );
+        setState(() {
+          _draftError = error.toString();
+        });
+      }
+    }
+
+    if (mounted) {
+      setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _popOut() async {
+    if (!widget.allowPopOut) {
+      return;
+    }
+    Navigator.of(context).pop();
+    await showComposeWindow(
+      context,
+      provider: widget.provider,
+      accent: widget.accent,
+      thread: widget.thread,
+      currentUserEmail: widget.currentUserEmail,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final insets = MediaQuery.of(context).viewInsets;
     final isReply = widget.thread != null;
+    final errorText = _sendError ?? _draftError;
     final padding = widget.isSheet
         ? EdgeInsets.fromLTRB(16, 16, 16, 16 + insets.bottom)
         : EdgeInsets.only(bottom: insets.bottom);
@@ -172,71 +269,34 @@ class _ComposeSheetState extends State<ComposeSheet> {
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const Spacer(),
-                  IconButton(
-                    onPressed: () =>
-                        setState(() => _showToolbar = !_showToolbar),
-                    icon: Icon(
-                      _showToolbar
-                          ? Icons.close_fullscreen_rounded
-                          : Icons.text_format_rounded,
+                  TextButton(
+                    onPressed: _isSaving ? null : _saveDraft,
+                    child: Text(
+                      _isSaving ? 'Saving...' : 'Close & Save Draft',
                     ),
-                    tooltip: _showToolbar ? 'Hide formatting' : 'Show formatting',
+                  ),
+                  if (widget.allowPopOut)
+                    IconButton(
+                      onPressed: _popOut,
+                      icon: const Icon(Icons.open_in_new_rounded),
+                      tooltip: 'Pop out',
+                    ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                    tooltip: 'Close',
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: _toController,
-                decoration: const InputDecoration(
-                  labelText: 'To',
-                  hintText: 'name@example.com',
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _subjectController,
-                decoration: const InputDecoration(
-                  labelText: 'Subject',
-                ),
-              ),
-              const SizedBox(height: 12),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                child: _showToolbar
-                    ? QuillSimpleToolbar(
-                        controller: _controller,
-                        config: const QuillSimpleToolbarConfig(
-                          showUndo: false,
-                          showRedo: false,
-                          showFontFamily: false,
-                          showFontSize: false,
-                          showColorButton: false,
-                          showBackgroundColorButton: false,
-                          showSearchButton: false,
-                          showSubscript: false,
-                          showSuperscript: false,
-                          showCodeBlock: false,
-                          showQuote: false,
-                          showIndent: false,
-                          showListNumbers: false,
-                          showListBullets: false,
-                          showListCheck: false,
-                          showInlineCode: false,
-                          showHeaderStyle: false,
-                          showClearFormat: false,
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-              const SizedBox(height: 12),
-              ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 160, maxHeight: 320),
-                child: QuillEditor.basic(
-                  controller: _controller,
-                  config: const QuillEditorConfig(
-                    placeholder: 'Write something beautiful...',
-                  ),
-                ),
+              ComposeEditor(
+                controller: _controller,
+                toController: _toController,
+                ccController: _ccController,
+                bccController: _bccController,
+                subjectController: _subjectController,
+                showFields: true,
+                placeholder: 'Write something beautiful...',
               ),
               const SizedBox(height: 12),
               Row(
@@ -251,12 +311,12 @@ class _ComposeSheetState extends State<ComposeSheet> {
                   ),
                 ],
               ),
-              if (_sendError != null) ...[
+              if (errorText != null) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     Text(
-                      'Send error',
+                      _sendError != null ? 'Send error' : 'Draft error',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
                             color: Colors.redAccent,
                           ),
@@ -264,7 +324,7 @@ class _ComposeSheetState extends State<ComposeSheet> {
                     const Spacer(),
                     IconButton(
                       onPressed: () {
-                        Clipboard.setData(ClipboardData(text: _sendError!));
+                        Clipboard.setData(ClipboardData(text: errorText));
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Error copied.')),
                         );
@@ -275,7 +335,7 @@ class _ComposeSheetState extends State<ComposeSheet> {
                   ],
                 ),
                 SelectableText(
-                  _sendError!,
+                  errorText,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Colors.redAccent,
                       ),
@@ -289,66 +349,43 @@ class _ComposeSheetState extends State<ComposeSheet> {
   }
 }
 
-String _replySubject(String subject) {
-  final trimmed = subject.trim();
-  if (trimmed.toLowerCase().startsWith('re:')) {
-    return trimmed;
-  }
-  return trimmed.isEmpty ? 'Re:' : 'Re: $trimmed';
-}
+class _ComposeScreen extends StatelessWidget {
+  const _ComposeScreen({
+    required this.provider,
+    required this.accent,
+    this.thread,
+    this.currentUserEmail,
+  });
 
-String _replyRecipients(
-  List<EmailAddress> participants,
-  String? currentUserEmail,
-) {
-  final filtered = currentUserEmail == null
-      ? participants
-      : participants
-          .where((participant) => participant.email != currentUserEmail)
-          .toList();
-  final list = filtered.isEmpty ? participants : filtered;
-  return list.map((participant) => participant.email).join(', ');
-}
+  final EmailProvider provider;
+  final Color accent;
+  final EmailThread? thread;
+  final String? currentUserEmail;
 
-String _deltaToHtml(Delta delta) {
-  final buffer = StringBuffer();
-  var lineBuffer = StringBuffer();
-  for (final op in delta.toList()) {
-    final data = op.data;
-    final attrs = op.attributes ?? <String, dynamic>{};
-    if (data is! String) {
-      continue;
-    }
-    var text = data;
-    while (text.contains('\n')) {
-      final index = text.indexOf('\n');
-      final segment = text.substring(0, index);
-      lineBuffer.write(_wrapInline(segment, attrs));
-      buffer.write('<p>${lineBuffer.toString().trim()}</p>');
-      lineBuffer = StringBuffer();
-      text = text.substring(index + 1);
-    }
-    if (text.isNotEmpty) {
-      lineBuffer.write(_wrapInline(text, attrs));
-    }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: TidingsBackground(
+        accent: accent,
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: ComposeSheet(
+                  provider: provider,
+                  accent: accent,
+                  thread: thread,
+                  currentUserEmail: currentUserEmail,
+                  isSheet: false,
+                  allowPopOut: false,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
-  final remainder = lineBuffer.toString().trim();
-  if (remainder.isNotEmpty) {
-    buffer.write('<p>$remainder</p>');
-  }
-  return buffer.toString();
-}
-
-String _wrapInline(String text, Map<String, dynamic> attrs) {
-  var result = text;
-  if (attrs['bold'] == true) {
-    result = '<strong>$result</strong>';
-  }
-  if (attrs['italic'] == true) {
-    result = '<em>$result</em>';
-  }
-  if (attrs['underline'] == true) {
-    result = '<u>$result</u>';
-  }
-  return result;
 }
