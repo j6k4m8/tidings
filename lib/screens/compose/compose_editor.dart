@@ -3,6 +3,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../state/tidings_settings.dart';
 import '../../theme/color_tokens.dart';
+import '../../widgets/glass/glass_text_field.dart';
 
 class ComposeEditor extends StatefulWidget {
   const ComposeEditor({
@@ -18,6 +19,7 @@ class ComposeEditor extends StatefulWidget {
     this.subjectSummary,
     this.minEditorHeight = 160,
     this.maxEditorHeight = 320,
+    this.showFormattingToggle = true,
   });
 
   final QuillController controller;
@@ -31,6 +33,7 @@ class ComposeEditor extends StatefulWidget {
   final String? subjectSummary;
   final double minEditorHeight;
   final double maxEditorHeight;
+  final bool showFormattingToggle;
 
   @override
   State<ComposeEditor> createState() => _ComposeEditorState();
@@ -40,6 +43,57 @@ class _ComposeEditorState extends State<ComposeEditor> {
   final FocusNode _subjectFocusNode = FocusNode();
   final FocusNode _editorFocusNode = FocusNode();
   bool _showToolbar = false;
+
+  DefaultStyles _editorStyles(BuildContext context) {
+    final styles = DefaultStyles.getInstance(context);
+    final bodySize = Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14;
+    final paragraph = styles.paragraph?.copyWith(
+      style: styles.paragraph!.style.copyWith(
+        fontSize: bodySize,
+        height: 1.4,
+      ),
+    );
+    final placeholder = styles.placeHolder?.copyWith(
+      style: styles.placeHolder!.style.copyWith(
+        fontSize: bodySize,
+        color: ColorTokens.textSecondary(context),
+      ),
+    );
+    return DefaultStyles(
+      h1: styles.h1,
+      h2: styles.h2,
+      h3: styles.h3,
+      h4: styles.h4,
+      h5: styles.h5,
+      h6: styles.h6,
+      paragraph: paragraph ?? styles.paragraph,
+      lineHeightNormal: styles.lineHeightNormal,
+      lineHeightTight: styles.lineHeightTight,
+      lineHeightOneAndHalf: styles.lineHeightOneAndHalf,
+      lineHeightDouble: styles.lineHeightDouble,
+      bold: styles.bold,
+      subscript: styles.subscript,
+      superscript: styles.superscript,
+      italic: styles.italic,
+      small: styles.small,
+      underline: styles.underline,
+      strikeThrough: styles.strikeThrough,
+      inlineCode: styles.inlineCode,
+      link: styles.link,
+      color: styles.color,
+      placeHolder: placeholder ?? styles.placeHolder,
+      lists: styles.lists,
+      quote: styles.quote,
+      code: styles.code,
+      indent: styles.indent,
+      align: styles.align,
+      leading: styles.leading,
+      sizeSmall: styles.sizeSmall,
+      sizeLarge: styles.sizeLarge,
+      sizeHuge: styles.sizeHuge,
+      palette: styles.palette,
+    );
+  }
 
   @override
   void dispose() {
@@ -57,6 +111,7 @@ class _ComposeEditorState extends State<ComposeEditor> {
   @override
   Widget build(BuildContext context) {
     final showFields = widget.showFields;
+    final textStyle = Theme.of(context).textTheme.bodyMedium;
     return FocusTraversalGroup(
       policy: OrderedTraversalPolicy(),
       child: Column(
@@ -83,13 +138,11 @@ class _ComposeEditorState extends State<ComposeEditor> {
           if (showFields) ...[
             FocusTraversalOrder(
               order: const NumericFocusOrder(1),
-              child: TextField(
+              child: GlassTextField(
                 controller: widget.toController,
+                hintText: 'To',
                 textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'To',
-                  hintText: 'name@example.com',
-                ),
+                textStyle: textStyle,
               ),
             ),
             SizedBox(height: context.space(10)),
@@ -98,10 +151,16 @@ class _ComposeEditorState extends State<ComposeEditor> {
                 Expanded(
                   child: FocusTraversalOrder(
                     order: const NumericFocusOrder(2),
-                    child: TextField(
-                      controller: widget.ccController,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(labelText: 'Cc'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        GlassTextField(
+                          controller: widget.ccController,
+                          hintText: 'Cc',
+                          textInputAction: TextInputAction.next,
+                          textStyle: textStyle,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -109,10 +168,16 @@ class _ComposeEditorState extends State<ComposeEditor> {
                 Expanded(
                   child: FocusTraversalOrder(
                     order: const NumericFocusOrder(3),
-                    child: TextField(
-                      controller: widget.bccController,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(labelText: 'Bcc'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        GlassTextField(
+                          controller: widget.bccController,
+                          hintText: 'Bcc',
+                          textInputAction: TextInputAction.next,
+                          textStyle: textStyle,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -121,85 +186,89 @@ class _ComposeEditorState extends State<ComposeEditor> {
             SizedBox(height: context.space(10)),
             FocusTraversalOrder(
               order: const NumericFocusOrder(4),
-              child: TextField(
-                controller: widget.subjectController,
-                focusNode: _subjectFocusNode,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(labelText: 'Subject'),
-                onSubmitted: (_) => _editorFocusNode.requestFocus(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  GlassTextField(
+                    controller: widget.subjectController,
+                    hintText: 'Subject',
+                    focusNode: _subjectFocusNode,
+                    textInputAction: TextInputAction.next,
+                    textStyle: textStyle,
+                    onSubmitted: (_) => _editorFocusNode.requestFocus(),
+                  ),
+                ],
               ),
             ),
             SizedBox(height: context.space(10)),
           ],
-          FocusTraversalOrder(
-            order: const NumericFocusOrder(5),
-            child: Row(
-              children: [
-                Text(
-                  'Formatting',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: ColorTokens.textSecondary(context, 0.7),
-                      ),
-                ),
-                const Spacer(),
-                TextButton.icon(
-                  onPressed: _toggleToolbar,
-                  icon: Icon(
-                    _showToolbar
-                        ? Icons.close_fullscreen_rounded
-                        : Icons.text_format_rounded,
-                  ),
-                  label: Text(_showToolbar ? 'Hide' : 'Format'),
-                ),
-              ],
-            ),
-          ),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: _showToolbar
-                ? QuillSimpleToolbar(
-                    controller: widget.controller,
-                    config: const QuillSimpleToolbarConfig(
-                      showUndo: false,
-                      showRedo: false,
-                      showFontFamily: false,
-                      showFontSize: false,
-                      showColorButton: false,
-                      showBackgroundColorButton: false,
-                      showSearchButton: false,
-                      showSubscript: false,
-                      showSuperscript: false,
-                      showCodeBlock: false,
-                      showQuote: false,
-                      showIndent: false,
-                      showListNumbers: false,
-                      showListBullets: false,
-                      showListCheck: false,
-                      showInlineCode: false,
-                      showHeaderStyle: false,
-                      showClearFormat: false,
+          if (widget.showFormattingToggle) ...[
+            FocusTraversalOrder(
+              order: const NumericFocusOrder(5),
+              child: Row(
+                children: [
+                  const Spacer(),
+                  IconButton(
+                    onPressed: _toggleToolbar,
+                    icon: Icon(
+                      _showToolbar
+                          ? Icons.close_fullscreen_rounded
+                          : Icons.text_format_rounded,
                     ),
-                  )
-                : const SizedBox.shrink(),
-          ),
-          SizedBox(height: context.space(10)),
+                    tooltip:
+                        _showToolbar ? 'Hide formatting' : 'Show formatting',
+                  ),
+                ],
+              ),
+            ),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: _showToolbar
+                  ? QuillSimpleToolbar(
+                      controller: widget.controller,
+                      config: const QuillSimpleToolbarConfig(
+                        showUndo: false,
+                        showRedo: false,
+                        showFontFamily: false,
+                        showFontSize: false,
+                        showColorButton: false,
+                        showBackgroundColorButton: false,
+                        showSearchButton: false,
+                        showSubscript: false,
+                        showSuperscript: false,
+                        showCodeBlock: false,
+                        showQuote: false,
+                        showIndent: false,
+                        showListNumbers: false,
+                        showListBullets: false,
+                        showListCheck: false,
+                        showInlineCode: false,
+                        showHeaderStyle: false,
+                        showClearFormat: false,
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            SizedBox(height: context.space(8)),
+          ],
           FocusTraversalOrder(
             order: const NumericFocusOrder(6),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: widget.minEditorHeight,
-              maxHeight: widget.maxEditorHeight,
-            ),
-            child: QuillEditor.basic(
-              controller: widget.controller,
-              focusNode: _editorFocusNode,
-              config: QuillEditorConfig(
-                placeholder: widget.placeholder,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: widget.minEditorHeight,
+                maxHeight: widget.maxEditorHeight,
+              ),
+              child: QuillEditor.basic(
+                controller: widget.controller,
+                focusNode: _editorFocusNode,
+                config: QuillEditorConfig(
+                  placeholder: widget.placeholder,
+                  customStyles: _editorStyles(context),
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
       ),
     );
   }
