@@ -21,6 +21,7 @@ import '../widgets/glass/glass_bottom_nav.dart';
 import '../widgets/settings/corner_radius_option.dart';
 import '../widgets/settings/settings_rows.dart';
 import '../widgets/settings/settings_tabs.dart';
+import '../widgets/animations/page_reveal.dart';
 import '../widgets/tidings_background.dart';
 import 'compose/compose_sheet.dart';
 import 'home/thread_detail.dart';
@@ -1880,30 +1881,6 @@ class _AccountSectionState extends State<_AccountSection> {
           ),
         ],
       ),
-    );
-  }
-}
-
-class PageReveal extends StatelessWidget {
-  const PageReveal({super.key, required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 700),
-      curve: Curves.easeOutCubic,
-      builder: (context, value, _) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 12 * (1 - value)),
-            child: child,
-          ),
-        );
-      },
     );
   }
 }

@@ -6,6 +6,8 @@ import '../../state/tidings_settings.dart';
 import '../../theme/account_accent.dart';
 import '../../theme/color_tokens.dart';
 import '../../theme/glass.dart';
+import '../../widgets/animations/staggered_fade_in.dart';
+import '../../widgets/glass/glass_pill.dart';
 import 'provider_body.dart';
 
 class ThreadSearchRow extends StatelessWidget {
@@ -482,72 +484,3 @@ const List<String> _monthAbbrev = [
   'Nov',
   'Dec',
 ];
-
-class StaggeredFadeIn extends StatelessWidget {
-  const StaggeredFadeIn({super.key, required this.index, required this.child});
-
-  final int index;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final start = (index * 0.08).clamp(0.0, 1.0);
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 700),
-      curve: Interval(start, 1, curve: Curves.easeOutCubic),
-      builder: (context, value, _) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 16 * (1 - value)),
-            child: child,
-          ),
-        );
-      },
-    );
-  }
-}
-
-class GlassPill extends StatelessWidget {
-  const GlassPill({
-    super.key,
-    required this.label,
-    this.accent,
-    this.selected = false,
-    this.dense = false,
-  });
-
-  final String label;
-  final Color? accent;
-  final bool selected;
-  final bool dense;
-
-  @override
-  Widget build(BuildContext context) {
-    final accentColor = accent ?? Theme.of(context).colorScheme.primary;
-    final tokens = accentTokensFor(context, accentColor);
-    final textColor = selected
-        ? tokens.onSurface
-        : ColorTokens.textSecondary(context, 0.7);
-
-    return GlassPanel(
-      borderRadius: BorderRadius.circular(
-        dense ? context.radius(12) : context.radius(14),
-      ),
-      padding: EdgeInsets.symmetric(
-        horizontal: dense ? context.space(10) : context.space(12),
-        vertical: dense ? context.space(4) : context.space(6),
-      ),
-      variant: GlassVariant.pill,
-      accent: selected ? tokens.base : null,
-      selected: selected,
-      child: Text(
-        label,
-        style: Theme.of(
-          context,
-        ).textTheme.labelLarge?.copyWith(color: textColor),
-      ),
-    );
-  }
-}

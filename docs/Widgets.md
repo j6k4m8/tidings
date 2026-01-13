@@ -27,6 +27,12 @@ This is the catalog of reusable UI widgets in Tidings.
 -   `GlassPanel` (theme): Core glass container with variants and accent support.
 -   `GlassActionButton`: Accent-tinted call-to-action button.
 -   `GlassBottomNav`: Bottom navigation bar with glass styling.
+-   `GlassPill`: Compact glass chip used for filters and tags.
+
+## Animation
+
+-   `PageReveal`: Fade + slight rise on page load.
+-   `StaggeredFadeIn`: Staggered fade/slide for list rows.
 
 ## Background
 
