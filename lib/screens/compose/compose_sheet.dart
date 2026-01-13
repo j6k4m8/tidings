@@ -253,19 +253,32 @@ class _ComposeSheetState extends State<ComposeSheet> {
               ),
               if (_sendError != null) ...[
                 const SizedBox(height: 8),
-                GestureDetector(
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: _sendError!));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Error copied.')),
-                    );
-                  },
-                  child: Text(
-                    _sendError!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.redAccent,
-                        ),
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      'Send error',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: Colors.redAccent,
+                          ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: _sendError!));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Error copied.')),
+                        );
+                      },
+                      icon: const Icon(Icons.copy_rounded, size: 18),
+                      tooltip: 'Copy error',
+                    ),
+                  ],
+                ),
+                SelectableText(
+                  _sendError!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.redAccent,
+                      ),
                 ),
               ],
             ],
