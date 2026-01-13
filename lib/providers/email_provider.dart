@@ -23,4 +23,11 @@ abstract class EmailProvider extends ChangeNotifier {
   Future<void> initialize();
   Future<void> refresh();
   Future<void> selectFolder(String path);
+  Future<void> sendMessage({
+    EmailThread? thread,
+    required String toLine,
+    required String subject,
+    required String bodyHtml,
+    required String bodyText,
+  });
 }

@@ -5,11 +5,17 @@
 -   [x] make the settings icon always a gear in responsive mobile too
 -   [x] settings page switches should be refactored out into their own component, and should be styled with the accent color
 -   [x] mobile: header (subject) is white on white. get rid of header and just put a back button on mobile in front of the subject in the thread box card title.
--   [ ] corner radius setting in settings, do the same thing as margins selector where it wraps to the next line if the screen is too narrow
--   [ ] hover/pressed states for thread tiles to feel more tactile
--   [ ] in message lists show time if today, else show date + time.
--   [ ] in message list, unread messages should have a colored dot on the left side of the tile, aligned with the sender name.
--   [ ] in message list, vertically spread the senders' avatar circles in a vertical line with the most recent message at the top, so it's visually clear who sent what in a thread. like a deck of cards, so that if there's only one sender in the thread it's just a single circle, but if there are multiple senders you can see the stack of circles.
+-   [x] corner radius setting in settings, do the same thing as margins selector where it wraps to the next line if the screen is too narrow
+-   [x] hover/pressed states for thread tiles to feel more tactile
+-   [x] in message lists show time if today, else show date + time.
+-   [x] in message list, unread messages should have a colored dot on the left side of the tile, aligned with the sender name.
+-   [x] in message list, vertically spread the senders' avatar circles in a vertical line with the most recent message at the top, so it's visually clear who sent what in a thread. like a deck of cards, so that if there's only one sender in the thread it's just a single circle, but if there are multiple senders you can see the stack of circles.
+-   [ ] compose button in sidebar should match the rest of the UI.
+-   [ ] folders should have a toggleable "pin" state to keep them in the left rail when collapsed.
+-   [ ] composing: the format button should be between subject and body, not header. add a "X" top right, and a "Close and Save Draft" action to its left.
+-   [ ] composing: add a "pop out" button to open the compose window in a separate window.
+-   [ ] put "reply" to threads back inline, not a popout to the compose panel. add a "expand" button which puts the full to / cc / bcc / subject in the thread view, and the body below that with formatting toolbar etc. REFACTOR THE COMPOSE PANEL TO BE GENERIC FOR NEW COMPOSES AND INLINE REPLIES, and not have two separate UIs for that.
+-   [ ] ui bug: allow tab to move focus from compose subject line to body.
 
 ## Product Definition
 

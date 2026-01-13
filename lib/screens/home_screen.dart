@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,6 +13,7 @@ import '../theme/color_tokens.dart';
 import '../theme/glass.dart';
 import '../theme/account_accent.dart';
 import '../theme/theme_palette.dart';
+import '../widgets/accent_switch.dart';
 import '../widgets/tidings_background.dart';
 import 'compose/compose_sheet.dart';
 import 'home/thread_detail.dart';
@@ -1328,6 +1331,7 @@ class SettingsPanel extends StatelessWidget {
                   _SettingsTab(
                     child: _AccountsSettings(
                       appState: appState,
+                      accent: accent,
                     ),
                   ),
                 ],
@@ -1627,14 +1631,15 @@ class _FoldersSettings extends StatelessWidget {
 class _AccountsSettings extends StatelessWidget {
   const _AccountsSettings({
     required this.appState,
+    required this.accent,
   });
 
   final AppState appState;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
-    final account = appState.selectedAccount;
-    if (account == null) {
+    if (appState.accounts.isEmpty) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1649,47 +1654,290 @@ class _AccountsSettings extends StatelessWidget {
         ],
       );
     }
-    final baseAccent = account.accentColorValue == null
-        ? accentFromAccount(account.id)
-        : Color(account.accentColorValue!);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Accounts', style: Theme.of(context).textTheme.titleLarge),
-        SizedBox(height: context.space(12)),
-        Text(
-          account.email,
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-        SizedBox(height: context.space(16)),
-        Text(
-          'Accent color',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
         SizedBox(height: context.space(8)),
-        Wrap(
-          spacing: context.space(12),
-          runSpacing: context.space(8),
-          children: [
-            for (final preset in _accentPresets)
-              _AccentSwatch(
-                label: preset.label,
-                color: resolveAccent(preset.color, Theme.of(context).brightness),
-                selected: preset.color.toARGB32() == baseAccent.toARGB32(),
-                onTap: () => appState.setAccountAccentColor(
-                  account.id,
-                  preset.color,
+        Text(
+          'Manage per-account settings and verify connections.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: ColorTokens.textSecondary(context),
+              ),
+        ),
+        SizedBox(height: context.space(10)),
+        OutlinedButton.icon(
+          onPressed: () async {
+            final error = await appState.openConfigDirectory();
+            if (!context.mounted) {
+              return;
+            }
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  error == null
+                      ? 'Opened settings directory.'
+                      : 'Unable to open settings directory: $error',
                 ),
               ),
-          ],
+            );
+          },
+          icon: const Icon(Icons.folder_open_rounded),
+          label: const Text('Open Settings File Directory'),
         ),
         SizedBox(height: context.space(12)),
-        OutlinedButton.icon(
-          onPressed: () => appState.randomizeAccountAccentColor(account.id),
-          icon: const Icon(Icons.refresh_rounded),
-          label: const Text('Shuffle'),
-        ),
+        for (final account in appState.accounts) ...[
+          _AccountSection(
+            appState: appState,
+            account: account,
+            accent: accent,
+            defaultExpanded: appState.accounts.length < 3,
+          ),
+          SizedBox(height: context.space(16)),
+        ],
       ],
+    );
+  }
+}
+
+class _AccountSection extends StatefulWidget {
+  const _AccountSection({
+    required this.appState,
+    required this.account,
+    required this.accent,
+    required this.defaultExpanded,
+  });
+
+  final AppState appState;
+  final EmailAccount account;
+  final Color accent;
+  final bool defaultExpanded;
+
+  @override
+  State<_AccountSection> createState() => _AccountSectionState();
+}
+
+class _AccountSectionState extends State<_AccountSection> {
+  bool _isTesting = false;
+  ConnectionTestReport? _report;
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.defaultExpanded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final account = widget.account;
+    final appState = widget.appState;
+    final accent = widget.accent;
+    final baseAccent = account.accentColorValue == null
+        ? accentFromAccount(account.id)
+        : Color(account.accentColorValue!);
+    final report = _report;
+    final reportColor = report == null
+        ? null
+        : (report.ok ? Colors.greenAccent : Colors.redAccent);
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(context.space(14)),
+      decoration: BoxDecoration(
+        color: ColorTokens.cardFill(context, 0.04),
+        borderRadius: BorderRadius.circular(context.radius(18)),
+        border: Border.all(color: ColorTokens.border(context, 0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(context.radius(12)),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                vertical: context.space(6),
+                horizontal: context.space(4),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.keyboard_arrow_right_rounded,
+                  ),
+                  SizedBox(width: context.space(6)),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        account.displayName,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      Text(
+                        account.email,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: ColorTokens.textSecondary(context),
+                            ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 200),
+            crossFadeState: _expanded
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            firstChild: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(height: context.space(8)),
+                Text(
+                  'Accent',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                SizedBox(height: context.space(8)),
+                Wrap(
+                  spacing: context.space(12),
+                  runSpacing: context.space(8),
+                  children: [
+                    for (final preset in _accentPresets)
+                      _AccentSwatch(
+                        label: preset.label,
+                        color: resolveAccent(
+                          preset.color,
+                          Theme.of(context).brightness,
+                        ),
+                        selected:
+                            preset.color.toARGB32() == baseAccent.toARGB32(),
+                        onTap: () => appState.setAccountAccentColor(
+                          account.id,
+                          preset.color,
+                        ),
+                      ),
+                  ],
+                ),
+                SizedBox(height: context.space(12)),
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      appState.randomizeAccountAccentColor(account.id),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Shuffle'),
+                ),
+                SizedBox(height: context.space(16)),
+                Text(
+                  'Connection',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                SizedBox(height: context.space(8)),
+                Wrap(
+                  spacing: context.space(8),
+                  runSpacing: context.space(8),
+                  children: [
+                    if (account.providerType == EmailProviderType.imap)
+                      OutlinedButton.icon(
+                        onPressed: _isTesting
+                            ? null
+                            : () async {
+                                setState(() {
+                                  _isTesting = true;
+                                  _report = null;
+                                });
+                                final result = await appState
+                                    .testAccountConnection(account);
+                                if (!mounted) {
+                                  return;
+                                }
+                                setState(() {
+                                  _isTesting = false;
+                                  _report = result;
+                                });
+                              },
+                        icon: _isTesting
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.wifi_tethering_rounded),
+                        label:
+                            Text(_isTesting ? 'Testing...' : 'Test Connection'),
+                      ),
+                    if (account.providerType == EmailProviderType.imap)
+                      OutlinedButton.icon(
+                        onPressed: () => showAccountEditSheet(
+                          context,
+                          appState: appState,
+                          account: account,
+                          accent: accent,
+                        ),
+                        icon: const Icon(Icons.edit_rounded),
+                        label: const Text('Edit IMAP/SMTP'),
+                      ),
+                  ],
+                ),
+                if (report != null) ...[
+                  SizedBox(height: context.space(12)),
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(context.space(12)),
+                    decoration: BoxDecoration(
+                      color: ColorTokens.cardFill(context, 0.06),
+                      borderRadius: BorderRadius.circular(context.radius(12)),
+                      border: Border.all(color: ColorTokens.border(context, 0.12)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              report.ok
+                                  ? 'Connection OK'
+                                  : 'Connection failed',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelLarge
+                                  ?.copyWith(color: reportColor),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              onPressed: () {
+                                Clipboard.setData(
+                                  ClipboardData(text: report.log),
+                                );
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Log copied.')),
+                                );
+                              },
+                              icon: const Icon(Icons.copy_rounded, size: 18),
+                              tooltip: 'Copy log',
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: context.space(6)),
+                        SelectableText(
+                          report.log.trim(),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: reportColor,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures()
+                                ],
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            secondChild: const SizedBox.shrink(),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1811,27 +2059,19 @@ class _SettingRow extends StatelessWidget {
   }
 }
 
-class AccentSwitch extends StatelessWidget {
-  const AccentSwitch({
-    super.key,
-    required this.accent,
-    required this.value,
-    required this.onChanged,
-  });
+class _SettingsSubheader extends StatelessWidget {
+  const _SettingsSubheader({required this.title});
 
-  final Color accent;
-  final bool value;
-  final ValueChanged<bool> onChanged;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
-    final tokens = accentTokensFor(context, accent);
-    return Switch.adaptive(
-      value: value,
-      onChanged: onChanged,
-      activeThumbColor: tokens.base,
-      activeTrackColor: tokens.track,
-      inactiveTrackColor: ColorTokens.cardFill(context, 0.2),
+    return Text(
+      title,
+      style: Theme.of(context)
+          .textTheme
+          .titleSmall
+          ?.copyWith(color: ColorTokens.textSecondary(context, 0.75)),
     );
   }
 }

@@ -2,11 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:enough_mail/enough_mail.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:yaml/yaml.dart';
 
 import '../models/account_models.dart';
 import '../providers/email_provider.dart';
-import '../providers/imap_email_provider.dart';
+import '../providers/imap_smtp_email_provider.dart';
 import '../providers/mock_email_provider.dart';
 
 class AppState extends ChangeNotifier {
@@ -78,10 +81,18 @@ class AppState extends ChangeNotifier {
           needsPersist = true;
           continue;
         }
+        final smtpPassword = _decodePassword(configMap['smtpPasswordB64']);
         imapConfig = ImapAccountConfig.fromStorageJson(
           configMap,
           password: password,
+          smtpPassword: smtpPassword,
         );
+        if (imapConfig.smtpUseImapCredentials &&
+            imapConfig.smtpPassword.isEmpty) {
+          imapConfig = imapConfig.copyWith(
+            smtpPassword: imapConfig.password,
+          );
+        }
       }
       var account = EmailAccount.fromStorageJson(map, imapConfig: imapConfig);
       if (account.accentColorValue == null) {
@@ -89,7 +100,7 @@ class AppState extends ChangeNotifier {
         needsPersist = true;
       }
       final provider = account.providerType == EmailProviderType.imap
-          ? ImapEmailProvider(config: imapConfig!, email: account.email)
+          ? ImapSmtpEmailProvider(config: imapConfig!, email: account.email)
           : MockEmailProvider();
       _accounts.add(account);
       _providers[account.id] = provider;
@@ -133,7 +144,7 @@ class AppState extends ChangeNotifier {
       imapConfig: config,
       accentColorValue: _randomAccentValue(),
     );
-    final provider = ImapEmailProvider(config: config, email: email);
+    final provider = ImapSmtpEmailProvider(config: config, email: email);
     _addAccount(account, provider);
     await _persistConfig();
     await _initializeCurrentProvider();
@@ -141,6 +152,34 @@ class AppState extends ChangeNotifier {
       await removeAccount(account.id);
       return provider.errorMessage ?? 'Unable to connect to the IMAP server.';
     }
+    return null;
+  }
+
+  Future<String?> updateImapAccount({
+    required String accountId,
+    required String displayName,
+    required String email,
+    required ImapAccountConfig config,
+  }) async {
+    final index = _accounts.indexWhere((account) => account.id == accountId);
+    if (index == -1) {
+      return 'Account not found.';
+    }
+    final updated = _accounts[index].copyWith(
+      displayName: displayName,
+      email: email,
+      imapConfig: config,
+    );
+    _accounts[index] = updated;
+    _providers[accountId]?.dispose();
+    final provider = ImapSmtpEmailProvider(config: config, email: email);
+    _providers[accountId] = provider;
+    await _persistConfig();
+    await _initializeCurrentProvider();
+    if (provider.status == ProviderStatus.error) {
+      return provider.errorMessage ?? 'Unable to connect to the mail server.';
+    }
+    notifyListeners();
     return null;
   }
 
@@ -231,6 +270,11 @@ class AppState extends ChangeNotifier {
           );
           configJson['passwordB64'] =
               base64Encode(utf8.encode(account.imapConfig!.password));
+          if (!account.imapConfig!.smtpUseImapCredentials &&
+              account.imapConfig!.smtpPassword.isNotEmpty) {
+            configJson['smtpPasswordB64'] =
+                base64Encode(utf8.encode(account.imapConfig!.smtpPassword));
+          }
           json['imapConfig'] = configJson;
         }
         return json;
@@ -241,35 +285,85 @@ class AppState extends ChangeNotifier {
 
   Future<Map<String, Object?>?> _loadConfig() async {
     final file = await _configFile();
+    final legacyFile = await _legacyConfigFile();
     if (file == null) {
       return null;
     }
+    File? source = file;
     if (!await file.exists()) {
-      return null;
-    }
-    try {
-      final raw = await file.readAsString();
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) {
+      if (legacyFile != null && await legacyFile.exists()) {
+        source = legacyFile;
+      } else {
         return null;
       }
-      return decoded.cast<String, Object?>();
+    }
+    try {
+      final raw = await source.readAsString();
+      final decoded = loadYaml(raw);
+      if (decoded is! YamlMap) {
+        return null;
+      }
+      final mapped = _yamlToMap(decoded);
+      if (source.path != file.path) {
+        await _writeConfig(file, mapped);
+      }
+      return mapped;
     } catch (_) {
       return null;
     }
   }
 
   Future<File?> _configFile() async {
+    final dir = await _configDirectory();
+    if (dir == null) {
+      return null;
+    }
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return File('${dir.path}/config.yml');
+  }
+
+  Future<Directory?> _configDirectory() async {
     final home = Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'];
     if (home == null || home.isEmpty) {
       return null;
     }
-    final dir = Directory('$home/.config');
+    return Directory('$home/.config/tidings');
+  }
+
+  Future<File?> _legacyConfigFile() async {
+    final home = Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'];
+    if (home == null || home.isEmpty) {
+      return null;
+    }
+    return File('$home/.config/tidings.yml');
+  }
+
+  Future<String?> openConfigDirectory() async {
+    final dir = await _configDirectory();
+    if (dir == null) {
+      return 'Unable to resolve the config directory.';
+    }
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
-    return File('${dir.path}/tidings.yml');
+    try {
+      if (Platform.isMacOS) {
+        await Process.run('open', [dir.path]);
+      } else if (Platform.isWindows) {
+        await Process.run('explorer', [dir.path]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [dir.path]);
+      } else {
+        return 'Unsupported platform.';
+      }
+      return null;
+    } catch (error) {
+      return 'Unable to open config directory: $error';
+    }
   }
 
   int _randomAccentValue() {
@@ -282,8 +376,228 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _writeConfig(File file, Map<String, Object?> payload) async {
-    final encoder = const JsonEncoder.withIndent('  ');
-    await file.writeAsString(encoder.convert(payload));
+    final yaml = _toYaml(payload);
+    await file.writeAsString(yaml);
+  }
+
+  Future<ConnectionTestReport> testAccountConnection(
+    EmailAccount account,
+  ) async {
+    if (account.providerType != EmailProviderType.imap ||
+        account.imapConfig == null) {
+      return const ConnectionTestReport(
+        ok: false,
+        log: 'No IMAP configuration found.',
+      );
+    }
+    final config = account.imapConfig!;
+    final log = StringBuffer();
+    final total = Stopwatch()..start();
+    final imapClient = ImapClient(isLogEnabled: kDebugMode);
+    try {
+      final step = Stopwatch()..start();
+      await imapClient.connectToServer(
+        config.server,
+        config.port,
+        isSecure: config.useTls,
+      ).timeout(const Duration(seconds: 10));
+      step.stop();
+      log.writeln('IMAP connect: ${step.elapsedMilliseconds}ms');
+      step
+        ..reset()
+        ..start();
+      await imapClient
+          .login(config.username, config.password)
+          .timeout(const Duration(seconds: 10));
+      step.stop();
+      log.writeln('IMAP login: ${step.elapsedMilliseconds}ms');
+      step
+        ..reset()
+        ..start();
+      await imapClient.logout();
+      step.stop();
+      log.writeln('IMAP logout: ${step.elapsedMilliseconds}ms');
+    } catch (error) {
+      total.stop();
+      log.writeln('IMAP failed: $error');
+      log.writeln('Total: ${total.elapsedMilliseconds}ms');
+      return ConnectionTestReport(ok: false, log: log.toString());
+    } finally {
+      if (imapClient.isConnected) {
+        imapClient.disconnect();
+      }
+    }
+
+    final smtpServer =
+        config.smtpServer.isNotEmpty ? config.smtpServer : config.server;
+    final smtpUsername =
+        config.smtpUseImapCredentials ? config.username : config.smtpUsername;
+    final smtpPassword =
+        config.smtpUseImapCredentials ? config.password : config.smtpPassword;
+    final smtpClient = SmtpClient(
+      _clientDomainFromEmail(account.email),
+      isLogEnabled: kDebugMode,
+    );
+    try {
+      final step = Stopwatch()..start();
+      final useImplicitTls = config.smtpPort == 465;
+      await smtpClient
+          .connectToServer(
+            smtpServer,
+            config.smtpPort,
+            isSecure: useImplicitTls,
+          )
+          .timeout(const Duration(seconds: 10));
+      step.stop();
+      log.writeln('SMTP connect: ${step.elapsedMilliseconds}ms');
+      step
+        ..reset()
+        ..start();
+      await smtpClient.ehlo().timeout(const Duration(seconds: 8));
+      step.stop();
+      log.writeln(
+        'SMTP EHLO: ${step.elapsedMilliseconds}ms '
+        'caps=${smtpClient.serverInfo.capabilities.join(', ')}',
+      );
+      if (config.smtpUseTls && !useImplicitTls) {
+        if (!smtpClient.serverInfo.supportsStartTls) {
+          total.stop();
+          log.writeln(
+            'SMTP failed: server does not support STARTTLS '
+            'on ${config.smtpPort}.',
+          );
+          log.writeln('Total: ${total.elapsedMilliseconds}ms');
+          return ConnectionTestReport(ok: false, log: log.toString());
+        }
+        step
+          ..reset()
+          ..start();
+        await smtpClient.startTls().timeout(const Duration(seconds: 30));
+        step.stop();
+        log.writeln('SMTP STARTTLS: ${step.elapsedMilliseconds}ms');
+        step
+          ..reset()
+          ..start();
+        await smtpClient.ehlo().timeout(const Duration(seconds: 8));
+        step.stop();
+        log.writeln(
+          'SMTP EHLO (TLS): ${step.elapsedMilliseconds}ms '
+          'auth=${smtpClient.serverInfo.authMechanisms.join(', ')}',
+        );
+      }
+      step
+        ..reset()
+        ..start();
+      await smtpClient
+          .authenticate(smtpUsername, smtpPassword)
+          .timeout(const Duration(seconds: 10));
+      step.stop();
+      log.writeln('SMTP auth: ${step.elapsedMilliseconds}ms');
+      step
+        ..reset()
+        ..start();
+      await smtpClient.quit();
+      step.stop();
+      total.stop();
+      log.writeln('SMTP quit: ${step.elapsedMilliseconds}ms');
+      log.writeln('Total: ${total.elapsedMilliseconds}ms');
+      return ConnectionTestReport(ok: true, log: log.toString());
+    } catch (error) {
+      total.stop();
+      log.writeln('SMTP failed: $error');
+      log.writeln('Total: ${total.elapsedMilliseconds}ms');
+      return ConnectionTestReport(ok: false, log: log.toString());
+    } finally {
+      if (smtpClient.isConnected) {
+        smtpClient.disconnect();
+      }
+    }
+  }
+
+  String _clientDomainFromEmail(String address) {
+    final atIndex = address.indexOf('@');
+    if (atIndex == -1 || atIndex == address.length - 1) {
+      return 'tidings.dev';
+    }
+    return address.substring(atIndex + 1);
+  }
+
+  Map<String, Object?> _yamlToMap(YamlMap map) {
+    final result = <String, Object?>{};
+    for (final entry in map.entries) {
+      final key = entry.key;
+      if (key is! String) {
+        continue;
+      }
+      result[key] = _yamlToValue(entry.value);
+    }
+    return result;
+  }
+
+  Object? _yamlToValue(Object? value) {
+    if (value is YamlMap) {
+      return _yamlToMap(value);
+    }
+    if (value is YamlList) {
+      return value.map(_yamlToValue).toList();
+    }
+    return value;
+  }
+
+  String _toYaml(Object? value, {int indent = 0}) {
+    final space = ' ' * indent;
+    if (value is Map) {
+      final buffer = StringBuffer();
+      for (final entry in value.entries) {
+        final key = entry.key;
+        if (key == null) {
+          continue;
+        }
+        final keyText = key.toString();
+        final entryValue = entry.value;
+        if (entryValue is Map || entryValue is List) {
+          buffer.writeln('$space$keyText:');
+          buffer.write(_toYaml(entryValue, indent: indent + 2));
+        } else {
+          buffer.writeln('$space$keyText: ${_yamlScalar(entryValue)}');
+        }
+      }
+      return buffer.toString();
+    }
+    if (value is List) {
+      final buffer = StringBuffer();
+      for (final item in value) {
+        if (item is Map || item is List) {
+          buffer.writeln('$space-');
+          buffer.write(_toYaml(item, indent: indent + 2));
+        } else {
+          buffer.writeln('$space- ${_yamlScalar(item)}');
+        }
+      }
+      return buffer.toString();
+    }
+    return '$space${_yamlScalar(value)}\n';
+  }
+
+  String _yamlScalar(Object? value) {
+    if (value == null) {
+      return 'null';
+    }
+    if (value is bool || value is num) {
+      return value.toString();
+    }
+    final text = value.toString();
+    final needsQuotes = text.isEmpty ||
+        text.contains(':') ||
+        text.contains('#') ||
+        text.contains('\n') ||
+        text.startsWith(' ') ||
+        text.endsWith(' ');
+    if (!needsQuotes) {
+      return text;
+    }
+    final escaped = text.replaceAll('"', r'\"');
+    return '"$escaped"';
   }
 
   String? _decodePassword(Object? raw) {
@@ -304,4 +618,14 @@ class AppState extends ChangeNotifier {
     }
     super.dispose();
   }
+}
+
+class ConnectionTestReport {
+  const ConnectionTestReport({
+    required this.ok,
+    required this.log,
+  });
+
+  final bool ok;
+  final String log;
 }

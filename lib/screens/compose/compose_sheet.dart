@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:dart_quill_delta/dart_quill_delta.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
-import '../../providers/mock_email_provider.dart';
 import '../../theme/glass.dart';
 
 Future<void> showComposeSheet(
@@ -75,6 +75,7 @@ class _ComposeSheetState extends State<ComposeSheet> {
   final TextEditingController _subjectController = TextEditingController();
   bool _showToolbar = false;
   bool _isSending = false;
+  String? _sendError;
 
   @override
   void initState() {
@@ -109,16 +110,18 @@ class _ComposeSheetState extends State<ComposeSheet> {
       return;
     }
 
-    setState(() => _isSending = true);
+    setState(() {
+      _isSending = true;
+      _sendError = null;
+    });
 
     final subject = _subjectController.text.trim().isEmpty
         ? '(No subject)'
         : _subjectController.text.trim();
     final to = _toController.text.trim();
 
-    if (widget.provider is MockEmailProvider) {
-      final mock = widget.provider as MockEmailProvider;
-      await mock.sendMessage(
+    try {
+      await widget.provider.sendMessage(
         thread: widget.thread,
         toLine: to,
         subject: subject,
@@ -128,11 +131,14 @@ class _ComposeSheetState extends State<ComposeSheet> {
       if (mounted) {
         Navigator.of(context).pop();
       }
-    } else {
+    } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Send not wired yet.')),
+          SnackBar(content: Text('Send failed: $error')),
         );
+        setState(() {
+          _sendError = error.toString();
+        });
       }
     }
 
@@ -239,10 +245,29 @@ class _ComposeSheetState extends State<ComposeSheet> {
                   FilledButton.icon(
                     onPressed: _isSending ? null : _send,
                     icon: const Icon(Icons.send_rounded),
-                    label: Text(_isSending ? 'Sending...' : 'Send'),
+                    label: Text(_isSending
+                        ? 'Sending...'
+                        : (_sendError == null ? 'Send' : 'Retry')),
                   ),
                 ],
               ),
+              if (_sendError != null) ...[
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: _sendError!));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Error copied.')),
+                    );
+                  },
+                  child: Text(
+                    _sendError!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.redAccent,
+                        ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

@@ -394,8 +394,9 @@ class MockEmailProvider extends EmailProvider {
     return map;
   }
 
+  @override
   Future<void> sendMessage({
-    required EmailThread? thread,
+    EmailThread? thread,
     required String toLine,
     required String subject,
     required String bodyHtml,
