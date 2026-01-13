@@ -1,0 +1,236 @@
+import '../models/email_models.dart';
+import 'email_provider.dart';
+
+class MockEmailProvider extends EmailProvider {
+  @override
+  ProviderStatus get status => _status;
+
+  @override
+  String? get errorMessage => _errorMessage;
+
+  @override
+  List<EmailThread> get threads => _threads;
+
+  ProviderStatus _status = ProviderStatus.idle;
+  String? _errorMessage;
+
+  @override
+  Future<void> initialize() async {
+    if (_status == ProviderStatus.ready) {
+      return;
+    }
+    _status = ProviderStatus.loading;
+    notifyListeners();
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    _status = ProviderStatus.ready;
+    _errorMessage = null;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> refresh() async {
+    await initialize();
+  }
+
+  @override
+  List<EmailMessage> messagesForThread(String threadId) {
+    return _messages[threadId] ?? const [];
+  }
+
+  @override
+  EmailMessage? latestMessageForThread(String threadId) {
+    final messages = _messages[threadId];
+    if (messages == null || messages.isEmpty) {
+      return null;
+    }
+    return messages.last;
+  }
+
+  static const EmailAddress _you = EmailAddress(
+    name: 'You',
+    email: 'jordan@tidings.dev',
+  );
+  static const EmailAddress _ari = EmailAddress(
+    name: 'Ari',
+    email: 'ari@tidings.dev',
+  );
+  static const EmailAddress _sam = EmailAddress(
+    name: 'Sam',
+    email: 'sam@tidings.dev',
+  );
+  static const EmailAddress _priya = EmailAddress(
+    name: 'Priya',
+    email: 'priya@tidings.dev',
+  );
+  static const EmailAddress _maya = EmailAddress(
+    name: 'Maya',
+    email: 'maya@tidings.dev',
+  );
+  static const EmailAddress _dev = EmailAddress(
+    name: 'Dev',
+    email: 'dev@tidings.dev',
+  );
+  static const EmailAddress _sasha = EmailAddress(
+    name: 'Sasha',
+    email: 'sasha@tidings.dev',
+  );
+
+  static const List<EmailThread> _threads = [
+    EmailThread(
+      id: 'thread-01',
+      subject: 'Launch playlist visuals for the beta build',
+      participants: [_ari, _sam, _you],
+      time: '8:42 AM',
+      unread: true,
+      starred: true,
+    ),
+    EmailThread(
+      id: 'thread-02',
+      subject: 'Roadmap sync with mobile team',
+      participants: [_priya, _you],
+      time: '7:18 AM',
+      unread: true,
+      starred: false,
+    ),
+    EmailThread(
+      id: 'thread-03',
+      subject: 'Press kit update for Tidings',
+      participants: [_maya, _you],
+      time: 'Yesterday',
+      unread: false,
+      starred: false,
+    ),
+    EmailThread(
+      id: 'thread-04',
+      subject: 'Follow up on the onboarding flow copy',
+      participants: [_dev, _you],
+      time: 'Mon',
+      unread: false,
+      starred: false,
+    ),
+    EmailThread(
+      id: 'thread-05',
+      subject: 'Invite list for private alpha',
+      participants: [_sasha, _you],
+      time: 'Mon',
+      unread: false,
+      starred: false,
+    ),
+  ];
+
+  static const Map<String, List<EmailMessage>> _messages = {
+    'thread-01': [
+      EmailMessage(
+        id: 'msg-01-1',
+        threadId: 'thread-01',
+        subject: 'Launch playlist visuals for the beta build',
+        from: _ari,
+        to: [_you],
+        time: '8:32 AM',
+        bodyText:
+            'We need the new playlist visuals before the beta build goes out.',
+        isMe: false,
+        isUnread: true,
+      ),
+      EmailMessage(
+        id: 'msg-01-2',
+        threadId: 'thread-01',
+        subject: 'Launch playlist visuals for the beta build',
+        from: _sam,
+        to: [_you],
+        time: '8:42 AM',
+        bodyText:
+            'I can ship the new renders this afternoon if we approve the palette.',
+        isMe: false,
+        isUnread: true,
+      ),
+    ],
+    'thread-02': [
+      EmailMessage(
+        id: 'msg-02-1',
+        threadId: 'thread-02',
+        subject: 'Roadmap sync with mobile team',
+        from: _priya,
+        to: [_you],
+        time: '7:18 AM',
+        bodyText:
+            'Can we align on the roadmap for the mobile rollout? I have the deck ready.',
+        isMe: false,
+        isUnread: true,
+      ),
+      EmailMessage(
+        id: 'msg-02-2',
+        threadId: 'thread-02',
+        subject: 'Roadmap sync with mobile team',
+        from: _you,
+        to: [_priya],
+        time: '7:22 AM',
+        bodyText:
+            'Yes, let’s do it. I can join after the 9 AM standup.',
+        isMe: true,
+        isUnread: false,
+      ),
+    ],
+    'thread-03': [
+      EmailMessage(
+        id: 'msg-03-1',
+        threadId: 'thread-03',
+        subject: 'Press kit update for Tidings',
+        from: _maya,
+        to: [_you],
+        time: 'Yesterday',
+        bodyHtml: '''
+<p>New press assets are ready to review.</p>
+<p><b>Highlights</b></p>
+<ul>
+  <li>Updated brand mark set</li>
+  <li>Fresh UI mockups</li>
+  <li>Founder quotes approved</li>
+</ul>
+<p><a href="https://tidings.dev/press">Review the kit</a> and let me know any edits.</p>
+''',
+        isMe: false,
+        isUnread: false,
+      ),
+    ],
+    'thread-04': [
+      EmailMessage(
+        id: 'msg-04-1',
+        threadId: 'thread-04',
+        subject: 'Follow up on the onboarding flow copy',
+        from: _dev,
+        to: [_you],
+        time: 'Mon',
+        bodyText:
+            'Did you want the onboarding flow to be more playful, or keep it tight?',
+        isMe: false,
+        isUnread: false,
+      ),
+      EmailMessage(
+        id: 'msg-04-2',
+        threadId: 'thread-04',
+        subject: 'Follow up on the onboarding flow copy',
+        from: _you,
+        to: [_dev],
+        time: 'Mon',
+        bodyText:
+            'Let’s keep it crisp. Two sentences max, and emphasize focus.',
+        isMe: true,
+        isUnread: false,
+      ),
+    ],
+    'thread-05': [
+      EmailMessage(
+        id: 'msg-05-1',
+        threadId: 'thread-05',
+        subject: 'Invite list for private alpha',
+        from: _sasha,
+        to: [_you],
+        time: 'Mon',
+        bodyText: 'Added 12 new invites. We can onboard them Friday.',
+        isMe: false,
+        isUnread: false,
+      ),
+    ],
+  };
+}
