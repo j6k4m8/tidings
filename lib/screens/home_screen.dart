@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/account_models.dart';
 import '../models/email_models.dart';
+import '../models/folder_models.dart';
 import '../providers/email_provider.dart';
 import '../state/app_state.dart';
 import '../state/tidings_settings.dart';
@@ -241,6 +242,7 @@ class _WideLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final threads = provider.threads;
+    final folderSections = provider.folderSections;
     final safeIndex = threads.isEmpty
         ? 0
         : _selectedIndex(selectedThreadIndex, threads.length);
@@ -259,6 +261,7 @@ class _WideLayout extends StatelessWidget {
                     child: _SidebarRail(
                       account: account,
                       accent: accent,
+                      mailboxItems: _mailboxItems(folderSections),
                       selectedIndex: selectedFolderIndex,
                       onSelected: onFolderSelected,
                       onExpand: onSidebarToggle,
@@ -271,6 +274,7 @@ class _WideLayout extends StatelessWidget {
                     child: SidebarPanel(
                       account: account,
                       accent: accent,
+                      sections: folderSections,
                       selectedIndex: selectedFolderIndex,
                       onSelected: onFolderSelected,
                       onSettingsTap: onSettingsTap,
@@ -406,6 +410,42 @@ int _selectedIndex(int index, int length) {
   return index.clamp(0, length - 1);
 }
 
+List<FolderItem> _mailboxItems(List<FolderSection> sections) {
+  for (final section in sections) {
+    if (section.kind == FolderSectionKind.mailboxes) {
+      return section.items;
+    }
+  }
+  return const [];
+}
+
+const List<FolderItem> _fallbackRailItems = [
+  FolderItem(
+    index: 0,
+    name: 'Inbox',
+    path: 'INBOX',
+    icon: Icons.inbox_rounded,
+  ),
+  FolderItem(
+    index: 1,
+    name: 'Archive',
+    path: 'Archive',
+    icon: Icons.archive_rounded,
+  ),
+  FolderItem(
+    index: 2,
+    name: 'Drafts',
+    path: 'Drafts',
+    icon: Icons.drafts_rounded,
+  ),
+  FolderItem(
+    index: 3,
+    name: 'Sent',
+    path: 'Sent',
+    icon: Icons.send_rounded,
+  ),
+];
+
 class _ResizeHandle extends StatelessWidget {
   const _ResizeHandle({required this.onDragUpdate});
 
@@ -514,6 +554,7 @@ class _CompactLayout extends StatelessWidget {
                 _CompactHeader(
                   account: account,
                   accent: accent,
+                  sections: provider.folderSections,
                   selectedFolderIndex: selectedFolderIndex,
                   onFolderSelected: onFolderSelected,
                   onAccountTap: onAccountTap,
@@ -560,6 +601,7 @@ class _CompactLayout extends StatelessWidget {
                 _showFolderSheet(
                   context,
                   accent: accent,
+                  sections: provider.folderSections,
                   selectedFolderIndex: selectedFolderIndex,
                   onFolderSelected: onFolderSelected,
                 );
@@ -569,6 +611,7 @@ class _CompactLayout extends StatelessWidget {
               _showFolderSheet(
                 context,
                 accent: accent,
+                sections: provider.folderSections,
                 selectedFolderIndex: selectedFolderIndex,
                 onFolderSelected: onFolderSelected,
               );
@@ -719,6 +762,7 @@ class SidebarPanel extends StatelessWidget {
     super.key,
     required this.account,
     required this.accent,
+    required this.sections,
     required this.selectedIndex,
     required this.onSelected,
     required this.onSettingsTap,
@@ -728,6 +772,7 @@ class SidebarPanel extends StatelessWidget {
 
   final EmailAccount account;
   final Color accent;
+  final List<FolderSection> sections;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
   final VoidCallback onSettingsTap;
@@ -806,6 +851,7 @@ class SidebarPanel extends StatelessWidget {
           Expanded(
             child: FolderList(
               accent: accent,
+              sections: sections,
               selectedIndex: selectedIndex,
               onSelected: onSelected,
             ),
@@ -836,27 +882,29 @@ class FolderList extends StatelessWidget {
   const FolderList({
     super.key,
     required this.accent,
+    required this.sections,
     required this.selectedIndex,
     required this.onSelected,
   });
 
   final Color accent;
+  final List<FolderSection> sections;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
   @override
   Widget build(BuildContext context) {
     final settings = context.tidingsSettings;
-    final sections = settings.showFolderLabels
-        ? _folderSections
-        : _folderSections
-            .where((section) => section.title != 'Labels')
+    final visibleSections = settings.showFolderLabels
+        ? sections
+        : sections
+            .where((section) => section.kind != FolderSectionKind.labels)
             .toList();
 
     return ListView.builder(
-      itemCount: sections.length,
+      itemCount: visibleSections.length,
       itemBuilder: (context, sectionIndex) {
-        final section = sections[sectionIndex];
+        final section = visibleSections[sectionIndex];
         return _FolderSection(
           section: section,
           accent: accent,
@@ -871,11 +919,13 @@ class FolderList extends StatelessWidget {
 class _FolderSheet extends StatelessWidget {
   const _FolderSheet({
     required this.accent,
+    required this.sections,
     required this.selectedFolderIndex,
     required this.onFolderSelected,
   });
 
   final Color accent;
+  final List<FolderSection> sections;
   final int selectedFolderIndex;
   final ValueChanged<int> onFolderSelected;
 
@@ -895,6 +945,7 @@ class _FolderSheet extends StatelessWidget {
               Expanded(
                 child: FolderList(
                   accent: accent,
+                  sections: sections,
                   selectedIndex: selectedFolderIndex,
                   onSelected: (index) {
                     onFolderSelected(index);
@@ -1051,6 +1102,7 @@ class _SidebarRail extends StatelessWidget {
   const _SidebarRail({
     required this.account,
     required this.accent,
+    required this.mailboxItems,
     required this.selectedIndex,
     required this.onSelected,
     required this.onExpand,
@@ -1060,6 +1112,7 @@ class _SidebarRail extends StatelessWidget {
 
   final EmailAccount account;
   final Color accent;
+  final List<FolderItem> mailboxItems;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
   final VoidCallback onExpand;
@@ -1068,6 +1121,7 @@ class _SidebarRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final items = mailboxItems.isEmpty ? _fallbackRailItems : mailboxItems;
     return GlassPanel(
       borderRadius: BorderRadius.circular(context.radius(22)),
       padding: EdgeInsets.symmetric(
@@ -1088,34 +1142,14 @@ class _SidebarRail extends StatelessWidget {
             ),
           ),
           SizedBox(height: context.space(16)),
-          _RailIconButton(
-            icon: Icons.inbox_rounded,
-            selected: selectedIndex == 0,
-            accent: accent,
-            onTap: () => onSelected(0),
-            label: 'Inbox',
-          ),
-          _RailIconButton(
-            icon: Icons.archive_rounded,
-            selected: selectedIndex == 1,
-            accent: accent,
-            onTap: () => onSelected(1),
-            label: 'Archive',
-          ),
-          _RailIconButton(
-            icon: Icons.drafts_rounded,
-            selected: selectedIndex == 2,
-            accent: accent,
-            onTap: () => onSelected(2),
-            label: 'Drafts',
-          ),
-          _RailIconButton(
-            icon: Icons.send_rounded,
-            selected: selectedIndex == 3,
-            accent: accent,
-            onTap: () => onSelected(3),
-            label: 'Sent',
-          ),
+          for (final item in items.take(4))
+            _RailIconButton(
+              icon: item.icon ?? Icons.mail_outline_rounded,
+              selected: selectedIndex == item.index,
+              accent: accent,
+              onTap: () => onSelected(item.index),
+              label: item.name,
+            ),
           const Spacer(),
           IconButton(
             onPressed: onSettingsTap,
@@ -1158,82 +1192,6 @@ class _RailIconButton extends StatelessWidget {
     );
   }
 }
-
-class FolderSection {
-  const FolderSection({
-    required this.title,
-    required this.items,
-  });
-
-  final String title;
-  final List<FolderItem> items;
-}
-
-class FolderItem {
-  const FolderItem({
-    required this.index,
-    required this.name,
-    this.depth = 0,
-    this.unreadCount = 0,
-    this.icon,
-  });
-
-  final int index;
-  final String name;
-  final int depth;
-  final int unreadCount;
-  final IconData? icon;
-}
-
-const List<FolderSection> _folderSections = [
-  FolderSection(
-    title: 'Mailboxes',
-    items: [
-      FolderItem(
-        index: 0,
-        name: 'Inbox',
-        unreadCount: 12,
-        icon: Icons.inbox_rounded,
-      ),
-      FolderItem(
-        index: 1,
-        name: 'Archive',
-        unreadCount: 0,
-        icon: Icons.archive_rounded,
-      ),
-      FolderItem(
-        index: 2,
-        name: 'Drafts',
-        unreadCount: 3,
-        icon: Icons.drafts_rounded,
-      ),
-      FolderItem(
-        index: 3,
-        name: 'Sent',
-        unreadCount: 0,
-        icon: Icons.send_rounded,
-      ),
-    ],
-  ),
-  FolderSection(
-    title: 'Folders',
-    items: [
-      FolderItem(index: 4, name: 'Product', unreadCount: 6),
-      FolderItem(index: 5, name: 'Launch notes', depth: 1, unreadCount: 2),
-      FolderItem(index: 6, name: 'Hiring', unreadCount: 1),
-      FolderItem(index: 7, name: 'Press', unreadCount: 0),
-      FolderItem(index: 8, name: 'Receipts', unreadCount: 0),
-    ],
-  ),
-  FolderSection(
-    title: 'Labels',
-    items: [
-      FolderItem(index: 9, name: 'VIP', unreadCount: 4),
-      FolderItem(index: 10, name: 'Later', unreadCount: 1),
-      FolderItem(index: 11, name: 'Follow up', unreadCount: 2),
-    ],
-  ),
-];
 
 class CurrentThreadPanel extends StatelessWidget {
   const CurrentThreadPanel({
@@ -1348,6 +1306,7 @@ class _CompactHeader extends StatelessWidget {
   const _CompactHeader({
     required this.account,
     required this.accent,
+    required this.sections,
     required this.selectedFolderIndex,
     required this.onFolderSelected,
     required this.onAccountTap,
@@ -1355,6 +1314,7 @@ class _CompactHeader extends StatelessWidget {
 
   final EmailAccount account;
   final Color accent;
+  final List<FolderSection> sections;
   final int selectedFolderIndex;
   final ValueChanged<int> onFolderSelected;
   final VoidCallback onAccountTap;
@@ -1393,6 +1353,7 @@ class _CompactHeader extends StatelessWidget {
           onPressed: () => _showFolderSheet(
             context,
             accent: accent,
+            sections: sections,
             selectedFolderIndex: selectedFolderIndex,
             onFolderSelected: onFolderSelected,
           ),
@@ -1710,26 +1671,43 @@ class _MessageCardState extends State<MessageCard> {
               curve: Curves.easeOutCubic,
               alignment: Alignment.topLeft,
               child: _expanded && widget.message.bodyHtml != null
-                  ? Html(
-                      data: widget.message.bodyHtml,
-                      onLinkTap: (url, _, __) => _handleLinkTap(url),
-                      style: {
-                        'body': Style(
-                          margin: Margins.zero,
-                          padding: HtmlPaddings.zero,
-                          fontSize: FontSize(
-                            Theme.of(context).textTheme.bodyLarge?.fontSize ??
-                                14,
+                  ? LayoutBuilder(
+                      builder: (context, constraints) {
+                        final boundedWidth = constraints.maxWidth.isFinite;
+                        return ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minWidth: boundedWidth ? constraints.maxWidth : 0,
+                            maxWidth: boundedWidth
+                                ? constraints.maxWidth
+                                : double.infinity,
                           ),
-                          fontWeight: Theme.of(
-                            context,
-                          ).textTheme.bodyLarge?.fontWeight,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                        'p': Style(margin: Margins.only(bottom: 8)),
-                        'a': Style(
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
+                          child: Html(
+                            data: widget.message.bodyHtml,
+                            shrinkWrap: true,
+                            onLinkTap: (url, _, __) => _handleLinkTap(url),
+                            style: {
+                              'body': Style(
+                                margin: Margins.zero,
+                                padding: HtmlPaddings.zero,
+                                fontSize: FontSize(
+                                  Theme.of(context)
+                                          .textTheme
+                                          .bodyLarge
+                                          ?.fontSize ??
+                                      14,
+                                ),
+                                fontWeight: Theme.of(
+                                  context,
+                                ).textTheme.bodyLarge?.fontWeight,
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                              'p': Style(margin: Margins.only(bottom: 8)),
+                              'a': Style(
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            },
+                          ),
+                        );
                       },
                     )
                   : Text(
@@ -2567,6 +2545,7 @@ class _NavItem {
 void _showFolderSheet(
   BuildContext context, {
   required Color accent,
+  required List<FolderSection> sections,
   required int selectedFolderIndex,
   required ValueChanged<int> onFolderSelected,
 }) {
@@ -2576,6 +2555,7 @@ void _showFolderSheet(
     backgroundColor: Colors.transparent,
     builder: (_) => _FolderSheet(
       accent: accent,
+      sections: sections,
       selectedFolderIndex: selectedFolderIndex,
       onFolderSelected: onFolderSelected,
     ),

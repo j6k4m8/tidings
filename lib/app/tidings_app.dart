@@ -17,6 +17,7 @@ class TidingsApp extends StatefulWidget {
 class _TidingsAppState extends State<TidingsApp> {
   late final TidingsSettings _settings = TidingsSettings();
   late final AppState _appState = AppState();
+  late final Future<void> _initFuture = _appState.initialize();
 
   @override
   void dispose() {
@@ -29,38 +30,45 @@ class _TidingsAppState extends State<TidingsApp> {
   Widget build(BuildContext context) {
     return TidingsSettingsScope(
       settings: _settings,
-      child: AnimatedBuilder(
-        animation: Listenable.merge([_settings, _appState]),
-        builder: (context, _) {
-          final account = _appState.selectedAccount;
-          final accent = account == null
-              ? TidingsTheme.defaultAccent
-              : accentFromAccount(account.id);
-          return MaterialApp(
-            title: 'Tidings',
-            debugShowCheckedModeBanner: false,
-            themeMode: _settings.themeMode,
-            theme: TidingsTheme.lightTheme(
-              accentColor: accent,
-              paletteSource: _settings.paletteSource,
-              cornerRadiusScale: _settings.cornerRadiusScale,
-              fontScale: 1.0,
-            ),
-            darkTheme: TidingsTheme.darkTheme(
-              accentColor: accent,
-              paletteSource: _settings.paletteSource,
-              cornerRadiusScale: _settings.cornerRadiusScale,
-              fontScale: 1.0,
-            ),
-            home: _appState.hasAccounts
-                ? HomeScreen(
-                    appState: _appState,
-                    accent: accent,
-                  )
-                : OnboardingScreen(
-                    appState: _appState,
-                    accent: accent,
-                  ),
+      child: FutureBuilder<void>(
+        future: _initFuture,
+        builder: (context, snapshot) {
+          return AnimatedBuilder(
+            animation: Listenable.merge([_settings, _appState]),
+            builder: (context, _) {
+              final account = _appState.selectedAccount;
+              final accent = account == null
+                  ? TidingsTheme.defaultAccent
+                  : accentFromAccount(account.id);
+              return MaterialApp(
+                title: 'Tidings',
+                debugShowCheckedModeBanner: false,
+                themeMode: _settings.themeMode,
+                theme: TidingsTheme.lightTheme(
+                  accentColor: accent,
+                  paletteSource: _settings.paletteSource,
+                  cornerRadiusScale: _settings.cornerRadiusScale,
+                  fontScale: 1.0,
+                ),
+                darkTheme: TidingsTheme.darkTheme(
+                  accentColor: accent,
+                  paletteSource: _settings.paletteSource,
+                  cornerRadiusScale: _settings.cornerRadiusScale,
+                  fontScale: 1.0,
+                ),
+                home: snapshot.connectionState != ConnectionState.done
+                    ? const Scaffold(body: SizedBox.shrink())
+                    : _appState.hasAccounts
+                        ? HomeScreen(
+                            appState: _appState,
+                            accent: accent,
+                          )
+                        : OnboardingScreen(
+                            appState: _appState,
+                            accent: accent,
+                          ),
+              );
+            },
           );
         },
       ),

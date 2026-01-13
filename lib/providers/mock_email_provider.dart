@@ -1,4 +1,7 @@
+import 'package:flutter/material.dart';
+
 import '../models/email_models.dart';
+import '../models/folder_models.dart';
 import 'email_provider.dart';
 
 class MockEmailProvider extends EmailProvider {
@@ -45,6 +48,9 @@ class MockEmailProvider extends EmailProvider {
     }
     return messages.last;
   }
+
+  @override
+  List<FolderSection> get folderSections => _folderSections;
 
   static const EmailAddress _you = EmailAddress(
     name: 'You',
@@ -233,4 +239,102 @@ class MockEmailProvider extends EmailProvider {
       ),
     ],
   };
+
+  static const List<FolderSection> _folderSections = [
+    FolderSection(
+      title: 'Mailboxes',
+      kind: FolderSectionKind.mailboxes,
+      items: [
+        FolderItem(
+          index: 0,
+          name: 'Inbox',
+          path: 'INBOX',
+          unreadCount: 12,
+          icon: Icons.inbox_rounded,
+        ),
+        FolderItem(
+          index: 1,
+          name: 'Archive',
+          path: 'Archive',
+          unreadCount: 0,
+          icon: Icons.archive_rounded,
+        ),
+        FolderItem(
+          index: 2,
+          name: 'Drafts',
+          path: 'Drafts',
+          unreadCount: 3,
+          icon: Icons.drafts_rounded,
+        ),
+        FolderItem(
+          index: 3,
+          name: 'Sent',
+          path: 'Sent',
+          unreadCount: 0,
+          icon: Icons.send_rounded,
+        ),
+      ],
+    ),
+    FolderSection(
+      title: 'Folders',
+      kind: FolderSectionKind.folders,
+      items: [
+        FolderItem(
+          index: 4,
+          name: 'Product',
+          path: 'Product',
+          unreadCount: 6,
+        ),
+        FolderItem(
+          index: 5,
+          name: 'Launch notes',
+          path: 'Product/Launch notes',
+          depth: 1,
+          unreadCount: 2,
+        ),
+        FolderItem(
+          index: 6,
+          name: 'Hiring',
+          path: 'Hiring',
+          unreadCount: 1,
+        ),
+        FolderItem(
+          index: 7,
+          name: 'Press',
+          path: 'Press',
+          unreadCount: 0,
+        ),
+        FolderItem(
+          index: 8,
+          name: 'Receipts',
+          path: 'Receipts',
+          unreadCount: 0,
+        ),
+      ],
+    ),
+    FolderSection(
+      title: 'Labels',
+      kind: FolderSectionKind.labels,
+      items: [
+        FolderItem(
+          index: 9,
+          name: 'VIP',
+          path: 'Label/VIP',
+          unreadCount: 4,
+        ),
+        FolderItem(
+          index: 10,
+          name: 'Later',
+          path: 'Label/Later',
+          unreadCount: 1,
+        ),
+        FolderItem(
+          index: 11,
+          name: 'Follow up',
+          path: 'Label/Follow up',
+          unreadCount: 2,
+        ),
+      ],
+    ),
+  ];
 }

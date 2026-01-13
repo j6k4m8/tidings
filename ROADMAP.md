@@ -7,6 +7,7 @@
 -   [x] mobile: header (subject) is white on white. get rid of header and just put a back button on mobile in front of the subject in the thread box card title.
 -   [ ] corner radius setting in settings, do the same thing as margins selector where it wraps to the next line if the screen is too narrow
 -   [ ] hover/pressed states for thread tiles to feel more tactile
+-   [ ] in message lists show time if today, else show date + time.
 
 ## Product Definition
 
@@ -16,8 +17,8 @@
 
 ## Backend Representation (Server-First + Optional Local Files)
 
--   [ ] Start with a mock provider as the MVP source of truth while online; never finalize state locally without server ack.
--   [ ] Add IMAP provider after mock; keep server-first invariant unchanged.
+-   [x] Start with a mock provider as the MVP source of truth while online; never finalize state locally without server ack.
+-   [x] Add IMAP provider after mock; keep server-first invariant unchanged.
 -   [ ] Add Gmail provider after IMAP (OAuth + Gmail API as needed), still server-first.
 -   [ ] Choose local on-disk format for optional filesystem storage:
     -   [ ] Use Maildir (RFC 5322 raw message per file) with a metadata sidecar for UID/flags/account mapping; rationale: standard, CLI-editable, one-file-per-message, safe for concurrent updates.

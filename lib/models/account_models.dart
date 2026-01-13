@@ -20,6 +20,40 @@ class ImapAccountConfig {
   final String username;
   final String password;
   final bool useTls;
+
+  Map<String, Object?> toStorageJson() {
+    return {
+      'server': server,
+      'port': port,
+      'username': username,
+      'useTls': useTls,
+    };
+  }
+
+  ImapAccountConfig copyWith({
+    String? password,
+  }) {
+    return ImapAccountConfig(
+      server: server,
+      port: port,
+      username: username,
+      password: password ?? this.password,
+      useTls: useTls,
+    );
+  }
+
+  static ImapAccountConfig fromStorageJson(
+    Map<String, Object?> json, {
+    required String password,
+  }) {
+    return ImapAccountConfig(
+      server: json['server'] as String? ?? '',
+      port: (json['port'] as num?)?.toInt() ?? 993,
+      username: json['username'] as String? ?? '',
+      password: password,
+      useTls: json['useTls'] as bool? ?? true,
+    );
+  }
 }
 
 @immutable
@@ -37,4 +71,30 @@ class EmailAccount {
   final String email;
   final EmailProviderType providerType;
   final ImapAccountConfig? imapConfig;
+
+  Map<String, Object?> toStorageJson() {
+    return {
+      'id': id,
+      'displayName': displayName,
+      'email': email,
+      'providerType': providerType.name,
+      'imapConfig': imapConfig?.toStorageJson(),
+    };
+  }
+
+  static EmailAccount fromStorageJson(
+    Map<String, Object?> json, {
+    ImapAccountConfig? imapConfig,
+  }) {
+    return EmailAccount(
+      id: json['id'] as String? ?? '',
+      displayName: json['displayName'] as String? ?? '',
+      email: json['email'] as String? ?? '',
+      providerType: EmailProviderType.values.firstWhere(
+        (type) => type.name == json['providerType'],
+        orElse: () => EmailProviderType.mock,
+      ),
+      imapConfig: imapConfig,
+    );
+  }
 }

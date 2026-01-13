@@ -64,6 +64,9 @@ class EmailMessage {
     required this.isUnread,
     this.bodyText,
     this.bodyHtml,
+    this.receivedAt,
+    this.messageId,
+    this.inReplyTo,
   });
 
   final String id;
@@ -76,6 +79,9 @@ class EmailMessage {
   final bool isUnread;
   final String? bodyText;
   final String? bodyHtml;
+  final DateTime? receivedAt;
+  final String? messageId;
+  final String? inReplyTo;
 
   String get toSummary {
     return to.map((recipient) => recipient.displayName).join(', ');

@@ -1,7 +1,9 @@
 import 'package:enough_mail/enough_mail.dart';
+import 'package:flutter/material.dart';
 
 import '../models/account_models.dart';
 import '../models/email_models.dart';
+import '../models/folder_models.dart';
 import 'email_provider.dart';
 
 class ImapEmailProvider extends EmailProvider {
@@ -15,9 +17,12 @@ class ImapEmailProvider extends EmailProvider {
 
   final List<EmailThread> _threads = [];
   final Map<String, List<EmailMessage>> _messages = {};
+  final List<FolderSection> _folderSections = [];
   ProviderStatus _status = ProviderStatus.idle;
   String? _errorMessage;
   ImapClient? _client;
+  final Map<String, String> _messageIdToThreadId = {};
+  final Map<String, String> _subjectThreadId = {};
 
   @override
   ProviderStatus get status => _status;
@@ -27,6 +32,9 @@ class ImapEmailProvider extends EmailProvider {
 
   @override
   List<EmailThread> get threads => List.unmodifiable(_threads);
+
+  @override
+  List<FolderSection> get folderSections => List.unmodifiable(_folderSections);
 
   @override
   Future<void> initialize() async {
@@ -44,6 +52,7 @@ class ImapEmailProvider extends EmailProvider {
         isSecure: config.useTls,
       );
       await _client!.login(config.username, config.password);
+      await _loadFolders();
       await _loadInbox();
       _status = ProviderStatus.ready;
       notifyListeners();
@@ -63,6 +72,7 @@ class ImapEmailProvider extends EmailProvider {
     _errorMessage = null;
     notifyListeners();
     try {
+      await _loadFolders();
       await _loadInbox();
       _status = ProviderStatus.ready;
       notifyListeners();
@@ -113,6 +123,8 @@ class ImapEmailProvider extends EmailProvider {
         continue;
       }
       final subject = envelope.subject ?? '(No subject)';
+      final messageId = envelope.messageId;
+      final inReplyTo = envelope.inReplyTo;
       final fromAddress = envelope.from?.isNotEmpty == true
           ? envelope.from!.first
           : null;
@@ -135,7 +147,11 @@ class ImapEmailProvider extends EmailProvider {
           : _formatTime(timestamp);
       final isUnread =
           !(message.flags?.contains(MessageFlags.seen) ?? false);
-      final threadId = _threadIdFromSubject(subject);
+      final threadId = _resolveThreadId(
+        subject: subject,
+        messageId: messageId,
+        inReplyTo: inReplyTo,
+      );
       final bodyText = message.decodeTextPlainPart();
       final bodyHtml = message.decodeTextHtmlPart();
       final messageModel = EmailMessage(
@@ -149,6 +165,9 @@ class ImapEmailProvider extends EmailProvider {
         bodyHtml: bodyHtml,
         isMe: from.email == email,
         isUnread: isUnread,
+        receivedAt: timestamp,
+        messageId: messageId,
+        inReplyTo: inReplyTo,
       );
       _messages.putIfAbsent(threadId, () => []).add(messageModel);
     }
@@ -158,6 +177,11 @@ class ImapEmailProvider extends EmailProvider {
       if (messages.isEmpty) {
         continue;
       }
+      messages.sort((a, b) {
+        final aTime = a.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime = b.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return aTime.compareTo(bTime);
+      });
       final latest = messages.last;
       final participants = {
         latest.from,
@@ -178,9 +202,135 @@ class ImapEmailProvider extends EmailProvider {
     _threads.sort((a, b) => b.time.compareTo(a.time));
   }
 
-  String _threadIdFromSubject(String subject) {
-    final normalized = subject.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
-    return 'imap-${normalized.hashCode}';
+  Future<void> _loadFolders() async {
+    final client = _client;
+    if (client == null) {
+      throw StateError('IMAP client not connected.');
+    }
+    final boxes = await client.listMailboxes(recursive: true);
+    _folderSections.clear();
+    final mailboxItems = <FolderItem>[];
+    final folderItems = <FolderItem>[];
+    var index = 0;
+
+    for (final box in boxes) {
+      if (box.flags.contains(MailboxFlag.noSelect)) {
+        continue;
+      }
+      final status = await client.statusMailbox(
+        box,
+        [StatusFlags.unseen],
+      );
+      final unread = status.messagesUnseen;
+      final depth = _pathDepth(box.path, box.pathSeparator);
+      final item = FolderItem(
+        index: index++,
+        name: box.name,
+        path: box.path,
+        depth: depth,
+        unreadCount: unread,
+        icon: _iconForMailbox(box.flags),
+      );
+      if (_isSystemMailbox(box.flags)) {
+        mailboxItems.add(item);
+      } else {
+        folderItems.add(item);
+      }
+    }
+
+    mailboxItems.sort((a, b) => a.name.compareTo(b.name));
+    folderItems.sort((a, b) => a.name.compareTo(b.name));
+
+    _folderSections.add(
+      FolderSection(
+        title: 'Mailboxes',
+        kind: FolderSectionKind.mailboxes,
+        items: mailboxItems,
+      ),
+    );
+    if (folderItems.isNotEmpty) {
+      _folderSections.add(
+        FolderSection(
+          title: 'Folders',
+          kind: FolderSectionKind.folders,
+          items: folderItems,
+        ),
+      );
+    }
+  }
+
+  int _pathDepth(String path, String separator) {
+    if (separator.isEmpty) {
+      return 0;
+    }
+    return path.split(separator).length - 1;
+  }
+
+  bool _isSystemMailbox(List<MailboxFlag> flags) {
+    return flags.any(
+      (flag) =>
+          flag == MailboxFlag.inbox ||
+          flag == MailboxFlag.sent ||
+          flag == MailboxFlag.drafts ||
+          flag == MailboxFlag.archive ||
+          flag == MailboxFlag.trash ||
+          flag == MailboxFlag.junk,
+    );
+  }
+
+  IconData? _iconForMailbox(List<MailboxFlag> flags) {
+    if (flags.contains(MailboxFlag.inbox)) {
+      return Icons.inbox_rounded;
+    }
+    if (flags.contains(MailboxFlag.sent)) {
+      return Icons.send_rounded;
+    }
+    if (flags.contains(MailboxFlag.drafts)) {
+      return Icons.drafts_rounded;
+    }
+    if (flags.contains(MailboxFlag.archive)) {
+      return Icons.archive_rounded;
+    }
+    if (flags.contains(MailboxFlag.trash)) {
+      return Icons.delete_rounded;
+    }
+    if (flags.contains(MailboxFlag.junk)) {
+      return Icons.report_gmailerrorred_rounded;
+    }
+    return null;
+  }
+
+  String _resolveThreadId({
+    required String subject,
+    String? messageId,
+    String? inReplyTo,
+  }) {
+    if (inReplyTo != null && inReplyTo.isNotEmpty) {
+      return _messageIdToThreadId[inReplyTo] ?? inReplyTo;
+    }
+    if (messageId != null && messageId.isNotEmpty) {
+      final existing = _messageIdToThreadId[messageId];
+      if (existing != null) {
+        return existing;
+      }
+      _messageIdToThreadId[messageId] = messageId;
+      return messageId;
+    }
+    final normalized = _normalizeSubject(subject);
+    final existing = _subjectThreadId[normalized];
+    if (existing != null) {
+      return existing;
+    }
+    final id = 'imap-${normalized.hashCode}';
+    _subjectThreadId[normalized] = id;
+    return id;
+  }
+
+  String _normalizeSubject(String subject) {
+    var value = subject.toLowerCase().trim();
+    value = value.replaceAll(RegExp(r'^(re|fwd|fw):\\s*'), '');
+    value = value.replaceAll(RegExp(r'\\s+'), ' ').trim();
+    return value;
   }
 
   String _formatTime(DateTime time) {
