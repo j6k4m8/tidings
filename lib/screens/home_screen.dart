@@ -14,6 +14,7 @@ import '../theme/glass.dart';
 import '../theme/account_accent.dart';
 import '../theme/theme_palette.dart';
 import '../widgets/accent_switch.dart';
+import '../widgets/account/account_avatar.dart';
 import '../widgets/accent/accent_presets.dart';
 import '../widgets/accent/accent_swatch.dart';
 import '../widgets/glass/glass_action_button.dart';
@@ -761,20 +762,10 @@ class SidebarPanel extends StatelessWidget {
                   onTap: onAccountTap,
                   child: Row(
                     children: [
-                      Container(
-                        padding: EdgeInsets.all(context.space(4)),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: accent, width: 2),
-                        ),
-                        child: CircleAvatar(
-                          radius: context.space(18),
-                          backgroundColor: accent.withValues(alpha: 0.2),
-                          child: Text(
-                            account.displayName.substring(0, 1).toUpperCase(),
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                        ),
+                      AccountAvatar(
+                        name: account.displayName,
+                        accent: accent,
+                        showRing: true,
                       ),
                       SizedBox(width: context.space(10)),
                       Expanded(
@@ -1094,16 +1085,10 @@ class _SidebarRail extends StatelessWidget {
       variant: GlassVariant.panel,
       child: Column(
         children: [
-          CircleAvatar(
-            radius: context.space(18),
-            backgroundColor: accent.withValues(alpha: 0.2),
-            child: GestureDetector(
-              onTap: onAccountTap,
-              child: Text(
-                account.displayName.substring(0, 1).toUpperCase(),
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-            ),
+          AccountAvatar(
+            name: account.displayName,
+            accent: accent,
+            onTap: onAccountTap,
           ),
           SizedBox(height: context.space(16)),
           for (final item in items.take(4))
@@ -1182,13 +1167,9 @@ class _CompactHeader extends StatelessWidget {
           borderRadius: BorderRadius.circular(context.radius(18)),
           padding: EdgeInsets.all(context.space(6)),
           variant: GlassVariant.pill,
-          child: CircleAvatar(
-            radius: context.space(18),
-            backgroundColor: accent.withValues(alpha: 0.2),
-            child: Text(
-              account.displayName.substring(0, 1).toUpperCase(),
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+          child: AccountAvatar(
+            name: account.displayName,
+            accent: accent,
           ),
         ),
         SizedBox(width: context.space(12)),

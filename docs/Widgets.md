@@ -6,6 +6,7 @@ This is the catalog of reusable UI widgets in Tidings.
 
 -   `AccentSwatch`: Small labeled color swatch with selection ring.
 -   `AccentSwitch`: Accent-colored toggle switch.
+-   `AccountAvatar`: Account initial inside a themed avatar bubble.
 
 ## Forms
 
