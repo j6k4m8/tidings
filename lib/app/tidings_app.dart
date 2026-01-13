@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 
 import '../screens/home_screen.dart';
 import '../screens/onboarding_screen.dart';
@@ -51,6 +53,13 @@ class _TidingsAppState extends State<TidingsApp> {
               return MaterialApp(
                 title: 'Tidings',
                 debugShowCheckedModeBanner: false,
+                localizationsDelegates: const [
+                  FlutterQuillLocalizations.delegate,
+                  GlobalMaterialLocalizations.delegate,
+                  GlobalWidgetsLocalizations.delegate,
+                  GlobalCupertinoLocalizations.delegate,
+                ],
+                supportedLocales: FlutterQuillLocalizations.supportedLocales,
                 themeMode: _settings.themeMode,
                 theme: TidingsTheme.lightTheme(
                   accentColor: resolveAccent(baseAccent, Brightness.light),

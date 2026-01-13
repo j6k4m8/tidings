@@ -30,7 +30,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   enough_mail: ^2.1.6
+  flutter_quill: ^11.5.0
+  dart_quill_delta: ^10.8.3
   flutter_html: ^3.0.0
   shared_preferences: ^2.3.2
   url_launcher: ^6.3.0

@@ -107,7 +107,11 @@ class MockEmailProvider extends EmailProvider {
     email: 'sasha@tidings.dev',
   );
 
-  static final List<EmailThread> _threads = _buildThreads();
+  final List<EmailThread> _threads = _buildThreads();
+  final Map<String, List<EmailMessage>> _messages = _buildMessages();
+  final Map<String, String> _threadFolders = Map<String, String>.from(
+    _seedThreadFolders,
+  );
 
   static List<EmailThread> _buildThreads() {
     final now = DateTime.now();
@@ -160,7 +164,7 @@ class MockEmailProvider extends EmailProvider {
     ];
   }
 
-  static const Map<String, String> _threadFolders = {
+  static const Map<String, String> _seedThreadFolders = {
     'thread-01': 'INBOX',
     'thread-02': 'INBOX',
     'thread-03': 'Press',
@@ -168,7 +172,7 @@ class MockEmailProvider extends EmailProvider {
     'thread-05': 'Product/Launch notes',
   };
 
-  static const Map<String, List<EmailMessage>> _messages = {
+  static const Map<String, List<EmailMessage>> _seedMessages = {
     'thread-01': [
       EmailMessage(
         id: 'msg-01-1',
@@ -381,4 +385,111 @@ class MockEmailProvider extends EmailProvider {
       ],
     ),
   ];
+
+  static Map<String, List<EmailMessage>> _buildMessages() {
+    final map = <String, List<EmailMessage>>{};
+    for (final entry in _seedMessages.entries) {
+      map[entry.key] = List<EmailMessage>.from(entry.value);
+    }
+    return map;
+  }
+
+  Future<void> sendMessage({
+    required EmailThread? thread,
+    required String toLine,
+    required String subject,
+    required String bodyHtml,
+    required String bodyText,
+  }) async {
+    final now = DateTime.now();
+    final timeLabel = _formatTime(now);
+    final recipients = _parseRecipients(toLine);
+    if (thread == null) {
+      final threadId = 'thread-${now.microsecondsSinceEpoch}';
+      final newThread = EmailThread(
+        id: threadId,
+        subject: subject,
+        participants: [_you, ...recipients],
+        time: timeLabel,
+        unread: false,
+        starred: false,
+        receivedAt: now,
+      );
+      _threads.insert(0, newThread);
+      _threadFolders[threadId] = _selectedFolderPath;
+      _messages[threadId] = [
+        EmailMessage(
+          id: 'msg-${now.microsecondsSinceEpoch}',
+          threadId: threadId,
+          subject: subject,
+          from: _you,
+          to: recipients,
+          time: timeLabel,
+          bodyText: bodyText,
+          bodyHtml: bodyHtml,
+          isMe: true,
+          isUnread: false,
+          receivedAt: now,
+        ),
+      ];
+      notifyListeners();
+      return;
+    }
+
+    final list = _messages.putIfAbsent(thread.id, () => []);
+    list.add(
+      EmailMessage(
+        id: 'msg-${now.microsecondsSinceEpoch}',
+        threadId: thread.id,
+        subject: subject,
+        from: _you,
+        to: recipients,
+        time: timeLabel,
+        bodyText: bodyText,
+        bodyHtml: bodyHtml,
+        isMe: true,
+        isUnread: false,
+        receivedAt: now,
+      ),
+    );
+    final threadIndex = _threads.indexWhere((item) => item.id == thread.id);
+    if (threadIndex != -1) {
+      _threads[threadIndex] = EmailThread(
+        id: thread.id,
+        subject: subject,
+        participants: thread.participants,
+        time: timeLabel,
+        unread: thread.unread,
+        starred: thread.starred,
+        receivedAt: now,
+      );
+    }
+    notifyListeners();
+  }
+
+  List<EmailAddress> _parseRecipients(String raw) {
+    final parts = raw
+        .split(RegExp(r'[;,]'))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) {
+      return const [_you];
+    }
+    return parts
+        .map((email) => EmailAddress(name: email, email: email))
+        .toList();
+  }
+
+  String _formatTime(DateTime timestamp) {
+    var hour = timestamp.hour;
+    final minute = timestamp.minute;
+    final suffix = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12;
+    if (hour == 0) {
+      hour = 12;
+    }
+    final minuteLabel = minute.toString().padLeft(2, '0');
+    return '$hour:$minuteLabel $suffix';
+  }
 }

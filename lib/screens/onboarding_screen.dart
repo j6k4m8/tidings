@@ -136,13 +136,34 @@ void showAccountSetupSheet(
   required AppState appState,
   required Color accent,
 }) {
-  showModalBottomSheet<void>(
+  final isCompact = MediaQuery.of(context).size.width < 720;
+  if (isCompact) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AccountSetupSheet(
+        appState: appState,
+        accent: accent,
+        isSheet: true,
+      ),
+    );
+    return;
+  }
+  showDialog<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => _AccountSetupSheet(
-      appState: appState,
-      accent: accent,
+    barrierColor: Colors.black.withValues(alpha: 0.45),
+    builder: (_) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: _AccountSetupSheet(
+          appState: appState,
+          accent: accent,
+          isSheet: false,
+        ),
+      ),
     ),
   );
 }
@@ -227,10 +248,12 @@ class _AccountSetupSheet extends StatefulWidget {
   const _AccountSetupSheet({
     required this.appState,
     required this.accent,
+    required this.isSheet,
   });
 
   final AppState appState;
   final Color accent;
+  final bool isSheet;
 
   @override
   State<_AccountSetupSheet> createState() => _AccountSetupSheetState();
@@ -306,9 +329,13 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final insets = MediaQuery.of(context).viewInsets;
+    final padding = widget.isSheet
+        ? EdgeInsets.fromLTRB(16, 16, 16, 16 + insets.bottom)
+        : EdgeInsets.only(bottom: insets.bottom);
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: padding,
         child: GlassPanel(
           borderRadius: BorderRadius.circular(24),
           padding: const EdgeInsets.all(16),
