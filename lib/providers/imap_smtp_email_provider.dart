@@ -1,6 +1,7 @@
 import 'package:enough_mail/enough_mail.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:mailer/mailer.dart';
+import 'package:mailer/smtp_server.dart';
 
 import '../models/account_models.dart';
 import '../models/email_models.dart';
@@ -8,10 +9,7 @@ import '../models/folder_models.dart';
 import 'email_provider.dart';
 
 class ImapSmtpEmailProvider extends EmailProvider {
-  ImapSmtpEmailProvider({
-    required this.config,
-    required this.email,
-  });
+  ImapSmtpEmailProvider({required this.config, required this.email});
 
   final ImapAccountConfig config;
   final String email;
@@ -132,25 +130,29 @@ class ImapSmtpEmailProvider extends EmailProvider {
     required String bodyHtml,
     required String bodyText,
   }) async {
-    final smtpServer =
-        config.smtpServer.isNotEmpty ? config.smtpServer : config.server;
-    final smtpUsername =
-        config.smtpUseImapCredentials ? config.username : config.smtpUsername;
-    final smtpPassword =
-        config.smtpUseImapCredentials ? config.password : config.smtpPassword;
+    final smtpServer = config.smtpServer.isNotEmpty
+        ? config.smtpServer
+        : config.server;
+    final smtpUsername = config.smtpUseImapCredentials
+        ? config.username
+        : config.smtpUsername;
+    final smtpPassword = config.smtpUseImapCredentials
+        ? config.password
+        : config.smtpPassword;
     final recipients = _parseRecipients(toLine);
     if (recipients.isEmpty) {
       throw StateError('No recipients provided.');
     }
 
     final from = MailAddress(null, email);
-    final builder = MessageBuilder.prepareMultipartAlternativeMessage(
-      plainText: bodyText,
-      htmlText: bodyHtml,
-    )
-      ..from = [from]
-      ..to = recipients
-      ..subject = subject;
+    final builder =
+        MessageBuilder.prepareMultipartAlternativeMessage(
+            plainText: bodyText,
+            htmlText: bodyHtml,
+          )
+          ..from = [from]
+          ..to = recipients
+          ..subject = subject;
 
     final original = _replySource(thread);
     if (original != null) {
@@ -158,13 +160,31 @@ class ImapSmtpEmailProvider extends EmailProvider {
     }
 
     final message = builder.buildMimeMessage();
-    await _sendWithSmtp(
-      server: smtpServer,
+    final smtpServerConfig = SmtpServer(
+      smtpServer,
       port: config.smtpPort,
-      useTls: config.smtpUseTls,
+      ssl: config.smtpPort == 465,
+      allowInsecure: !config.smtpUseTls,
       username: smtpUsername,
       password: smtpPassword,
-      message: message,
+      ignoreBadCertificate: false,
+    );
+    final mailerMessage = Message()
+      ..from = Address(email)
+      ..recipients = recipients.map((recipient) {
+        return Address(recipient.email, recipient.personalName);
+      }).toList()
+      ..subject = subject
+      ..text = bodyText
+      ..html = bodyHtml;
+    final replyHeaders = _replyHeaders(thread);
+    if (replyHeaders.isNotEmpty) {
+      mailerMessage.headers.addAll(replyHeaders);
+    }
+    await _withTimeout(
+      send(mailerMessage, smtpServerConfig),
+      const Duration(seconds: 30),
+      'SMTP send timed out.',
     );
 
     await _withTimeout(
@@ -184,72 +204,33 @@ class ImapSmtpEmailProvider extends EmailProvider {
     Duration timeout,
     String message,
   ) {
-    return future.timeout(timeout, onTimeout: () {
-      throw StateError(message);
-    });
+    return future.timeout(
+      timeout,
+      onTimeout: () {
+        throw StateError(message);
+      },
+    );
   }
 
-  Future<void> _sendWithSmtp({
-    required String server,
-    required int port,
-    required bool useTls,
-    required String username,
-    required String password,
-    required MimeMessage message,
-  }) async {
-    final smtpClient = SmtpClient(
-      _clientDomainFromEmail(email),
-      isLogEnabled: kDebugMode,
-    );
-    try {
-      final useImplicitTls = port == 465;
-      await _withTimeout(
-        smtpClient.connectToServer(
-          server,
-          port,
-          isSecure: useImplicitTls,
-        ),
-        const Duration(seconds: 10),
-        'SMTP connect timed out.',
-      );
-      await _withTimeout(
-        smtpClient.ehlo(),
-        const Duration(seconds: 8),
-        'SMTP EHLO timed out.',
-      );
-      if (useTls && !useImplicitTls) {
-        if (!smtpClient.serverInfo.supportsStartTls) {
-          throw StateError(
-            'SMTP server does not support STARTTLS on $port. '
-            'Try port 465 with TLS enabled.',
-          );
-        }
-        await _withTimeout(
-          smtpClient.startTls(),
-          const Duration(seconds: 30),
-          'SMTP STARTTLS timed out.',
-        );
-      }
-      await _withTimeout(
-        smtpClient.authenticate(username, password),
-        const Duration(seconds: 10),
-        'SMTP authentication timed out.',
-      );
-      await _withTimeout(
-        smtpClient.sendMessage(message),
-        const Duration(seconds: 20),
-        'SMTP send timed out.',
-      );
-    } finally {
-      try {
-        if (smtpClient.isConnected) {
-          if (smtpClient.isLoggedIn) {
-            await smtpClient.quit();
-          }
-          smtpClient.disconnect();
-        }
-      } catch (_) {}
+  Map<String, String> _replyHeaders(EmailThread? thread) {
+    if (thread == null) {
+      return {};
     }
+    final latest = latestMessageForThread(thread.id);
+    if (latest == null || latest.messageId == null) {
+      return {};
+    }
+    final headers = <String, String>{
+      MailConventions.headerInReplyTo: latest.messageId!,
+    };
+    if (latest.inReplyTo != null) {
+      headers[MailConventions.headerInReplyTo] = latest.inReplyTo!;
+      headers[MailConventions.headerReferences] =
+          '${latest.inReplyTo} ${latest.messageId}';
+    } else {
+      headers[MailConventions.headerReferences] = latest.messageId!;
+    }
+    return headers;
   }
 
   Future<void> _loadMailbox(String path) async {
@@ -287,7 +268,8 @@ class ImapSmtpEmailProvider extends EmailProvider {
         name: fromAddress?.personalName ?? 'Unknown',
         email: fromAddress?.email ?? '',
       );
-      final to = envelope.to
+      final to =
+          envelope.to
               ?.map(
                 (recipient) => EmailAddress(
                   name: recipient.personalName ?? '',
@@ -297,11 +279,8 @@ class ImapSmtpEmailProvider extends EmailProvider {
               .toList() ??
           const [];
       final timestamp = envelope.date?.toLocal();
-      final timeLabel = timestamp == null
-          ? ''
-          : _formatTime(timestamp);
-      final isUnread =
-          !(message.flags?.contains(MessageFlags.seen) ?? false);
+      final timeLabel = timestamp == null ? '' : _formatTime(timestamp);
+      final isUnread = !(message.flags?.contains(MessageFlags.seen) ?? false);
       final threadId = _resolveThreadId(
         subject: subject,
         messageId: messageId,
@@ -338,10 +317,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
         return aTime.compareTo(bTime);
       });
       final latest = messages.last;
-      final participants = {
-        latest.from,
-        ...latest.to,
-      }.toList();
+      final participants = {latest.from, ...latest.to}.toList();
       _threads.add(
         EmailThread(
           id: entry.key,
@@ -385,10 +361,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
       if (box.flags.contains(MailboxFlag.drafts)) {
         _draftsMailboxPath ??= box.path;
       }
-      final status = await client.statusMailbox(
-        box,
-        [StatusFlags.unseen],
-      );
+      final status = await client.statusMailbox(box, [StatusFlags.unseen]);
       final unread = status.messagesUnseen;
       final depth = _pathDepth(box.path, box.pathSeparator);
       final item = FolderItem(
@@ -440,17 +413,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
         .map((part) => part.trim())
         .where((part) => part.isNotEmpty)
         .toList();
-    return parts
-        .map((email) => MailAddress(null, email))
-        .toList();
-  }
-
-  String _clientDomainFromEmail(String address) {
-    final atIndex = address.indexOf('@');
-    if (atIndex == -1 || atIndex == address.length - 1) {
-      return 'tidings.dev';
-    }
-    return address.substring(atIndex + 1);
+    return parts.map((email) => MailAddress(null, email)).toList();
   }
 
   MimeMessage? _replySource(EmailThread? thread) {
@@ -473,8 +436,6 @@ class ImapSmtpEmailProvider extends EmailProvider {
     source.addHeader(MailConventions.headerReferences, references);
     return source;
   }
-
-  
 
   Future<void> _appendToSent(MimeMessage message) async {
     final client = _client;

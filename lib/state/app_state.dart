@@ -2,10 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:enough_mail/enough_mail.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:yaml/yaml.dart';
+
+import 'package:enough_mail/enough_mail.dart';
 
 import '../models/account_models.dart';
 import '../providers/email_provider.dart';
@@ -430,76 +431,19 @@ class AppState extends ChangeNotifier {
 
     final smtpServer =
         config.smtpServer.isNotEmpty ? config.smtpServer : config.server;
-    final smtpUsername =
-        config.smtpUseImapCredentials ? config.username : config.smtpUsername;
-    final smtpPassword =
-        config.smtpUseImapCredentials ? config.password : config.smtpPassword;
-    final smtpClient = SmtpClient(
-      _clientDomainFromEmail(account.email),
-      isLogEnabled: kDebugMode,
-    );
     try {
       final step = Stopwatch()..start();
-      final useImplicitTls = config.smtpPort == 465;
-      await smtpClient
-          .connectToServer(
-            smtpServer,
-            config.smtpPort,
-            isSecure: useImplicitTls,
-          )
-          .timeout(const Duration(seconds: 10));
+      final greeting = await _probeSmtpGreeting(
+        host: smtpServer,
+        port: config.smtpPort,
+        useImplicitTls: config.smtpPort == 465,
+      );
       step.stop();
       log.writeln('SMTP connect: ${step.elapsedMilliseconds}ms');
-      step
-        ..reset()
-        ..start();
-      await smtpClient.ehlo().timeout(const Duration(seconds: 8));
-      step.stop();
-      log.writeln(
-        'SMTP EHLO: ${step.elapsedMilliseconds}ms '
-        'caps=${smtpClient.serverInfo.capabilities.join(', ')}',
-      );
-      if (config.smtpUseTls && !useImplicitTls) {
-        if (!smtpClient.serverInfo.supportsStartTls) {
-          total.stop();
-          log.writeln(
-            'SMTP failed: server does not support STARTTLS '
-            'on ${config.smtpPort}.',
-          );
-          log.writeln('Total: ${total.elapsedMilliseconds}ms');
-          return ConnectionTestReport(ok: false, log: log.toString());
-        }
-        step
-          ..reset()
-          ..start();
-        await smtpClient.startTls().timeout(const Duration(seconds: 30));
-        step.stop();
-        log.writeln('SMTP STARTTLS: ${step.elapsedMilliseconds}ms');
-        step
-          ..reset()
-          ..start();
-        await smtpClient.ehlo().timeout(const Duration(seconds: 8));
-        step.stop();
-        log.writeln(
-          'SMTP EHLO (TLS): ${step.elapsedMilliseconds}ms '
-          'auth=${smtpClient.serverInfo.authMechanisms.join(', ')}',
-        );
+      if (greeting.isNotEmpty) {
+        log.writeln('SMTP greeting: $greeting');
       }
-      step
-        ..reset()
-        ..start();
-      await smtpClient
-          .authenticate(smtpUsername, smtpPassword)
-          .timeout(const Duration(seconds: 10));
-      step.stop();
-      log.writeln('SMTP auth: ${step.elapsedMilliseconds}ms');
-      step
-        ..reset()
-        ..start();
-      await smtpClient.quit();
-      step.stop();
       total.stop();
-      log.writeln('SMTP quit: ${step.elapsedMilliseconds}ms');
       log.writeln('Total: ${total.elapsedMilliseconds}ms');
       return ConnectionTestReport(ok: true, log: log.toString());
     } catch (error) {
@@ -507,20 +451,9 @@ class AppState extends ChangeNotifier {
       log.writeln('SMTP failed: $error');
       log.writeln('Total: ${total.elapsedMilliseconds}ms');
       return ConnectionTestReport(ok: false, log: log.toString());
-    } finally {
-      if (smtpClient.isConnected) {
-        smtpClient.disconnect();
-      }
     }
   }
 
-  String _clientDomainFromEmail(String address) {
-    final atIndex = address.indexOf('@');
-    if (atIndex == -1 || atIndex == address.length - 1) {
-      return 'tidings.dev';
-    }
-    return address.substring(atIndex + 1);
-  }
 
   Map<String, Object?> _yamlToMap(YamlMap map) {
     final result = <String, Object?>{};
@@ -617,6 +550,25 @@ class AppState extends ChangeNotifier {
       provider.dispose();
     }
     super.dispose();
+  }
+
+  Future<String> _probeSmtpGreeting({
+    required String host,
+    required int port,
+    required bool useImplicitTls,
+  }) async {
+    Socket? socket;
+    try {
+      socket = useImplicitTls
+          ? await SecureSocket.connect(host, port)
+              .timeout(const Duration(seconds: 10))
+          : await Socket.connect(host, port)
+              .timeout(const Duration(seconds: 10));
+      final data = await socket.first.timeout(const Duration(seconds: 8));
+      return String.fromCharCodes(data).trim();
+    } finally {
+      await socket?.close();
+    }
   }
 }
 
