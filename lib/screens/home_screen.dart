@@ -882,7 +882,7 @@ class SidebarPanel extends StatelessWidget {
                         ),
                         child: CircleAvatar(
                           radius: context.space(18),
-                          backgroundColor: accent.withOpacity(0.2),
+                          backgroundColor: accent.withValues(alpha: 0.2),
                           child: Text(
                             account.displayName.substring(0, 1).toUpperCase(),
                             style: Theme.of(context).textTheme.titleLarge,
@@ -1098,7 +1098,7 @@ class _FolderRow extends StatelessWidget {
         context.tidingsSettings.showFolderUnreadCounts;
     final baseColor = Theme.of(context).colorScheme.onSurface;
     final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: unread ? baseColor : baseColor.withOpacity(0.65),
+          color: unread ? baseColor : baseColor.withValues(alpha: 0.65),
           fontWeight: unread ? FontWeight.w600 : FontWeight.w500,
         );
 
@@ -1114,7 +1114,7 @@ class _FolderRow extends StatelessWidget {
           context.space(7),
         ),
         decoration: BoxDecoration(
-          color: selected ? accent.withOpacity(0.14) : Colors.transparent,
+          color: selected ? accent.withValues(alpha: 0.14) : Colors.transparent,
           borderRadius: BorderRadius.circular(context.radius(12)),
         ),
         child: Row(
@@ -1136,8 +1136,8 @@ class _FolderRow extends StatelessWidget {
                 item.icon,
                 size: 16,
                 color: unread
-                    ? baseColor.withOpacity(0.8)
-                    : baseColor.withOpacity(0.55),
+                    ? baseColor.withValues(alpha: 0.8)
+                    : baseColor.withValues(alpha: 0.55),
               ),
               SizedBox(width: context.space(8)),
             ],
@@ -1156,7 +1156,7 @@ class _FolderRow extends StatelessWidget {
                   vertical: context.space(2),
                 ),
                 decoration: BoxDecoration(
-                  color: accent.withOpacity(0.16),
+                  color: accent.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(context.radius(999)),
                 ),
                 child: Text(
@@ -1209,7 +1209,7 @@ class _SidebarRail extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: context.space(18),
-            backgroundColor: accent.withOpacity(0.2),
+            backgroundColor: accent.withValues(alpha: 0.2),
             child: GestureDetector(
               onTap: onAccountTap,
               child: Text(
@@ -1338,7 +1338,7 @@ class CurrentThreadPanel extends StatelessWidget {
                   emptyMessage: 'No messages in this thread.',
                   child: ListView.separated(
                     itemCount: messages.length,
-                    separatorBuilder: (_, __) =>
+                    separatorBuilder: (_, _) =>
                         SizedBox(height: context.space(12)),
                     itemBuilder: (context, index) {
                       final message = messages[index];
@@ -1393,7 +1393,7 @@ class _CompactHeader extends StatelessWidget {
           variant: GlassVariant.pill,
           child: CircleAvatar(
             radius: context.space(18),
-            backgroundColor: accent.withOpacity(0.2),
+            backgroundColor: accent.withValues(alpha: 0.2),
             child: Text(
               account.displayName.substring(0, 1).toUpperCase(),
               style: Theme.of(context).textTheme.titleLarge,
@@ -1440,8 +1440,8 @@ class _SearchRow extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderRadius = BorderRadius.circular(context.radius(18));
     final borderColor = isDark
-        ? Colors.white.withOpacity(0.16)
-        : Colors.black.withOpacity(0.12);
+        ? Colors.white.withValues(alpha: 0.16)
+        : Colors.black.withValues(alpha: 0.12);
     return TextField(
       decoration: InputDecoration(
         hintText: 'Search threads, people, or labels',
@@ -1456,7 +1456,7 @@ class _SearchRow extends StatelessWidget {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: borderRadius,
-          borderSide: BorderSide(color: accent.withOpacity(0.6), width: 1.2),
+          borderSide: BorderSide(color: accent.withValues(alpha: 0.6), width: 1.2),
         ),
       ),
     );
@@ -1531,29 +1531,29 @@ class _ThreadTileState extends State<ThreadTile> {
     final isUnread = widget.thread.unread || (latestMessage?.isUnread ?? false);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final baseFill = widget.selected
-        ? widget.accent.withOpacity(0.18)
+        ? widget.accent.withValues(alpha: 0.18)
         : isUnread
         ? (isDark
-              ? Colors.white.withOpacity(0.14)
-              : Colors.white.withOpacity(0.7))
+              ? Colors.white.withValues(alpha: 0.14)
+              : Colors.white.withValues(alpha: 0.7))
         : ColorTokens.cardFill(context, 0.04);
     final hoverOverlay = isDark
-        ? Colors.white.withOpacity(_pressed ? 0.1 : 0.06)
-        : Colors.black.withOpacity(_pressed ? 0.08 : 0.04);
+        ? Colors.white.withValues(alpha: _pressed ? 0.1 : 0.06)
+        : Colors.black.withValues(alpha: _pressed ? 0.08 : 0.04);
     final fill = _hovered || _pressed
         ? Color.alphaBlend(hoverOverlay, baseFill)
         : baseFill;
     final border = widget.selected
-        ? widget.accent.withOpacity(0.6)
+        ? widget.accent.withValues(alpha: 0.6)
         : ColorTokens.border(context, 0.12);
     final baseParticipantStyle = Theme.of(context).textTheme.bodySmall
         ?.copyWith(
-          color: scheme.onSurface.withOpacity(isUnread ? 0.75 : 0.6),
+          color: scheme.onSurface.withValues(alpha: isUnread ? 0.75 : 0.6),
           fontWeight: FontWeight.w500,
         );
     final latestSender = latestMessage?.from.email;
     final highlightParticipantStyle = baseParticipantStyle?.copyWith(
-      color: isUnread ? widget.accent : scheme.onSurface.withOpacity(0.9),
+      color: isUnread ? widget.accent : scheme.onSurface.withValues(alpha: 0.9),
       fontWeight: FontWeight.w600,
     );
     final displayTime = _formatThreadTimestamp(
@@ -1655,7 +1655,7 @@ class _ThreadTileState extends State<ThreadTile> {
                                   fontWeight: FontWeight.w600,
                                   color: widget.thread.unread
                                       ? scheme.onSurface
-                                      : scheme.onSurface.withOpacity(0.5),
+                                      : scheme.onSurface.withValues(alpha: 0.5),
                                 ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1675,7 +1675,7 @@ class _ThreadTileState extends State<ThreadTile> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurface.withOpacity(
+                        color: scheme.onSurface.withValues(alpha: 
                           isUnread ? 0.7 : 0.42,
                         ),
                       ),
@@ -1879,7 +1879,7 @@ class _MessageCardState extends State<MessageCard> {
     final scheme = Theme.of(context).colorScheme;
     final showSubject = !context.tidingsSettings.hideThreadSubjects;
     final cardColor = widget.message.isMe
-        ? widget.accent.withOpacity(0.18)
+        ? widget.accent.withValues(alpha: 0.18)
         : ColorTokens.cardFill(context, 0.08);
 
     return GestureDetector(
@@ -1910,7 +1910,7 @@ class _MessageCardState extends State<MessageCard> {
                 const Spacer(),
                 Icon(
                   Icons.more_horiz_rounded,
-                  color: scheme.onSurface.withOpacity(0.5),
+                  color: scheme.onSurface.withValues(alpha: 0.5),
                 ),
               ],
             ),
@@ -1945,7 +1945,7 @@ class _MessageCardState extends State<MessageCard> {
                           child: Html(
                             data: widget.message.bodyHtml,
                             shrinkWrap: true,
-                            onLinkTap: (url, _, __) => _handleLinkTap(url),
+                            onLinkTap: (url, _, _) => _handleLinkTap(url),
                             style: {
                               'body': Style(
                                 margin: Margins.zero,
@@ -2014,12 +2014,12 @@ class ComposeBar extends StatelessWidget {
             children: [
               Icon(
                 Icons.attach_file_rounded,
-                color: scheme.onSurface.withOpacity(0.7),
+                color: scheme.onSurface.withValues(alpha: 0.7),
               ),
               SizedBox(width: context.space(8)),
               Icon(
                 Icons.emoji_emotions_outlined,
-                color: scheme.onSurface.withOpacity(0.7),
+                color: scheme.onSurface.withValues(alpha: 0.7),
               ),
               const Spacer(),
               Text(
@@ -2134,7 +2134,7 @@ class SettingsPanel extends StatelessWidget {
       ),
       backgroundColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          return accent.withOpacity(0.18);
+          return accent.withValues(alpha: 0.18);
         }
         return ColorTokens.cardFill(context, 0.08);
       }),
@@ -2146,7 +2146,7 @@ class SettingsPanel extends StatelessWidget {
       }),
       side: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          return BorderSide(color: accent.withOpacity(0.5));
+          return BorderSide(color: accent.withValues(alpha: 0.5));
         }
         return BorderSide(color: ColorTokens.border(context, 0.1));
       }),
@@ -2546,7 +2546,7 @@ class _AccountsSettings extends StatelessWidget {
               _AccentSwatch(
                 label: preset.label,
                 color: resolveAccent(preset.color, Theme.of(context).brightness),
-                selected: preset.color.value == baseAccent.value,
+                selected: preset.color.toARGB32() == baseAccent.toARGB32(),
                 onTap: () => appState.setAccountAccentColor(
                   account.id,
                   preset.color,
@@ -2635,13 +2635,11 @@ class _SettingRow extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.trailing,
-    this.forceInline = false,
   });
 
   final String title;
   final String subtitle;
   final Widget trailing;
-  final bool forceInline;
 
   @override
   Widget build(BuildContext context) {
@@ -2661,7 +2659,7 @@ class _SettingRow extends StatelessWidget {
             ),
           ],
         );
-        if (isNarrow && !forceInline) {
+        if (isNarrow) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -2702,7 +2700,7 @@ class AccentSwitch extends StatelessWidget {
       value: value,
       onChanged: onChanged,
       activeThumbColor: accent,
-      activeTrackColor: accent.withOpacity(0.35),
+      activeTrackColor: accent.withValues(alpha: 0.35),
       inactiveTrackColor: ColorTokens.cardFill(context, 0.2),
     );
   }
@@ -2733,7 +2731,7 @@ class _CornerRadiusOption extends StatelessWidget {
         height: context.space(52),
         decoration: BoxDecoration(
           color: selected
-              ? Theme.of(context).colorScheme.primary.withOpacity(0.12)
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.12)
               : Colors.transparent,
           border: Border.all(color: borderColor),
           borderRadius: BorderRadius.circular(radius),
@@ -2899,11 +2897,11 @@ class GlassBottomNav extends StatelessWidget {
                     duration: const Duration(milliseconds: 200),
                     padding: EdgeInsets.symmetric(vertical: context.space(8)),
                     decoration: BoxDecoration(
-                      color: selected ? accent.withOpacity(0.18) : null,
+                      color: selected ? accent.withValues(alpha: 0.18) : null,
                       borderRadius: BorderRadius.circular(context.radius(18)),
                       border: Border.all(
                         color: selected
-                            ? accent.withOpacity(0.5)
+                            ? accent.withValues(alpha: 0.5)
                             : Colors.transparent,
                       ),
                     ),

@@ -168,7 +168,7 @@ class AppState extends ChangeNotifier {
       return;
     }
     _accounts[index] =
-        _accounts[index].copyWith(accentColorValue: color.value);
+        _accounts[index].copyWith(accentColorValue: color.toARGB32());
     notifyListeners();
     await _persistConfig();
   }
@@ -276,7 +276,9 @@ class AppState extends ChangeNotifier {
     final hue = _random.nextInt(360).toDouble();
     final saturation = 0.6 + _random.nextDouble() * 0.2;
     final lightness = 0.5 + _random.nextDouble() * 0.12;
-    return HSLColor.fromAHSL(1, hue, saturation, lightness).toColor().value;
+    return HSLColor.fromAHSL(1, hue, saturation, lightness)
+        .toColor()
+        .toARGB32();
   }
 
   Future<void> _writeConfig(File file, Map<String, Object?> payload) async {

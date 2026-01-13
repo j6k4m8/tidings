@@ -49,8 +49,8 @@ class TidingsTheme {
 
   static Color _tint(Color color, Brightness brightness, double amount) {
     final overlay = brightness == Brightness.dark
-        ? Colors.black.withOpacity(amount)
-        : Colors.white.withOpacity(amount);
+        ? Colors.black.withValues(alpha: amount)
+        : Colors.white.withValues(alpha: amount);
     return Color.alphaBlend(overlay, color);
   }
 
@@ -104,7 +104,7 @@ class TidingsTheme {
     final heroGradient = brightness == Brightness.dark
         ? [
             _tint(accent, brightness, 0.4),
-            Colors.white.withOpacity(0.04),
+            Colors.white.withValues(alpha: 0.04),
           ]
         : [
             Colors.white,
@@ -157,13 +157,13 @@ class TidingsTheme {
         elevation: 0,
       ),
       cardTheme: CardThemeData(
-        color: const Color(0xFF14171D).withOpacity(0.6),
+        color: const Color(0xFF14171D).withValues(alpha: 0.6),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20 * cornerRadiusScale),
         ),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: const Color(0xFF14171D).withOpacity(0.8),
+        backgroundColor: const Color(0xFF14171D).withValues(alpha: 0.8),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24 * cornerRadiusScale),
         ),
@@ -175,7 +175,7 @@ class TidingsTheme {
         ),
       ),
       popupMenuTheme: PopupMenuThemeData(
-        color: const Color(0xFF14171D).withOpacity(0.9),
+        color: const Color(0xFF14171D).withValues(alpha: 0.9),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14 * cornerRadiusScale),
         ),
@@ -194,7 +194,7 @@ class TidingsTheme {
       primaryTextTheme: textTheme,
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white.withOpacity(0.06),
+        fillColor: Colors.white.withValues(alpha: 0.06),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18 * cornerRadiusScale),
           borderSide: BorderSide.none,
@@ -232,13 +232,13 @@ class TidingsTheme {
         elevation: 0,
       ),
       cardTheme: CardThemeData(
-        color: Colors.white.withOpacity(0.86),
+        color: Colors.white.withValues(alpha: 0.86),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20 * cornerRadiusScale),
         ),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: Colors.white.withOpacity(0.92),
+        backgroundColor: Colors.white.withValues(alpha: 0.92),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24 * cornerRadiusScale),
         ),
@@ -250,7 +250,7 @@ class TidingsTheme {
         ),
       ),
       popupMenuTheme: PopupMenuThemeData(
-        color: Colors.white.withOpacity(0.9),
+        color: Colors.white.withValues(alpha: 0.9),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14 * cornerRadiusScale),
         ),
@@ -269,7 +269,7 @@ class TidingsTheme {
       primaryTextTheme: textTheme,
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.black.withOpacity(0.04),
+        fillColor: Colors.black.withValues(alpha: 0.04),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18 * cornerRadiusScale),
           borderSide: BorderSide.none,

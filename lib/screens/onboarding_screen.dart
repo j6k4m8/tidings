@@ -100,7 +100,7 @@ class _OnboardingCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: subtle
             ? ColorTokens.cardFill(context, 0.06)
-            : accent.withOpacity(0.12),
+            : accent.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: subtle ? ColorTokens.border(context, 0.12) : accent,

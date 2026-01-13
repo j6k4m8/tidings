@@ -43,11 +43,11 @@ class GlassTheme {
     final effectiveAccent = accent ?? scheme.primary;
     final tintBoost = selected ? spec.selectedTintBoost : 0.0;
     final fill = Color.alphaBlend(
-      effectiveAccent.withOpacity(spec.tintOpacity + tintBoost),
-      scheme.surface.withOpacity(spec.fillOpacity),
+      effectiveAccent.withValues(alpha: spec.tintOpacity + tintBoost),
+      scheme.surface.withValues(alpha: spec.fillOpacity),
     );
     final borderColor = selected ? effectiveAccent : scheme.onSurface;
-    final border = borderColor.withOpacity(
+    final border = borderColor.withValues(alpha: 
       spec.borderOpacity + (selected ? spec.selectedBorderBoost : 0.0),
     );
     final highlight = _highlightGradient(
@@ -58,7 +58,7 @@ class GlassTheme {
         ? const <BoxShadow>[]
         : [
             BoxShadow(
-              color: Colors.black.withOpacity(spec.shadowOpacity),
+              color: Colors.black.withValues(alpha: spec.shadowOpacity),
               blurRadius: spec.shadowBlur,
               offset: Offset(0, spec.shadowOffset),
             ),
@@ -147,9 +147,9 @@ class GlassTheme {
     required double strength,
   }) {
     final isDark = brightness == Brightness.dark;
-    final top = Colors.white.withOpacity((isDark ? 0.24 : 0.36) * strength);
-    final mid = Colors.white.withOpacity((isDark ? 0.08 : 0.18) * strength);
-    final bottom = Colors.black.withOpacity((isDark ? 0.32 : 0.14) * strength);
+    final top = Colors.white.withValues(alpha: (isDark ? 0.24 : 0.36) * strength);
+    final mid = Colors.white.withValues(alpha: (isDark ? 0.08 : 0.18) * strength);
+    final bottom = Colors.black.withValues(alpha: (isDark ? 0.32 : 0.14) * strength);
     return LinearGradient(
       begin: const Alignment(-0.9, -0.9),
       end: const Alignment(0.9, 0.9),

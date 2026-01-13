@@ -173,8 +173,8 @@ class TidingsSettingsScope extends InheritedNotifier<TidingsSettings> {
   const TidingsSettingsScope({
     super.key,
     required TidingsSettings settings,
-    required Widget child,
-  }) : super(notifier: settings, child: child);
+    required super.child,
+  }) : super(notifier: settings);
 
   static TidingsSettings of(BuildContext context) {
     final scope =
