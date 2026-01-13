@@ -4,7 +4,9 @@ import '../models/account_models.dart';
 import '../state/app_state.dart';
 import '../theme/color_tokens.dart';
 import '../theme/glass.dart';
-import '../widgets/accent_switch.dart';
+import '../widgets/forms/auth_fields.dart';
+import '../widgets/forms/labeled_field.dart';
+import '../widgets/forms/toggle_row.dart';
 import '../widgets/tidings_background.dart';
 
 class OnboardingScreen extends StatelessWidget {
@@ -480,17 +482,17 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
                 Text('Edit IMAP account',
                     style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 12),
-                _LabeledField(
+                LabeledField(
                   label: 'Display name',
                   controller: _displayNameController,
                   hintText: 'Jordan',
                 ),
-                _LabeledField(
+                LabeledField(
                   label: 'Email',
                   controller: _emailController,
                   hintText: 'jordan@tidings.dev',
                 ),
-                _LabeledField(
+                LabeledField(
                   label: 'IMAP server',
                   controller: _serverController,
                   hintText: 'imap.example.com',
@@ -498,7 +500,7 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
                 Row(
                   children: [
                     Expanded(
-                      child: _LabeledField(
+                      child: LabeledField(
                         label: 'Port',
                         controller: _portController,
                         hintText: '993',
@@ -507,7 +509,7 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: _LabeledField(
+                      child: LabeledField(
                         label: 'Username',
                         controller: _usernameController,
                         hintText: 'jordan',
@@ -515,7 +517,7 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
                     ),
                   ],
                 ),
-                _LabeledField(
+                LabeledField(
                   label: 'Password',
                   controller: _passwordController,
                   hintText: '',
@@ -531,7 +533,7 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
                           ),
                     ),
                   ),
-                _ToggleRow(
+                ToggleRow(
                   title: 'Use TLS',
                   accent: widget.accent,
                   value: _useTls,
@@ -540,7 +542,7 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
                 const SizedBox(height: 8),
                 Text('SMTP', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
-                _LabeledField(
+                LabeledField(
                   label: 'SMTP server',
                   controller: _smtpServerController,
                   hintText: 'smtp.example.com',
@@ -548,7 +550,7 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
                 Row(
                   children: [
                     Expanded(
-                      child: _LabeledField(
+                      child: LabeledField(
                         label: 'Port',
                         controller: _smtpPortController,
                         hintText: '587',
@@ -557,7 +559,7 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: _ToggleRow(
+                      child: ToggleRow(
                         title: 'Use TLS',
                         accent: widget.accent,
                         value: _smtpUseTls,
@@ -567,7 +569,7 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
                     ),
                   ],
                 ),
-                _ToggleRow(
+                ToggleRow(
                   title: 'Use IMAP credentials',
                   accent: widget.accent,
                   value: _smtpUseImapAuth,
@@ -575,16 +577,16 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
                       setState(() => _smtpUseImapAuth = value),
                 ),
                 const SizedBox(height: 8),
-                _AuthFields(
+                AuthFields(
                   enabled: !_smtpUseImapAuth,
                   child: Column(
                     children: [
-                      _LabeledField(
+                      LabeledField(
                         label: 'SMTP username',
                         controller: _smtpUsernameController,
                         hintText: 'jordan',
                       ),
-                      _LabeledField(
+                      LabeledField(
                         label: 'SMTP password',
                         controller: _smtpPasswordController,
                         hintText: '',
@@ -783,17 +785,17 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
                 Text('Add IMAP account',
                     style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 12),
-                _LabeledField(
+                LabeledField(
                   label: 'Display name',
                   controller: _displayNameController,
                   hintText: 'Jordan',
                 ),
-                _LabeledField(
+                LabeledField(
                   label: 'Email',
                   controller: _emailController,
                   hintText: 'jordan@tidings.dev',
                 ),
-                _LabeledField(
+                LabeledField(
                   label: 'IMAP server',
                   controller: _serverController,
                   hintText: 'imap.example.com',
@@ -801,7 +803,7 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
                 Row(
                   children: [
                     Expanded(
-                      child: _LabeledField(
+                      child: LabeledField(
                         label: 'Port',
                         controller: _portController,
                         hintText: '993',
@@ -810,7 +812,7 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: _LabeledField(
+                      child: LabeledField(
                         label: 'Username',
                         controller: _usernameController,
                         hintText: 'jordan',
@@ -818,13 +820,13 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
                     ),
                   ],
                 ),
-                _LabeledField(
+                LabeledField(
                   label: 'Password',
                   controller: _passwordController,
                   hintText: '••••••••',
                   obscureText: true,
                 ),
-                _ToggleRow(
+                ToggleRow(
                   title: 'Use TLS',
                   accent: widget.accent,
                   value: _useTls,
@@ -833,7 +835,7 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
                 const SizedBox(height: 8),
                 Text('SMTP', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
-                _LabeledField(
+                LabeledField(
                   label: 'SMTP server',
                   controller: _smtpServerController,
                   hintText: 'smtp.example.com',
@@ -841,7 +843,7 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
                 Row(
                   children: [
                     Expanded(
-                      child: _LabeledField(
+                      child: LabeledField(
                         label: 'Port',
                         controller: _smtpPortController,
                         hintText: '587',
@@ -850,7 +852,7 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: _ToggleRow(
+                      child: ToggleRow(
                         title: 'Use TLS',
                         accent: widget.accent,
                         value: _smtpUseTls,
@@ -860,7 +862,7 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
                     ),
                   ],
                 ),
-                _ToggleRow(
+                ToggleRow(
                   title: 'Use IMAP credentials',
                   accent: widget.accent,
                   value: _smtpUseImapAuth,
@@ -868,16 +870,16 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
                       setState(() => _smtpUseImapAuth = value),
                 ),
                 const SizedBox(height: 8),
-                _AuthFields(
+                AuthFields(
                   enabled: !_smtpUseImapAuth,
                   child: Column(
                     children: [
-                      _LabeledField(
+                      LabeledField(
                         label: 'SMTP username',
                         controller: _smtpUsernameController,
                         hintText: 'jordan',
                       ),
-                      _LabeledField(
+                      LabeledField(
                         label: 'SMTP password',
                         controller: _smtpPasswordController,
                         hintText: '••••••••',
@@ -918,42 +920,6 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
   }
 }
 
-class _LabeledField extends StatelessWidget {
-  const _LabeledField({
-    required this.label,
-    required this.controller,
-    required this.hintText,
-    this.keyboardType,
-    this.obscureText = false,
-  });
-
-  final String label;
-  final TextEditingController controller;
-  final String hintText;
-  final TextInputType? keyboardType;
-  final bool obscureText;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.labelLarge),
-          const SizedBox(height: 6),
-          TextField(
-            controller: controller,
-            keyboardType: keyboardType,
-            obscureText: obscureText,
-            decoration: InputDecoration(hintText: hintText),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 String? _autoDetectSmtpHost(String imapHost) {
   if (imapHost.isEmpty) {
     return null;
@@ -965,56 +931,4 @@ String? _autoDetectSmtpHost(String imapHost) {
     return imapHost.replaceFirst('mail.', 'smtp.');
   }
   return 'smtp.$imapHost';
-}
-
-class _ToggleRow extends StatelessWidget {
-  const _ToggleRow({
-    required this.title,
-    required this.accent,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final String title;
-  final Color accent;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(child: Text(title)),
-        AccentSwitch(
-          accent: accent,
-          value: value,
-          onChanged: onChanged,
-        ),
-      ],
-    );
-  }
-}
-
-class _AuthFields extends StatelessWidget {
-  const _AuthFields({
-    required this.enabled,
-    required this.child,
-  });
-
-  final bool enabled;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    if (enabled) {
-      return child;
-    }
-    return Opacity(
-      opacity: 0.45,
-      child: IgnorePointer(
-        ignoring: true,
-        child: child,
-      ),
-    );
-  }
 }

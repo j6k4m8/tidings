@@ -14,6 +14,13 @@ import '../theme/glass.dart';
 import '../theme/account_accent.dart';
 import '../theme/theme_palette.dart';
 import '../widgets/accent_switch.dart';
+import '../widgets/accent/accent_presets.dart';
+import '../widgets/accent/accent_swatch.dart';
+import '../widgets/glass/glass_action_button.dart';
+import '../widgets/glass/glass_bottom_nav.dart';
+import '../widgets/settings/corner_radius_option.dart';
+import '../widgets/settings/settings_rows.dart';
+import '../widgets/settings/settings_tabs.dart';
 import '../widgets/tidings_background.dart';
 import 'compose/compose_sheet.dart';
 import 'home/thread_detail.dart';
@@ -1310,25 +1317,27 @@ class SettingsPanel extends StatelessWidget {
               ],
             ),
             SizedBox(height: context.space(12)),
-            const _SettingsTabBar(),
+            const SettingsTabBar(
+              tabs: ['Appearance', 'Layout', 'Threads', 'Folders', 'Accounts'],
+            ),
             SizedBox(height: context.space(12)),
             Expanded(
               child: TabBarView(
                 children: [
-                  _SettingsTab(
+                  SettingsTab(
                     child: _AppearanceSettings(
                       accent: accent,
                       segmentedStyle: segmentedStyle,
                     ),
                   ),
-                  _SettingsTab(
+                  SettingsTab(
                     child: _LayoutSettings(segmentedStyle: segmentedStyle),
                   ),
-                  const _SettingsTab(child: _ThreadsSettings()),
-                  _SettingsTab(
+                  const SettingsTab(child: _ThreadsSettings()),
+                  SettingsTab(
                     child: _FoldersSettings(accent: accent),
                   ),
-                  _SettingsTab(
+                  SettingsTab(
                     child: _AccountsSettings(
                       appState: appState,
                       accent: accent,
@@ -1340,73 +1349,6 @@ class SettingsPanel extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _SettingsTabBar extends StatelessWidget {
-  const _SettingsTabBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(context.space(4)),
-      decoration: BoxDecoration(
-        color: ColorTokens.cardFill(context, 0.1),
-        borderRadius: BorderRadius.circular(context.radius(16)),
-        border: Border.all(color: ColorTokens.border(context, 0.12)),
-      ),
-      child: TabBar(
-        isScrollable: true,
-        labelPadding: EdgeInsets.symmetric(horizontal: context.space(6)),
-        labelColor: Theme.of(context).colorScheme.onSurface,
-        unselectedLabelColor: ColorTokens.textSecondary(context),
-        dividerColor: Colors.transparent,
-        indicator: BoxDecoration(
-          color: ColorTokens.cardFill(context, 0.2),
-          borderRadius: BorderRadius.circular(context.radius(12)),
-        ),
-        tabs: const [
-          _SettingsTabLabel(text: 'Appearance'),
-          _SettingsTabLabel(text: 'Layout'),
-          _SettingsTabLabel(text: 'Threads'),
-          _SettingsTabLabel(text: 'Folders'),
-          _SettingsTabLabel(text: 'Accounts'),
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsTabLabel extends StatelessWidget {
-  const _SettingsTabLabel({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tab(
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: context.space(18),
-          vertical: context.space(6),
-        ),
-        child: Text(text),
-      ),
-    );
-  }
-}
-
-class _SettingsTab extends StatelessWidget {
-  const _SettingsTab({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: context.space(8)),
-      child: child,
     );
   }
 }
@@ -1428,7 +1370,7 @@ class _AppearanceSettings extends StatelessWidget {
       children: [
         Text('Appearance', style: Theme.of(context).textTheme.titleLarge),
         SizedBox(height: context.space(12)),
-        _SettingRow(
+        SettingRow(
           title: 'Theme',
           subtitle: 'Follow system appearance or set manually.',
           trailing: SegmentedButton<ThemeMode>(
@@ -1445,7 +1387,7 @@ class _AppearanceSettings extends StatelessWidget {
           ),
         ),
         SizedBox(height: context.space(16)),
-        _SettingRow(
+        SettingRow(
           title: 'Theme palette',
           subtitle: 'Neutral or account-accent gradients.',
           trailing: SegmentedButton<ThemePaletteSource>(
@@ -1480,7 +1422,7 @@ class _LayoutSettings extends StatelessWidget {
       children: [
         Text('Layout', style: Theme.of(context).textTheme.titleLarge),
         SizedBox(height: context.space(12)),
-        _SettingRow(
+        SettingRow(
           title: 'Layout density',
           subtitle: 'Compactness and margins in one setting.',
           trailing: SegmentedButton<LayoutDensity>(
@@ -1498,7 +1440,7 @@ class _LayoutSettings extends StatelessWidget {
           ),
         ),
         SizedBox(height: context.space(16)),
-        _SettingRow(
+        SettingRow(
           title: 'Corner radius',
           subtitle: 'Dial in how rounded the UI feels.',
           trailing: LayoutBuilder(
@@ -1513,7 +1455,7 @@ class _LayoutSettings extends StatelessWidget {
                           horizontal: context.space(4),
                           vertical: context.space(4),
                         ),
-                        child: _CornerRadiusOption(
+                        child: CornerRadiusOption(
                           label: style.label,
                           radius: context.space(18) * style.scale,
                           selected: settings.cornerRadiusStyle == style,
@@ -1547,7 +1489,7 @@ class _ThreadsSettings extends StatelessWidget {
       children: [
         Text('Threads', style: Theme.of(context).textTheme.titleLarge),
         SizedBox(height: context.space(12)),
-        _SettingRow(
+        SettingRow(
           title: 'Auto-expand unread',
           subtitle: 'Open unread threads to show the latest message.',
           trailing: AccentSwitch(
@@ -1557,7 +1499,7 @@ class _ThreadsSettings extends StatelessWidget {
           ),
         ),
         SizedBox(height: context.space(16)),
-        _SettingRow(
+        SettingRow(
           title: 'Auto-expand latest',
           subtitle: 'Keep the newest thread expanded in the list.',
           trailing: AccentSwitch(
@@ -1567,7 +1509,7 @@ class _ThreadsSettings extends StatelessWidget {
           ),
         ),
         SizedBox(height: context.space(16)),
-        _SettingRow(
+        SettingRow(
           title: 'Hide subject lines',
           subtitle: 'Show only the message body in thread view.',
           trailing: AccentSwitch(
@@ -1577,7 +1519,7 @@ class _ThreadsSettings extends StatelessWidget {
           ),
         ),
         SizedBox(height: context.space(16)),
-        _SettingRow(
+        SettingRow(
           title: 'Hide yourself in thread list',
           subtitle: 'Remove your address from sender rows.',
           trailing: AccentSwitch(
@@ -1604,7 +1546,7 @@ class _FoldersSettings extends StatelessWidget {
       children: [
         Text('Folders', style: Theme.of(context).textTheme.titleLarge),
         SizedBox(height: context.space(12)),
-        _SettingRow(
+        SettingRow(
           title: 'Show labels',
           subtitle: 'Include the Labels section in the sidebar.',
           trailing: AccentSwitch(
@@ -1614,7 +1556,7 @@ class _FoldersSettings extends StatelessWidget {
           ),
         ),
         SizedBox(height: context.space(16)),
-        _SettingRow(
+        SettingRow(
           title: 'Unread counts',
           subtitle: 'Show unread badge counts next to folders.',
           trailing: AccentSwitch(
@@ -1804,8 +1746,8 @@ class _AccountSectionState extends State<_AccountSection> {
                   spacing: context.space(12),
                   runSpacing: context.space(8),
                   children: [
-                    for (final preset in _accentPresets)
-                      _AccentSwatch(
+                    for (final preset in accentPresets)
+                      AccentSwatch(
                         label: preset.label,
                         color: resolveAccent(
                           preset.color,
@@ -1942,184 +1884,6 @@ class _AccountSectionState extends State<_AccountSection> {
   }
 }
 
-class _AccentPreset {
-  const _AccentPreset(this.label, this.color);
-
-  final String label;
-  final Color color;
-}
-
-const List<_AccentPreset> _accentPresets = [
-  _AccentPreset('Indigo', Color(0xFF6F7BFF)),
-  _AccentPreset('Mint', Color(0xFF45D6B4)),
-  _AccentPreset('Coral', Color(0xFFFF7A59)),
-  _AccentPreset('Amber', Color(0xFFFFB347)),
-  _AccentPreset('Teal', Color(0xFF35B7C3)),
-  _AccentPreset('Rose', Color(0xFFF06292)),
-];
-
-class _AccentSwatch extends StatelessWidget {
-  const _AccentSwatch({
-    required this.label,
-    required this.color,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final Color color;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final ringColor =
-        selected ? Theme.of(context).colorScheme.primary : Colors.transparent;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: context.space(22),
-              height: context.space(22),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: color,
-                border: Border.all(
-                  color: ringColor,
-                  width: 2,
-                ),
-              ),
-            ),
-            SizedBox(width: context.space(8)),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SettingRow extends StatelessWidget {
-  const _SettingRow({
-    required this.title,
-    required this.subtitle,
-    required this.trailing,
-  });
-
-  final String title;
-  final String subtitle;
-  final Widget trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isNarrow = constraints.maxWidth < 520;
-        final textBlock = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.bodyLarge),
-            SizedBox(height: context.space(4)),
-            Text(
-              subtitle,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: ColorTokens.textSecondary(context),
-              ),
-            ),
-          ],
-        );
-        if (isNarrow) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              textBlock,
-              SizedBox(height: context.space(12)),
-              trailing,
-            ],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: textBlock),
-            SizedBox(width: context.space(16)),
-            trailing,
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _SettingsSubheader extends StatelessWidget {
-  const _SettingsSubheader({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: Theme.of(context)
-          .textTheme
-          .titleSmall
-          ?.copyWith(color: ColorTokens.textSecondary(context, 0.75)),
-    );
-  }
-}
-
-class _CornerRadiusOption extends StatelessWidget {
-  const _CornerRadiusOption({
-    required this.label,
-    required this.radius,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final double radius;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final borderColor = selected
-        ? Theme.of(context).colorScheme.primary
-        : ColorTokens.border(context);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        height: context.space(52),
-        decoration: BoxDecoration(
-          color: selected
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.12)
-              : Colors.transparent,
-          border: Border.all(color: borderColor),
-          borderRadius: BorderRadius.circular(radius),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: selected ? Theme.of(context).colorScheme.primary : null,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class PageReveal extends StatelessWidget {
   const PageReveal({super.key, required this.child});
 
@@ -2142,146 +1906,6 @@ class PageReveal extends StatelessWidget {
       },
     );
   }
-}
-
-class GlassActionButton extends StatelessWidget {
-  const GlassActionButton({
-    super.key,
-    required this.accent,
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final Color accent;
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = accentTokensFor(context, accent);
-    return GestureDetector(
-      onTap: onTap,
-      child: GlassPanel(
-        borderRadius: BorderRadius.circular(context.radius(24)),
-        padding: EdgeInsets.symmetric(
-          horizontal: context.space(16),
-          vertical: context.space(12),
-        ),
-        variant: GlassVariant.action,
-        accent: tokens.base,
-        selected: true,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: tokens.onSurface),
-            SizedBox(width: context.space(8)),
-            Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(color: tokens.onSurface),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class GlassBottomNav extends StatelessWidget {
-  const GlassBottomNav({
-    super.key,
-    required this.accent,
-    required this.currentIndex,
-    required this.onTap,
-  });
-
-  final Color accent;
-  final int currentIndex;
-  final ValueChanged<int> onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = accentTokensFor(context, accent);
-    final items = const [
-      _NavItem(icon: Icons.inbox_rounded, label: 'Inbox'),
-      _NavItem(icon: Icons.bolt_rounded, label: 'Focus'),
-      _NavItem(icon: Icons.search_rounded, label: 'Search'),
-      _NavItem(icon: Icons.settings_rounded, label: 'Settings'),
-    ];
-
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          context.gutter(16),
-          0,
-          context.gutter(16),
-          context.space(16),
-        ),
-        child: GlassPanel(
-          borderRadius: BorderRadius.circular(context.radius(26)),
-          padding: EdgeInsets.symmetric(
-            horizontal: context.space(8),
-            vertical: context.space(10),
-          ),
-          variant: GlassVariant.nav,
-          child: Row(
-            children: List.generate(items.length, (index) {
-              final item = items[index];
-              final selected = index == currentIndex;
-              final textColor = selected
-                  ? tokens.onSurface
-                  : ColorTokens.textSecondary(context, 0.6);
-
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => onTap(index),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: EdgeInsets.symmetric(vertical: context.space(8)),
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? tokens.base.withValues(alpha: 0.18)
-                          : null,
-                      borderRadius: BorderRadius.circular(context.radius(18)),
-                      border: Border.all(
-                        color: selected
-                            ? tokens.base.withValues(alpha: 0.5)
-                            : Colors.transparent,
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(item.icon, color: textColor, size: 20),
-                        SizedBox(height: context.space(4)),
-                        Text(
-                          item.label,
-                          style: Theme.of(
-                            context,
-                          ).textTheme.labelLarge?.copyWith(color: textColor),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NavItem {
-  const _NavItem({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
 }
 
 void _showFolderSheet(
