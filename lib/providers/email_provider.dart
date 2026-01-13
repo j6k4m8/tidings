@@ -18,7 +18,9 @@ abstract class EmailProvider extends ChangeNotifier {
   List<EmailMessage> messagesForThread(String threadId);
   EmailMessage? latestMessageForThread(String threadId);
   List<FolderSection> get folderSections;
+  String get selectedFolderPath;
 
   Future<void> initialize();
   Future<void> refresh();
+  Future<void> selectFolder(String path);
 }

@@ -1,9 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/account_models.dart';
 import '../providers/email_provider.dart';
@@ -11,13 +9,8 @@ import '../providers/imap_email_provider.dart';
 import '../providers/mock_email_provider.dart';
 
 class AppState extends ChangeNotifier {
-  static const _accountsStorageKey = 'tidings.accounts';
-  static const _selectedAccountKey = 'tidings.selectedAccountId';
-
   final List<EmailAccount> _accounts = [];
   final Map<String, EmailProvider> _providers = {};
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
-  SharedPreferences? _prefs;
   int _selectedAccountIndex = 0;
   bool _hasInitialized = false;
 
@@ -45,20 +38,22 @@ class AppState extends ChangeNotifier {
       return;
     }
     _hasInitialized = true;
-    final prefs = await _loadPrefs();
-    if (prefs == null) {
+    final config = await _loadConfig();
+    if (config == null) {
       return;
     }
-    final storedAccounts = prefs.getStringList(_accountsStorageKey) ?? [];
+    final storedAccounts = config['accounts'];
+    if (storedAccounts is! List) {
+      return;
+    }
     var needsPersist = false;
-    final selectedId = prefs.getString(_selectedAccountKey);
+    final selectedId = config['selectedAccountId'] as String?;
     for (final raw in storedAccounts) {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) {
+      if (raw is! Map<String, dynamic>) {
         needsPersist = true;
         continue;
       }
-      final map = decoded.cast<String, Object?>();
+      final map = raw.cast<String, Object?>();
       final id = map['id'] as String?;
       if (id == null || id.isEmpty) {
         needsPersist = true;
@@ -76,7 +71,7 @@ class AppState extends ChangeNotifier {
           continue;
         }
         final configMap = configJson.cast<String, Object?>();
-        final password = await _readImapPassword(id);
+        final password = _decodePassword(configMap['passwordB64']);
         if (password == null || password.isEmpty) {
           needsPersist = true;
           continue;
@@ -102,7 +97,7 @@ class AppState extends ChangeNotifier {
     }
     await _initializeCurrentProvider();
     if (needsPersist) {
-      await _persistAccounts();
+      await _persistConfig();
     }
     notifyListeners();
   }
@@ -115,8 +110,7 @@ class AppState extends ChangeNotifier {
       providerType: EmailProviderType.mock,
     );
     _addAccount(account, MockEmailProvider());
-    await _persistAccounts();
-    await _persistSelectedAccount();
+    await _persistConfig();
     await _initializeCurrentProvider();
   }
 
@@ -134,9 +128,7 @@ class AppState extends ChangeNotifier {
     );
     final provider = ImapEmailProvider(config: config, email: email);
     _addAccount(account, provider);
-    await _writeImapPassword(account.id, config.password);
-    await _persistAccounts();
-    await _persistSelectedAccount();
+    await _persistConfig();
     await _initializeCurrentProvider();
     if (provider.status == ProviderStatus.error) {
       await removeAccount(account.id);
@@ -151,7 +143,7 @@ class AppState extends ChangeNotifier {
     }
     _selectedAccountIndex = index;
     notifyListeners();
-    await _persistSelectedAccount();
+    await _persistConfig();
     await _initializeCurrentProvider();
   }
 
@@ -160,11 +152,7 @@ class AppState extends ChangeNotifier {
     if (removed == null) {
       return;
     }
-    if (removed.providerType == EmailProviderType.imap) {
-      await _deleteImapPassword(removed.id);
-    }
-    await _persistAccounts();
-    await _persistSelectedAccount();
+    await _persistConfig();
   }
 
   void _addAccount(EmailAccount account, EmailProvider provider) {
@@ -198,86 +186,76 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<SharedPreferences?> _loadPrefs() async {
-    if (_prefs != null) {
-      return _prefs;
+  Future<void> _persistConfig() async {
+    final file = await _configFile();
+    if (file == null) {
+      return;
+    }
+    final payload = <String, Object?>{
+      'selectedAccountId': selectedAccount?.id,
+      'accounts': _accounts.map((account) {
+        final json = account.toStorageJson();
+        if (account.providerType == EmailProviderType.imap &&
+            account.imapConfig != null) {
+          final configJson = Map<String, Object?>.from(
+            account.imapConfig!.toStorageJson(),
+          );
+          configJson['passwordB64'] =
+              base64Encode(utf8.encode(account.imapConfig!.password));
+          json['imapConfig'] = configJson;
+        }
+        return json;
+      }).toList(),
+    };
+    await _writeConfig(file, payload);
+  }
+
+  Future<Map<String, Object?>?> _loadConfig() async {
+    final file = await _configFile();
+    if (file == null) {
+      return null;
+    }
+    if (!await file.exists()) {
+      return null;
     }
     try {
-      _prefs = await SharedPreferences.getInstance();
-      return _prefs;
+      final raw = await file.readAsString();
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+      return decoded.cast<String, Object?>();
     } catch (_) {
       return null;
     }
   }
 
-  Future<void> _persistAccounts() async {
-    final prefs = await _loadPrefs();
-    if (prefs == null) {
-      return;
+  Future<File?> _configFile() async {
+    final home = Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'];
+    if (home == null || home.isEmpty) {
+      return null;
     }
-    final encoded = _accounts
-        .map((account) => jsonEncode(account.toStorageJson()))
-        .toList();
-    await prefs.setStringList(_accountsStorageKey, encoded);
-  }
-
-  Future<void> _persistSelectedAccount() async {
-    final prefs = await _loadPrefs();
-    if (prefs == null) {
-      return;
+    final dir = Directory('$home/.config');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
     }
-    final account = selectedAccount;
-    if (account == null) {
-      await prefs.remove(_selectedAccountKey);
-      return;
+    return File('${dir.path}/tidings.yml');
+  }
+
+  Future<void> _writeConfig(File file, Map<String, Object?> payload) async {
+    final encoder = const JsonEncoder.withIndent('  ');
+    await file.writeAsString(encoder.convert(payload));
+  }
+
+  String? _decodePassword(Object? raw) {
+    if (raw is! String || raw.isEmpty) {
+      return null;
     }
-    await prefs.setString(_selectedAccountKey, account.id);
-  }
-
-  String _imapPasswordKey(String accountId) {
-    return 'imap.password.$accountId';
-  }
-
-  String _imapPasswordPrefsKey(String accountId) {
-    return 'imap.password.dev.$accountId';
-  }
-
-  Future<String?> _readImapPassword(String accountId) async {
     try {
-      return await _secureStorage.read(key: _imapPasswordKey(accountId));
+      return utf8.decode(base64Decode(raw));
     } catch (_) {
-      if (kReleaseMode) {
-        return null;
-      }
-      final prefs = await _loadPrefs();
-      return prefs?.getString(_imapPasswordPrefsKey(accountId));
-    }
-  }
-
-  Future<void> _writeImapPassword(String accountId, String password) async {
-    try {
-      await _secureStorage.write(
-        key: _imapPasswordKey(accountId),
-        value: password,
-      );
-    } catch (_) {
-      if (kReleaseMode) {
-        return;
-      }
-      final prefs = await _loadPrefs();
-      await prefs?.setString(_imapPasswordPrefsKey(accountId), password);
-    }
-  }
-
-  Future<void> _deleteImapPassword(String accountId) async {
-    try {
-      await _secureStorage.delete(key: _imapPasswordKey(accountId));
-    } catch (_) {
-      if (kReleaseMode) {
-        return;
-      }
-      final prefs = await _loadPrefs();
-      await prefs?.remove(_imapPasswordPrefsKey(accountId));
+      return null;
     }
   }
 

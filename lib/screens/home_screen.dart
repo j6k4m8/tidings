@@ -91,6 +91,44 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _handleFolderSelected(EmailProvider provider, int index) {
+    final path = _folderPathForIndex(provider.folderSections, index);
+    setState(() {
+      _selectedFolderIndex = index;
+      _selectedThreadIndex = 0;
+      _threadPanelOpen = true;
+      _showSettings = false;
+      if (_navIndex == 3) {
+        _navIndex = 0;
+      }
+    });
+    if (path != null) {
+      provider.selectFolder(path);
+    }
+  }
+
+  String? _folderPathForIndex(List<FolderSection> sections, int index) {
+    for (final section in sections) {
+      for (final item in section.items) {
+        if (item.index == index) {
+          return item.path;
+        }
+      }
+    }
+    return null;
+  }
+
+  int? _folderIndexForPath(List<FolderSection> sections, String path) {
+    for (final section in sections) {
+      for (final item in section.items) {
+        if (item.path == path) {
+          return item.index;
+        }
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final account = widget.appState.selectedAccount;
@@ -102,6 +140,11 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= 1024;
         final showSettings = _showSettings;
+        final effectiveFolderIndex = _folderIndexForPath(
+              provider.folderSections,
+              provider.selectedFolderPath,
+            ) ??
+            _selectedFolderIndex;
 
         return Scaffold(
           extendBody: true,
@@ -138,9 +181,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         _selectedThreadIndex = index;
                         _threadPanelOpen = true;
                       }),
-                      selectedFolderIndex: _selectedFolderIndex,
+                      selectedFolderIndex: effectiveFolderIndex,
                       onFolderSelected: (index) =>
-                          setState(() => _selectedFolderIndex = index),
+                          _handleFolderSelected(provider, index),
                       sidebarCollapsed: _sidebarCollapsed,
                       onSidebarToggle: () => setState(() {
                         _sidebarCollapsed = !_sidebarCollapsed;
@@ -156,6 +199,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         _showSettings = false;
                       }),
                       onSettingsTap: () => setState(() => _showSettings = true),
+                      onSettingsClose: () =>
+                          setState(() => _showSettings = false),
                       showSettings: showSettings,
                       threadPanelFraction: _threadPanelFraction,
                       threadPanelOpen: _threadPanelOpen,
@@ -169,7 +214,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           setState(() => _threadPanelOpen = false),
                     )
                   : showSettings
-                  ? SettingsScreen(accent: widget.accent)
+                  ? SettingsScreen(
+                      accent: widget.accent,
+                      onClose: () => setState(() {
+                        _showSettings = false;
+                        _navIndex = 0;
+                      }),
+                    )
                   : _CompactLayout(
                       account: account,
                       accent: widget.accent,
@@ -179,9 +230,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         _selectedThreadIndex = index;
                         _threadPanelOpen = true;
                       }),
-                      selectedFolderIndex: _selectedFolderIndex,
+                      selectedFolderIndex: effectiveFolderIndex,
                       onFolderSelected: (index) =>
-                          setState(() => _selectedFolderIndex = index),
+                          _handleFolderSelected(provider, index),
                       onAccountTap: () => showAccountPickerSheet(
                         context,
                         appState: widget.appState,
@@ -211,6 +262,7 @@ class _WideLayout extends StatelessWidget {
     required this.navIndex,
     required this.onNavSelected,
     required this.onSettingsTap,
+    required this.onSettingsClose,
     required this.showSettings,
     required this.threadPanelFraction,
     required this.threadPanelOpen,
@@ -232,6 +284,7 @@ class _WideLayout extends StatelessWidget {
   final int navIndex;
   final ValueChanged<int> onNavSelected;
   final VoidCallback onSettingsTap;
+  final VoidCallback onSettingsClose;
   final bool showSettings;
   final double threadPanelFraction;
   final bool threadPanelOpen;
@@ -365,8 +418,11 @@ class _WideLayout extends StatelessWidget {
                       _ResizeHandle(onDragUpdate: handleResize),
                       SizedBox(
                         width: detailWidth,
-                    child: showSettings
-                            ? SettingsPanel(accent: accent)
+                        child: showSettings
+                            ? SettingsPanel(
+                                accent: accent,
+                                onClose: onSettingsClose,
+                              )
                             : AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 300),
                                 switchInCurve: Curves.easeOutCubic,
@@ -1028,6 +1084,7 @@ class _FolderRow extends StatelessWidget {
         );
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
         margin: EdgeInsets.only(bottom: context.space(6)),
@@ -1820,23 +1877,25 @@ class ThreadScreen extends StatelessWidget {
 }
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, required this.accent});
+  const SettingsScreen({super.key, required this.accent, this.onClose});
 
   final Color accent;
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.all(context.gutter(16)),
-      child: SettingsPanel(accent: accent),
+      child: SettingsPanel(accent: accent, onClose: onClose),
     );
   }
 }
 
 class SettingsPanel extends StatelessWidget {
-  const SettingsPanel({super.key, required this.accent});
+  const SettingsPanel({super.key, required this.accent, this.onClose});
 
   final Color accent;
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -1880,7 +1939,22 @@ class SettingsPanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Settings', style: Theme.of(context).textTheme.headlineSmall),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Settings',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                ),
+                if (onClose != null)
+                  IconButton(
+                    onPressed: onClose,
+                    icon: const Icon(Icons.close_rounded),
+                    tooltip: 'Close settings',
+                  ),
+              ],
+            ),
             SizedBox(height: context.space(12)),
             const _SettingsTabBar(),
             SizedBox(height: context.space(12)),

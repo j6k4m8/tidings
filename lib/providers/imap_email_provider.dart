@@ -23,6 +23,7 @@ class ImapEmailProvider extends EmailProvider {
   ImapClient? _client;
   final Map<String, String> _messageIdToThreadId = {};
   final Map<String, String> _subjectThreadId = {};
+  String _currentMailboxPath = 'INBOX';
 
   @override
   ProviderStatus get status => _status;
@@ -35,6 +36,9 @@ class ImapEmailProvider extends EmailProvider {
 
   @override
   List<FolderSection> get folderSections => List.unmodifiable(_folderSections);
+
+  @override
+  String get selectedFolderPath => _currentMailboxPath;
 
   @override
   Future<void> initialize() async {
@@ -53,7 +57,7 @@ class ImapEmailProvider extends EmailProvider {
       );
       await _client!.login(config.username, config.password);
       await _loadFolders();
-      await _loadInbox();
+      await _loadMailbox(_currentMailboxPath);
       _status = ProviderStatus.ready;
       notifyListeners();
     } catch (error) {
@@ -73,7 +77,7 @@ class ImapEmailProvider extends EmailProvider {
     notifyListeners();
     try {
       await _loadFolders();
-      await _loadInbox();
+      await _loadMailbox(_currentMailboxPath);
       _status = ProviderStatus.ready;
       notifyListeners();
     } catch (error) {
@@ -97,12 +101,32 @@ class ImapEmailProvider extends EmailProvider {
     return messages.last;
   }
 
-  Future<void> _loadInbox() async {
+  @override
+  Future<void> selectFolder(String path) async {
+    if (_currentMailboxPath == path || _status == ProviderStatus.loading) {
+      return;
+    }
+    _currentMailboxPath = path;
+    _status = ProviderStatus.loading;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      await _loadMailbox(_currentMailboxPath);
+      _status = ProviderStatus.ready;
+      notifyListeners();
+    } catch (error) {
+      _status = ProviderStatus.error;
+      _errorMessage = error.toString();
+      notifyListeners();
+    }
+  }
+
+  Future<void> _loadMailbox(String path) async {
     final client = _client;
     if (client == null) {
       throw StateError('IMAP client not connected.');
     }
-    final mailbox = await client.selectMailboxByPath('INBOX');
+    final mailbox = await client.selectMailboxByPath(path);
     if (mailbox.messagesExists <= 0) {
       _threads.clear();
       _messages.clear();
@@ -239,7 +263,14 @@ class ImapEmailProvider extends EmailProvider {
     }
 
     mailboxItems.sort((a, b) => a.name.compareTo(b.name));
-    folderItems.sort((a, b) => a.name.compareTo(b.name));
+    folderItems.sort((a, b) {
+      final aPath = a.path.toLowerCase();
+      final bPath = b.path.toLowerCase();
+      if (aPath == bPath) {
+        return a.depth.compareTo(b.depth);
+      }
+      return aPath.compareTo(bPath);
+    });
 
     _folderSections.add(
       FolderSection(

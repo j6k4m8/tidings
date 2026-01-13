@@ -12,10 +12,22 @@ class MockEmailProvider extends EmailProvider {
   String? get errorMessage => _errorMessage;
 
   @override
-  List<EmailThread> get threads => _threads;
+  List<EmailThread> get threads {
+    final filtered = _threads.where((thread) {
+      return _threadFolders[thread.id] == _selectedFolderPath;
+    }).toList();
+    if (filtered.isNotEmpty) {
+      return filtered;
+    }
+    return _selectedFolderPath == 'INBOX' ? _threads : const [];
+  }
+
+  @override
+  String get selectedFolderPath => _selectedFolderPath;
 
   ProviderStatus _status = ProviderStatus.idle;
   String? _errorMessage;
+  String _selectedFolderPath = 'INBOX';
 
   @override
   Future<void> initialize() async {
@@ -33,6 +45,15 @@ class MockEmailProvider extends EmailProvider {
   @override
   Future<void> refresh() async {
     await initialize();
+  }
+
+  @override
+  Future<void> selectFolder(String path) async {
+    if (_selectedFolderPath == path) {
+      return;
+    }
+    _selectedFolderPath = path;
+    notifyListeners();
   }
 
   @override
@@ -123,6 +144,14 @@ class MockEmailProvider extends EmailProvider {
       starred: false,
     ),
   ];
+
+  static const Map<String, String> _threadFolders = {
+    'thread-01': 'INBOX',
+    'thread-02': 'INBOX',
+    'thread-03': 'Press',
+    'thread-04': 'Product',
+    'thread-05': 'Product/Launch notes',
+  };
 
   static const Map<String, List<EmailMessage>> _messages = {
     'thread-01': [
