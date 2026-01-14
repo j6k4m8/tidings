@@ -7,6 +7,9 @@ Tidings is a native, less-hideous email client for IMAP/SMTP/Exchange/JMAP serve
 -   IMAP account onboarding with multi-account support
 -   Mock inbox for exploring the UI without a server
 -   Threaded inbox + thread detail view with HTML rendering
+-   Rich HTML compose with inline replies and draft saving
+-   IMAP/SMTP connection testing and per-account refresh intervals
+-   Folder pinning with background cached folder loading
 -   Per-account accent colors and glass UI styling
 -   Responsive layout for desktop and mobile with folder navigation
 -   Appearance settings (theme, palette, density, corner radius, threads)
