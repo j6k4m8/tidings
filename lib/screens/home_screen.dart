@@ -1705,6 +1705,7 @@ class _AccountSectionState extends State<_AccountSection> {
     final account = widget.account;
     final appState = widget.appState;
     final accent = widget.accent;
+    final checkMinutes = account.imapConfig?.checkMailIntervalMinutes ?? 5;
     final baseAccent = account.accentColorValue == null
         ? accentFromAccount(account.id)
         : Color(account.accentColorValue!);
@@ -1804,6 +1805,35 @@ class _AccountSectionState extends State<_AccountSection> {
                   'Connection',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
+                if (account.providerType == EmailProviderType.imap) ...[
+                  SizedBox(height: context.space(8)),
+                  SettingRow(
+                    title: 'Check for new mail',
+                    subtitle: 'Background refresh interval for Inbox.',
+                    trailing: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: checkMinutes,
+                        onChanged: (value) {
+                          if (value == null) {
+                            return;
+                          }
+                          appState.setAccountCheckInterval(
+                            accountId: account.id,
+                            minutes: value,
+                          );
+                        },
+                        items: const [
+                          DropdownMenuItem(value: 1, child: Text('1 min')),
+                          DropdownMenuItem(value: 5, child: Text('5 min')),
+                          DropdownMenuItem(value: 10, child: Text('10 min')),
+                          DropdownMenuItem(value: 15, child: Text('15 min')),
+                          DropdownMenuItem(value: 30, child: Text('30 min')),
+                          DropdownMenuItem(value: 60, child: Text('60 min')),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
                 SizedBox(height: context.space(8)),
                 Wrap(
                   spacing: context.space(8),

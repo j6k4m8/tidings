@@ -184,6 +184,30 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  Future<void> setAccountCheckInterval({
+    required String accountId,
+    required int minutes,
+  }) async {
+    final index = _accounts.indexWhere((account) => account.id == accountId);
+    if (index == -1) {
+      return;
+    }
+    final account = _accounts[index];
+    final config = account.imapConfig;
+    if (config == null) {
+      return;
+    }
+    final updatedConfig =
+        config.copyWith(checkMailIntervalMinutes: minutes);
+    _accounts[index] = account.copyWith(imapConfig: updatedConfig);
+    final provider = _providers[accountId];
+    if (provider is ImapSmtpEmailProvider) {
+      provider.updateInboxRefreshInterval(Duration(minutes: minutes));
+    }
+    await _persistConfig();
+    notifyListeners();
+  }
+
   Future<void> selectAccount(int index) async {
     if (index < 0 || index >= _accounts.length) {
       return;

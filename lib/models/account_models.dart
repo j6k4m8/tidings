@@ -19,6 +19,7 @@ class ImapAccountConfig {
     required this.smtpPassword,
     required this.smtpUseTls,
     required this.smtpUseImapCredentials,
+    this.checkMailIntervalMinutes = 5,
   });
 
   final String server;
@@ -32,6 +33,7 @@ class ImapAccountConfig {
   final String smtpPassword;
   final bool smtpUseTls;
   final bool smtpUseImapCredentials;
+  final int checkMailIntervalMinutes;
 
   Map<String, Object?> toStorageJson() {
     return {
@@ -44,12 +46,14 @@ class ImapAccountConfig {
       'smtpUsername': smtpUsername,
       'smtpUseTls': smtpUseTls,
       'smtpUseImapCredentials': smtpUseImapCredentials,
+      'checkMailIntervalMinutes': checkMailIntervalMinutes,
     };
   }
 
   ImapAccountConfig copyWith({
     String? password,
     String? smtpPassword,
+    int? checkMailIntervalMinutes,
   }) {
     return ImapAccountConfig(
       server: server,
@@ -63,6 +67,8 @@ class ImapAccountConfig {
       smtpPassword: smtpPassword ?? this.smtpPassword,
       smtpUseTls: smtpUseTls,
       smtpUseImapCredentials: smtpUseImapCredentials,
+      checkMailIntervalMinutes:
+          checkMailIntervalMinutes ?? this.checkMailIntervalMinutes,
     );
   }
 
@@ -93,6 +99,8 @@ class ImapAccountConfig {
       smtpPassword: smtpUseImapCredentials ? password : (smtpPassword ?? ''),
       smtpUseTls: json['smtpUseTls'] as bool? ?? true,
       smtpUseImapCredentials: smtpUseImapCredentials,
+      checkMailIntervalMinutes:
+          (json['checkMailIntervalMinutes'] as num?)?.toInt() ?? 5,
     );
   }
 }

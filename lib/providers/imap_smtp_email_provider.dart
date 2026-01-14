@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:enough_mail/enough_mail.dart';
 import 'package:flutter/material.dart';
 import 'package:mailer/mailer.dart';
@@ -22,9 +24,14 @@ class ImapSmtpEmailProvider extends EmailProvider {
   ImapClient? _client;
   final Map<String, String> _messageIdToThreadId = {};
   final Map<String, String> _subjectThreadId = {};
+  final Map<String, _FolderCacheEntry> _folderCache = {};
+  final Map<String, int> _loadTokens = {};
+  int _loadCounter = 0;
   String _currentMailboxPath = 'INBOX';
   String? _sentMailboxPath;
   String? _draftsMailboxPath;
+  Duration _inboxRefreshInterval = const Duration(minutes: 5);
+  Timer? _inboxRefreshTimer;
 
   @override
   ProviderStatus get status => _status;
@@ -57,8 +64,11 @@ class ImapSmtpEmailProvider extends EmailProvider {
         isSecure: config.useTls,
       );
       await _client!.login(config.username, config.password);
+      _inboxRefreshInterval =
+          Duration(minutes: config.checkMailIntervalMinutes);
+      _scheduleInboxRefresh();
       await _loadFolders();
-      await _loadMailbox(_currentMailboxPath);
+      await _loadMailboxAndCache(_currentMailboxPath);
       _status = ProviderStatus.ready;
       notifyListeners();
     } catch (error) {
@@ -73,19 +83,14 @@ class ImapSmtpEmailProvider extends EmailProvider {
     if (_status == ProviderStatus.loading) {
       return;
     }
-    _status = ProviderStatus.loading;
+    final cached = _folderCache[_currentMailboxPath];
     _errorMessage = null;
-    notifyListeners();
-    try {
-      await _loadFolders();
-      await _loadMailbox(_currentMailboxPath);
-      _status = ProviderStatus.ready;
-      notifyListeners();
-    } catch (error) {
-      _status = ProviderStatus.error;
-      _errorMessage = error.toString();
+    if (cached == null) {
+      _status = ProviderStatus.loading;
       notifyListeners();
     }
+    _startFolderLoad(_currentMailboxPath, showErrors: cached == null);
+    await _loadFolders();
   }
 
   @override
@@ -104,22 +109,21 @@ class ImapSmtpEmailProvider extends EmailProvider {
 
   @override
   Future<void> selectFolder(String path) async {
-    if (_currentMailboxPath == path || _status == ProviderStatus.loading) {
+    if (_currentMailboxPath == path) {
       return;
     }
     _currentMailboxPath = path;
-    _status = ProviderStatus.loading;
     _errorMessage = null;
-    notifyListeners();
-    try {
-      await _loadMailbox(_currentMailboxPath);
+    final cached = _folderCache[path];
+    if (cached != null) {
+      _applyMailboxData(cached.data);
       _status = ProviderStatus.ready;
       notifyListeners();
-    } catch (error) {
-      _status = ProviderStatus.error;
-      _errorMessage = error.toString();
+    } else {
+      _status = ProviderStatus.loading;
       notifyListeners();
     }
+    _startFolderLoad(path, showErrors: cached == null);
   }
 
   @override
@@ -308,15 +312,87 @@ class ImapSmtpEmailProvider extends EmailProvider {
   }
 
   Future<void> _loadMailbox(String path) async {
+    final data = await _fetchMailboxData(path);
+    _applyMailboxData(data);
+  }
+
+  Future<void> _loadFolders() async {
+    final client = _client;
+    if (client == null) {
+      throw StateError('IMAP client not connected.');
+    }
+    final boxes = await client.listMailboxes(recursive: true);
+    _folderSections.clear();
+    _sentMailboxPath = null;
+    _draftsMailboxPath = null;
+    final mailboxItems = <FolderItem>[];
+    final folderItems = <FolderItem>[];
+    var index = 0;
+
+    for (final box in boxes) {
+      if (box.flags.contains(MailboxFlag.noSelect)) {
+        continue;
+      }
+      if (box.flags.contains(MailboxFlag.sent)) {
+        _sentMailboxPath ??= box.path;
+      }
+      if (box.flags.contains(MailboxFlag.drafts)) {
+        _draftsMailboxPath ??= box.path;
+      }
+      final status = await client.statusMailbox(box, [StatusFlags.unseen]);
+      final unread = status.messagesUnseen;
+      final depth = _pathDepth(box.path, box.pathSeparator);
+      final item = FolderItem(
+        index: index++,
+        name: box.name,
+        path: box.path,
+        depth: depth,
+        unreadCount: unread,
+        icon: _iconForMailbox(box.flags),
+      );
+      if (_isSystemMailbox(box.flags)) {
+        mailboxItems.add(item);
+      } else {
+        folderItems.add(item);
+      }
+    }
+
+    mailboxItems.sort((a, b) => a.name.compareTo(b.name));
+    folderItems.sort((a, b) {
+      final aPath = a.path.toLowerCase();
+      final bPath = b.path.toLowerCase();
+      if (aPath == bPath) {
+        return a.depth.compareTo(b.depth);
+      }
+      return aPath.compareTo(bPath);
+    });
+
+    _folderSections.add(
+      FolderSection(
+        title: 'Mailboxes',
+        kind: FolderSectionKind.mailboxes,
+        items: mailboxItems,
+      ),
+    );
+    if (folderItems.isNotEmpty) {
+      _folderSections.add(
+        FolderSection(
+          title: 'Folders',
+          kind: FolderSectionKind.folders,
+          items: folderItems,
+        ),
+      );
+    }
+  }
+
+  Future<_MailboxData> _fetchMailboxData(String path) async {
     final client = _client;
     if (client == null) {
       throw StateError('IMAP client not connected.');
     }
     final mailbox = await client.selectMailboxByPath(path);
     if (mailbox.messagesExists <= 0) {
-      _threads.clear();
-      _messages.clear();
-      return;
+      return const _MailboxData(threads: [], messages: {});
     }
     final end = mailbox.messagesExists;
     final start = end > 50 ? end - 49 : 1;
@@ -324,9 +400,8 @@ class ImapSmtpEmailProvider extends EmailProvider {
       MessageSequence.fromRange(start, end),
       '(FLAGS ENVELOPE BODYSTRUCTURE BODY.PEEK[])',
     );
-    _threads.clear();
-    _messages.clear();
-
+    final messagesByThread = <String, List<EmailMessage>>{};
+    var index = 0;
     for (final message in fetchResult.messages) {
       final envelope = message.envelope;
       if (envelope == null) {
@@ -399,10 +474,15 @@ class ImapSmtpEmailProvider extends EmailProvider {
         messageId: messageId,
         inReplyTo: inReplyTo,
       );
-      _messages.putIfAbsent(threadId, () => []).add(messageModel);
+      messagesByThread.putIfAbsent(threadId, () => []).add(messageModel);
+      index += 1;
+      if (index % 5 == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
     }
 
-    for (final entry in _messages.entries) {
+    final threads = <EmailThread>[];
+    for (final entry in messagesByThread.entries) {
       final messages = entry.value;
       if (messages.isEmpty) {
         continue;
@@ -414,7 +494,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
       });
       final latest = messages.last;
       final participants = {latest.from, ...latest.to}.toList();
-      _threads.add(
+      threads.add(
         EmailThread(
           id: entry.key,
           subject: latest.subject,
@@ -427,80 +507,74 @@ class ImapSmtpEmailProvider extends EmailProvider {
       );
     }
 
-    _threads.sort((a, b) {
+    threads.sort((a, b) {
       final aTime = a.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
       final bTime = b.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
       return bTime.compareTo(aTime);
     });
+    return _MailboxData(threads: threads, messages: messagesByThread);
   }
 
-  Future<void> _loadFolders() async {
-    final client = _client;
-    if (client == null) {
-      throw StateError('IMAP client not connected.');
-    }
-    final boxes = await client.listMailboxes(recursive: true);
-    _folderSections.clear();
-    _sentMailboxPath = null;
-    _draftsMailboxPath = null;
-    final mailboxItems = <FolderItem>[];
-    final folderItems = <FolderItem>[];
-    var index = 0;
+  void _applyMailboxData(_MailboxData data) {
+    _threads
+      ..clear()
+      ..addAll(data.threads);
+    _messages
+      ..clear()
+      ..addAll(data.messages);
+    _folderCache[_currentMailboxPath] =
+        _FolderCacheEntry(data: data, fetchedAt: DateTime.now());
+  }
 
-    for (final box in boxes) {
-      if (box.flags.contains(MailboxFlag.noSelect)) {
-        continue;
+  void _startFolderLoad(String path, {required bool showErrors}) {
+    final token = ++_loadCounter;
+    _loadTokens[path] = token;
+    _loadMailboxInBackground(path, token, showErrors: showErrors);
+  }
+
+  Future<void> _loadMailboxInBackground(
+    String path,
+    int token, {
+    required bool showErrors,
+  }) async {
+    try {
+      final data = await _fetchMailboxData(path);
+      if (_loadTokens[path] != token) {
+        return;
       }
-      if (box.flags.contains(MailboxFlag.sent)) {
-        _sentMailboxPath ??= box.path;
-      }
-      if (box.flags.contains(MailboxFlag.drafts)) {
-        _draftsMailboxPath ??= box.path;
-      }
-      final status = await client.statusMailbox(box, [StatusFlags.unseen]);
-      final unread = status.messagesUnseen;
-      final depth = _pathDepth(box.path, box.pathSeparator);
-      final item = FolderItem(
-        index: index++,
-        name: box.name,
-        path: box.path,
-        depth: depth,
-        unreadCount: unread,
-        icon: _iconForMailbox(box.flags),
+      _folderCache[path] = _FolderCacheEntry(
+        data: data,
+        fetchedAt: DateTime.now(),
       );
-      if (_isSystemMailbox(box.flags)) {
-        mailboxItems.add(item);
-      } else {
-        folderItems.add(item);
+      if (path == _currentMailboxPath) {
+        _threads
+          ..clear()
+          ..addAll(data.threads);
+        _messages
+          ..clear()
+          ..addAll(data.messages);
+        _status = ProviderStatus.ready;
+        notifyListeners();
+      }
+    } catch (error) {
+      if (_loadTokens[path] != token) {
+        return;
+      }
+      if (showErrors && path == _currentMailboxPath) {
+        _status = ProviderStatus.error;
+        _errorMessage = error.toString();
+        notifyListeners();
       }
     }
+  }
 
-    mailboxItems.sort((a, b) => a.name.compareTo(b.name));
-    folderItems.sort((a, b) {
-      final aPath = a.path.toLowerCase();
-      final bPath = b.path.toLowerCase();
-      if (aPath == bPath) {
-        return a.depth.compareTo(b.depth);
-      }
-      return aPath.compareTo(bPath);
-    });
-
-    _folderSections.add(
-      FolderSection(
-        title: 'Mailboxes',
-        kind: FolderSectionKind.mailboxes,
-        items: mailboxItems,
-      ),
+  Future<void> _loadMailboxAndCache(String path) async {
+    final data = await _fetchMailboxData(path);
+    _folderCache[path] = _FolderCacheEntry(
+      data: data,
+      fetchedAt: DateTime.now(),
     );
-    if (folderItems.isNotEmpty) {
-      _folderSections.add(
-        FolderSection(
-          title: 'Folders',
-          kind: FolderSectionKind.folders,
-          items: folderItems,
-        ),
-      );
-    }
+    _applyMailboxData(data);
   }
 
   List<MailAddress> _parseRecipients(String raw) {
@@ -671,8 +745,24 @@ class ImapSmtpEmailProvider extends EmailProvider {
     return '$hours:$minutes';
   }
 
+  void updateInboxRefreshInterval(Duration interval) {
+    _inboxRefreshInterval = interval;
+    _scheduleInboxRefresh();
+  }
+
+  void _scheduleInboxRefresh() {
+    _inboxRefreshTimer?.cancel();
+    if (_inboxRefreshInterval.inMinutes <= 0) {
+      return;
+    }
+    _inboxRefreshTimer = Timer.periodic(_inboxRefreshInterval, (_) {
+      _startFolderLoad('INBOX', showErrors: false);
+    });
+  }
+
   @override
   void dispose() {
+    _inboxRefreshTimer?.cancel();
     try {
       final client = _client;
       if (client != null && client.isConnected) {
@@ -684,4 +774,24 @@ class ImapSmtpEmailProvider extends EmailProvider {
     } catch (_) {}
     super.dispose();
   }
+}
+
+class _MailboxData {
+  const _MailboxData({
+    required this.threads,
+    required this.messages,
+  });
+
+  final List<EmailThread> threads;
+  final Map<String, List<EmailMessage>> messages;
+}
+
+class _FolderCacheEntry {
+  const _FolderCacheEntry({
+    required this.data,
+    required this.fetchedAt,
+  });
+
+  final _MailboxData data;
+  final DateTime fetchedAt;
 }
