@@ -207,16 +207,23 @@ class ImapSmtpEmailProvider extends EmailProvider {
       'SMTP send timed out.',
     );
 
-    await _withTimeout(
-      _appendToSent(message),
-      const Duration(seconds: 12),
-      'Saving to Sent timed out.',
-    );
-    await _withTimeout(
-      refresh(),
-      const Duration(seconds: 12),
-      'Refreshing after send timed out.',
-    );
+    try {
+      await _withTimeout(
+        _appendToSentWithRetry(message),
+        const Duration(seconds: 12),
+        'Saving to Sent timed out.',
+      );
+    } catch (error) {
+      _errorMessage = 'Sent, but saving to Sent failed: $error';
+      notifyListeners();
+    }
+    try {
+      await _withTimeout(
+        refresh(),
+        const Duration(seconds: 12),
+        'Refreshing after send timed out.',
+      );
+    } catch (_) {}
   }
 
   @override
@@ -257,11 +264,13 @@ class ImapSmtpEmailProvider extends EmailProvider {
       const Duration(seconds: 12),
       'Saving draft timed out.',
     );
-    await _withTimeout(
-      refresh(),
-      const Duration(seconds: 12),
-      'Refreshing after draft timed out.',
-    );
+    try {
+      await _withTimeout(
+        refresh(),
+        const Duration(seconds: 12),
+        'Refreshing after draft timed out.',
+      );
+    } catch (_) {}
   }
 
   Future<T> _withTimeout<T>(
@@ -524,40 +533,62 @@ class ImapSmtpEmailProvider extends EmailProvider {
     return source;
   }
 
-  Future<void> _appendToSent(MimeMessage message) async {
-    final client = _client;
-    if (client == null) {
-      return;
-    }
+  Future<void> _appendToSentWithRetry(MimeMessage message) async {
+    await _ensureConnected();
     final path = _sentMailboxPath ?? _draftsMailboxPath;
     if (path == null || path.isEmpty) {
       return;
     }
     try {
-      await client.appendMessage(
+      await _client!.appendMessage(
         message,
         flags: const [MessageFlags.seen],
         targetMailboxPath: path,
       );
-    } catch (_) {}
+    } catch (_) {
+      await _reconnect();
+      await _client!.appendMessage(
+        message,
+        flags: const [MessageFlags.seen],
+        targetMailboxPath: path,
+      );
+    }
   }
 
   Future<void> _appendToDrafts(MimeMessage message) async {
-    final client = _client;
-    if (client == null) {
-      return;
-    }
+    await _ensureConnected();
     final path = _draftsMailboxPath ?? _sentMailboxPath;
     if (path == null || path.isEmpty) {
       return;
     }
     try {
-      await client.appendMessage(
+      await _client!.appendMessage(
         message,
         flags: const [MessageFlags.draft],
         targetMailboxPath: path,
       );
     } catch (_) {}
+  }
+
+  Future<void> _ensureConnected() async {
+    if (_client != null && _client!.isConnected && _client!.isLoggedIn) {
+      return;
+    }
+    await _reconnect();
+  }
+
+  Future<void> _reconnect() async {
+    try {
+      _client?.disconnect();
+    } catch (_) {}
+    _client = ImapClient(isLogEnabled: false);
+    await _client!.connectToServer(
+      config.server,
+      config.port,
+      isSecure: config.useTls,
+    );
+    await _client!.login(config.username, config.password);
+    await _loadFolders();
   }
 
   int _pathDepth(String path, String separator) {
