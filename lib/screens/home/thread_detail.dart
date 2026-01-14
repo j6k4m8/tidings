@@ -38,7 +38,7 @@ class CurrentThreadPanel extends StatelessWidget {
         return GlassPanel(
           borderRadius: BorderRadius.circular(context.radius(30)),
           padding: EdgeInsets.all(
-            isCompact ? context.space(16) : context.space(22),
+            isCompact ? context.space(16) : context.space(18),
           ),
           variant: GlassVariant.sheet,
           child: Column(
@@ -54,7 +54,9 @@ class CurrentThreadPanel extends StatelessWidget {
                   Expanded(
                     child: Text(
                       thread.subject,
-                      style: Theme.of(context).textTheme.headlineSmall,
+                      style: Theme.of(context).textTheme.titleLarge,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   IconButton(
@@ -67,12 +69,17 @@ class CurrentThreadPanel extends StatelessWidget {
                   ),
                 ],
               ),
-              SizedBox(height: context.space(6)),
+              SizedBox(height: context.space(4)),
               Text(
                 thread.participantSummary,
-                style: Theme.of(context).textTheme.bodyMedium,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color:
+                          Theme.of(context).colorScheme.onSurface.withValues(
+                                alpha: 0.6,
+                              ),
+                    ),
               ),
-              SizedBox(height: context.space(16)),
+              SizedBox(height: context.space(12)),
               Expanded(
                 child: ProviderBody(
                   status: provider.status,
@@ -84,10 +91,10 @@ class CurrentThreadPanel extends StatelessWidget {
                     itemCount: messages.length,
                     separatorBuilder: (_, _) =>
                         SizedBox(height: context.space(12)),
-                    itemBuilder: (context, index) {
-                      final message = messages[index];
-                      final isLatest = index == messages.length - 1;
-                      final shouldExpand =
+                      itemBuilder: (context, index) {
+                        final message = messages[index];
+                        final isLatest = index == messages.length - 1;
+                        final shouldExpand =
                           (settings.autoExpandLatest && isLatest) ||
                           (settings.autoExpandUnread && message.isUnread);
                       return MessageCard(
@@ -178,7 +185,7 @@ class _MessageCardState extends State<MessageCard> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
-        padding: EdgeInsets.all(context.space(14)),
+        padding: EdgeInsets.all(context.space(12)),
         decoration: BoxDecoration(
           color: cardColor,
           borderRadius: BorderRadius.circular(context.radius(18)),
@@ -191,12 +198,14 @@ class _MessageCardState extends State<MessageCard> {
               children: [
                 Text(
                   widget.message.from.displayName,
-                  style: Theme.of(context).textTheme.titleLarge,
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
                 SizedBox(width: context.space(8)),
                 Text(
                   widget.message.time,
-                  style: Theme.of(context).textTheme.labelLarge,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurface.withValues(alpha: 0.6),
+                      ),
                 ),
                 const Spacer(),
                 Icon(
@@ -205,16 +214,16 @@ class _MessageCardState extends State<MessageCard> {
                 ),
               ],
             ),
-            SizedBox(height: context.space(8)),
+            SizedBox(height: context.space(6)),
             if (showSubject) ...[
               Text(
                 widget.message.subject,
                 style: Theme.of(context)
                     .textTheme
-                    .bodyLarge
+                    .bodyMedium
                     ?.copyWith(fontWeight: FontWeight.w600),
               ),
-              SizedBox(height: context.space(8)),
+              SizedBox(height: context.space(6)),
             ],
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),

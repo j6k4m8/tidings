@@ -26,10 +26,15 @@ class ThreadSearchRow extends StatelessWidget {
       decoration: InputDecoration(
         hintText: 'Search threads, people, or labels',
         prefixIcon: const Icon(Icons.search_rounded),
+        isDense: true,
         filled: true,
         fillColor: isDark
             ? ColorTokens.cardFill(context, 0.14)
             : ColorTokens.cardFillStrong(context, 0.2),
+        contentPadding: EdgeInsets.symmetric(
+          vertical: context.space(10),
+          horizontal: context.space(12),
+        ),
         enabledBorder: OutlineInputBorder(
           borderRadius: borderRadius,
           borderSide: BorderSide(color: borderColor),
@@ -55,10 +60,10 @@ class ThreadQuickChips extends StatelessWidget {
       spacing: context.space(8),
       runSpacing: context.space(8),
       children: [
-        GlassPill(label: 'Unread', accent: accent, selected: true),
-        const GlassPill(label: 'Pinned'),
-        const GlassPill(label: 'Follow up'),
-        const GlassPill(label: 'Snoozed'),
+        GlassPill(label: 'Unread', accent: accent, selected: true, dense: true),
+        const GlassPill(label: 'Pinned', dense: true),
+        const GlassPill(label: 'Follow up', dense: true),
+        const GlassPill(label: 'Snoozed', dense: true),
       ],
     );
   }
@@ -104,7 +109,7 @@ class ThreadListPanel extends StatelessWidget {
               ThreadSearchRow(accent: accent),
               SizedBox(height: context.space(12)),
               ThreadQuickChips(accent: accent),
-              SizedBox(height: context.space(16)),
+              SizedBox(height: context.space(12)),
             ],
             Expanded(
               child: ProviderBody(
@@ -128,7 +133,7 @@ class ThreadListPanel extends StatelessWidget {
                     return StaggeredFadeIn(
                       index: index,
                       child: Padding(
-                        padding: EdgeInsets.only(bottom: context.space(10)),
+                        padding: EdgeInsets.only(bottom: context.space(8)),
                         child: ThreadTile(
                           thread: thread,
                           participants: participants,
@@ -199,7 +204,7 @@ class _ThreadTileState extends State<ThreadTile> {
     final isUnread = widget.thread.unread || (latestMessage?.isUnread ?? false);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final baseFill = widget.selected
-        ? widget.accent.withValues(alpha: 0.18)
+        ? widget.accent.withValues(alpha: 0.16)
         : isUnread
             ? (isDark
                 ? Colors.white.withValues(alpha: 0.14)
@@ -211,16 +216,25 @@ class _ThreadTileState extends State<ThreadTile> {
     final fill = _hovered || _pressed
         ? Color.alphaBlend(hoverOverlay, baseFill)
         : baseFill;
-    final border = widget.selected
-        ? widget.accent.withValues(alpha: 0.6)
+    final borderColor = widget.selected
+        ? widget.accent.withValues(alpha: 0.45)
         : ColorTokens.border(context, 0.12);
-    final baseParticipantStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: scheme.onSurface.withValues(alpha: isUnread ? 0.75 : 0.6),
-          fontWeight: FontWeight.w500,
-        );
+    final baseParticipantStyle =
+        Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: widget.selected
+                  ? scheme.onSurface.withValues(alpha: 0.85)
+                  : scheme.onSurface.withValues(
+                      alpha: isUnread ? 0.7 : 0.55,
+                    ),
+              fontWeight: FontWeight.w500,
+            );
     final latestSender = latestMessage?.from.email;
     final highlightParticipantStyle = baseParticipantStyle?.copyWith(
-      color: isUnread ? tokens.onSurface : scheme.onSurface.withValues(alpha: 0.9),
+      color: widget.selected
+          ? scheme.onSurface
+          : (isUnread
+              ? tokens.onSurface
+              : scheme.onSurface.withValues(alpha: 0.85)),
       fontWeight: FontWeight.w600,
     );
     final displayTime = _formatThreadTimestamp(
@@ -242,105 +256,142 @@ class _ThreadTileState extends State<ThreadTile> {
         onTapUp: (_) => _setPressed(false),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: EdgeInsets.all(context.space(14)),
+          padding: EdgeInsets.all(context.space(12)),
           decoration: BoxDecoration(
             color: fill,
-            borderRadius: BorderRadius.circular(context.radius(18)),
-            border: Border.all(color: border),
+            borderRadius: BorderRadius.circular(context.radius(16)),
+            border: Border.all(color: borderColor),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Stack(
             children: [
-              _SenderStack(participants: participants),
-              SizedBox(width: context.space(12)),
-              Expanded(
-                child: Column(
+              if (widget.selected)
+                Positioned(
+                  left: 0,
+                  top: context.space(6),
+                  bottom: context.space(6),
+                  child: Container(
+                    width: 3,
+                    decoration: BoxDecoration(
+                      color: widget.accent,
+                      borderRadius: BorderRadius.circular(context.radius(6)),
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: EdgeInsets.only(
+                  left: widget.selected ? context.space(6) : 0,
+                ),
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        if (isUnread)
-                          Container(
-                            width: context.space(6),
-                            height: context.space(6),
-                            margin: EdgeInsets.only(right: context.space(6)),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: widget.accent,
-                            ),
-                          )
-                        else
-                          SizedBox(width: context.space(12)),
-                        Expanded(
-                          child: RichText(
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            text: TextSpan(
-                              children: [
-                                for (var i = 0;
-                                    i < widget.participants.length;
-                                    i++)
-                                  TextSpan(
-                                    text: widget.participants[i]
-                                            .normalizedDisplayName +
-                                        (i == widget.participants.length - 1
-                                            ? ''
-                                            : ', '),
-                                    style: widget.participants[i].email ==
-                                            latestSender
-                                        ? highlightParticipantStyle
-                                        : baseParticipantStyle,
+                    _SenderStack(participants: participants),
+                    SizedBox(width: context.space(12)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              if (isUnread)
+                                Container(
+                                  width: context.space(6),
+                                  height: context.space(6),
+                                  margin:
+                                      EdgeInsets.only(right: context.space(6)),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: widget.accent,
                                   ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        SizedBox(width: context.space(8)),
-                        Text(
-                          displayTime,
-                          style: Theme.of(context).textTheme.labelSmall,
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: context.space(4)),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            subject,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: widget.thread.unread
-                                      ? scheme.onSurface
-                                      : scheme.onSurface.withValues(
-                                          alpha: 0.5,
+                                )
+                              else
+                                SizedBox(width: context.space(12)),
+                              Expanded(
+                                child: RichText(
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  text: TextSpan(
+                                    children: [
+                                      for (var i = 0;
+                                          i < widget.participants.length;
+                                          i++)
+                                        TextSpan(
+                                          text: widget.participants[i]
+                                                  .normalizedDisplayName +
+                                              (i ==
+                                                      widget.participants
+                                                              .length -
+                                                          1
+                                                  ? ''
+                                                  : ', '),
+                                          style: widget.participants[i].email ==
+                                                  latestSender
+                                              ? highlightParticipantStyle
+                                              : baseParticipantStyle,
                                         ),
+                                    ],
+                                  ),
                                 ),
-                            maxLines: 1,
+                              ),
+                              SizedBox(width: context.space(8)),
+                              Text(
+                                displayTime,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(
+                                      color: scheme.onSurface
+                                          .withValues(alpha: 0.55),
+                                    ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: context.space(4)),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  subject,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: widget.selected
+                                            ? scheme.onSurface
+                                            : (widget.thread.unread
+                                                ? scheme.onSurface
+                                                : scheme.onSurface.withValues(
+                                                    alpha: 0.5,
+                                                  )),
+                                      ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (widget.thread.starred)
+                                Icon(
+                                  Icons.star_rounded,
+                                  color: widget.accent,
+                                  size: 18,
+                                ),
+                            ],
+                          ),
+                          SizedBox(height: context.space(6)),
+                          Text(
+                            latestMessage?.bodyPlainText ?? '',
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: scheme.onSurface.withValues(
+                                        alpha: widget.selected
+                                            ? 0.7
+                                            : (isUnread ? 0.62 : 0.34),
+                                      ),
+                                    ),
                           ),
-                        ),
-                        if (widget.thread.starred)
-                          Icon(
-                            Icons.star_rounded,
-                            color: widget.accent,
-                            size: 18,
-                          ),
-                      ],
-                    ),
-                    SizedBox(height: context.space(6)),
-                    Text(
-                      latestMessage?.bodyPlainText ?? '',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurface.withValues(
-                          alpha: isUnread ? 0.7 : 0.42,
-                        ),
+                        ],
                       ),
                     ),
                   ],
