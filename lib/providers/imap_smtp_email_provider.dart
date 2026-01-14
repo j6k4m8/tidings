@@ -26,6 +26,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
   final Map<String, String> _subjectThreadId = {};
   final Map<String, _FolderCacheEntry> _folderCache = {};
   final Map<String, int> _loadTokens = {};
+  final Set<String> _loadingFolders = {};
   int _loadCounter = 0;
   String _currentMailboxPath = 'INBOX';
   String? _sentMailboxPath;
@@ -47,6 +48,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
 
   @override
   String get selectedFolderPath => _currentMailboxPath;
+
+  @override
+  bool isFolderLoading(String path) => _loadingFolders.contains(path);
 
   @override
   Future<void> initialize() async {
@@ -529,6 +533,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
   void _startFolderLoad(String path, {required bool showErrors}) {
     final token = ++_loadCounter;
     _loadTokens[path] = token;
+    if (_loadingFolders.add(path)) {
+      notifyListeners();
+    }
     _loadMailboxInBackground(path, token, showErrors: showErrors);
   }
 
@@ -563,6 +570,10 @@ class ImapSmtpEmailProvider extends EmailProvider {
       if (showErrors && path == _currentMailboxPath) {
         _status = ProviderStatus.error;
         _errorMessage = error.toString();
+        notifyListeners();
+      }
+    } finally {
+      if (_loadTokens[path] == token && _loadingFolders.remove(path)) {
         notifyListeners();
       }
     }

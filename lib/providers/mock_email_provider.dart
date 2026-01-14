@@ -30,6 +30,9 @@ class MockEmailProvider extends EmailProvider {
   @override
   String get selectedFolderPath => _selectedFolderPath;
 
+  @override
+  bool isFolderLoading(String path) => false;
+
   ProviderStatus _status = ProviderStatus.idle;
   String? _errorMessage;
   String _selectedFolderPath = 'INBOX';
