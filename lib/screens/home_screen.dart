@@ -45,6 +45,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   static const _threadPanelFractionKey = 'threadPanelFraction';
+  static const _sidebarCollapsedKey = 'sidebarCollapsed';
   int _selectedThreadIndex = 0;
   int _selectedFolderIndex = 0;
   int _navIndex = 0;
@@ -67,6 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final stored = prefs.getDouble(_threadPanelFractionKey);
+      final storedSidebar = prefs.getBool(_sidebarCollapsedKey);
       if (!mounted) {
         return;
       }
@@ -76,6 +78,11 @@ class _HomeScreenState extends State<HomeScreen> {
           _threadPanelFraction = stored.clamp(0.3, 0.8);
         });
       }
+      if (storedSidebar != null) {
+        setState(() {
+          _sidebarCollapsed = storedSidebar;
+        });
+      }
     } on PlatformException {
       // SharedPreferences plugin can be unavailable during hot reload.
     }
@@ -83,6 +90,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _persistThreadPanelFraction(double value) {
     _prefs?.setDouble(_threadPanelFractionKey, value);
+  }
+
+  void _persistSidebarCollapsed(bool value) {
+    _prefs?.setBool(_sidebarCollapsedKey, value);
   }
 
   @override
@@ -206,6 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       sidebarCollapsed: _sidebarCollapsed,
                       onSidebarToggle: () => setState(() {
                         _sidebarCollapsed = !_sidebarCollapsed;
+                        _persistSidebarCollapsed(_sidebarCollapsed);
                       }),
                       onAccountTap: () => showAccountPickerSheet(
                         context,
@@ -355,6 +367,7 @@ class _WideLayout extends StatelessWidget {
                       onExpand: onSidebarToggle,
                       onAccountTap: onAccountTap,
                       onSettingsTap: onSettingsTap,
+                      onCompose: onCompose,
                     ),
                   )
                 : SizedBox(
@@ -678,8 +691,7 @@ class _CompactLayout extends StatelessWidget {
                 SizedBox(height: context.space(16)),
                 ThreadSearchRow(accent: accent),
                 SizedBox(height: context.space(16)),
-                ThreadQuickChips(accent: accent),
-                SizedBox(height: context.space(16)),
+                SizedBox(height: context.space(8)),
                 Expanded(
                   child: ThreadListPanel(
                     accent: accent,
@@ -998,7 +1010,7 @@ class _FolderSection extends StatelessWidget {
   }
 }
 
-class _FolderRow extends StatelessWidget {
+class _FolderRow extends StatefulWidget {
   const _FolderRow({
     required this.item,
     required this.accent,
@@ -1014,49 +1026,69 @@ class _FolderRow extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_FolderRow> createState() => _FolderRowState();
+}
+
+class _FolderRowState extends State<_FolderRow> {
+  bool _hovered = false;
+
+  void _setHovered(bool value) {
+    if (_hovered == value) {
+      return;
+    }
+    setState(() => _hovered = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final settings = context.tidingsSettings;
-    final unread = item.unreadCount > 0;
+    final unread = widget.item.unreadCount > 0;
     final showUnreadCounts = settings.showFolderUnreadCounts;
-    final isPinned = settings.isFolderPinned(item.path);
+    final isPinned = settings.isFolderPinned(widget.item.path);
+    final showPin = _hovered || isPinned;
     final baseColor = Theme.of(context).colorScheme.onSurface;
     final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
           color: unread ? baseColor : baseColor.withValues(alpha: 0.65),
           fontWeight: unread ? FontWeight.w600 : FontWeight.w500,
         );
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
+    return MouseRegion(
+      onEnter: (_) => _setHovered(true),
+      onExit: (_) => _setHovered(false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: Container(
         margin: EdgeInsets.only(bottom: context.space(4)),
         padding: EdgeInsets.fromLTRB(
-          context.space(6) + item.depth * context.space(12),
+          context.space(6) + widget.item.depth * context.space(12),
           context.space(4),
           context.space(6),
           context.space(4),
         ),
         decoration: BoxDecoration(
-          color: selected ? accent.withValues(alpha: 0.14) : Colors.transparent,
+          color: widget.selected
+              ? widget.accent.withValues(alpha: 0.14)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(context.radius(12)),
         ),
         child: Row(
           children: [
-            if (selected)
+            if (widget.selected)
               Container(
                 width: 2,
                 height: context.space(12),
                 margin: EdgeInsets.only(right: context.space(8)),
                 decoration: BoxDecoration(
-                  color: accent,
+                  color: widget.accent,
                   borderRadius: BorderRadius.circular(context.radius(8)),
                 ),
               )
             else
               SizedBox(width: context.space(8)),
-            if (item.icon != null) ...[
+            if (widget.item.icon != null) ...[
               Icon(
-                item.icon,
+                widget.item.icon,
                 size: 15,
                 color: unread
                     ? baseColor.withValues(alpha: 0.8)
@@ -1066,13 +1098,14 @@ class _FolderRow extends StatelessWidget {
             ],
             Expanded(
               child: Text(
-                item.name,
+                widget.item.name,
                 style: textStyle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
+                overflow: TextOverflow.visible,
+                softWrap: true,
               ),
             ),
-            if (isLoading)
+            if (widget.isLoading)
               Padding(
                 padding: EdgeInsets.only(right: context.space(6)),
                 child: SizedBox(
@@ -1081,25 +1114,33 @@ class _FolderRow extends StatelessWidget {
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      accent.withValues(alpha: 0.7),
+                      widget.accent.withValues(alpha: 0.7),
                     ),
                   ),
                 ),
               ),
-            IconButton(
-              onPressed: () => settings.toggleFolderPinned(item.path),
-              icon: Icon(
-                isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-                size: 14,
-              ),
-              color: isPinned
-                  ? accent
-                  : ColorTokens.textSecondary(context, 0.7),
-              tooltip: isPinned ? 'Unpin from rail' : 'Pin to rail',
-              padding: EdgeInsets.zero,
-              constraints: BoxConstraints.tightFor(
-                width: context.space(24),
-                height: context.space(24),
+            IgnorePointer(
+              ignoring: !showPin,
+              child: AnimatedOpacity(
+                opacity: showPin ? 1 : 0,
+                duration: const Duration(milliseconds: 150),
+                child: IconButton(
+                  onPressed: () =>
+                      settings.toggleFolderPinned(widget.item.path),
+                  icon: Icon(
+                    isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                    size: 14,
+                  ),
+                  color: isPinned
+                      ? widget.accent
+                      : ColorTokens.textSecondary(context, 0.7),
+                  tooltip: isPinned ? 'Unpin from rail' : 'Pin to rail',
+                  padding: EdgeInsets.zero,
+                  constraints: BoxConstraints.tightFor(
+                    width: context.space(24),
+                    height: context.space(24),
+                  ),
+                ),
               ),
             ),
             if (unread && showUnreadCounts)
@@ -1109,18 +1150,19 @@ class _FolderRow extends StatelessWidget {
                   vertical: context.space(1),
                 ),
                 decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.16),
+                  color: widget.accent.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(context.radius(999)),
                 ),
                 child: Text(
-                  item.unreadCount.toString(),
+                  widget.item.unreadCount.toString(),
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: accent,
+                        color: widget.accent,
                         fontWeight: FontWeight.w600,
                       ),
                 ),
               ),
           ],
+        ),
         ),
       ),
     );
@@ -1138,6 +1180,7 @@ class _SidebarRail extends StatelessWidget {
     required this.onExpand,
     required this.onAccountTap,
     required this.onSettingsTap,
+    required this.onCompose,
   });
 
   final EmailAccount account;
@@ -1149,6 +1192,7 @@ class _SidebarRail extends StatelessWidget {
   final VoidCallback onExpand;
   final VoidCallback onAccountTap;
   final VoidCallback onSettingsTap;
+  final VoidCallback onCompose;
 
   @override
   Widget build(BuildContext context) {
@@ -1187,6 +1231,19 @@ class _SidebarRail extends StatelessWidget {
               label: item.name,
             ),
           const Spacer(),
+          GlassPanel(
+            borderRadius: BorderRadius.circular(context.radius(16)),
+            padding: EdgeInsets.all(context.space(4)),
+            variant: GlassVariant.pill,
+            accent: accent,
+            selected: true,
+            child: IconButton(
+              onPressed: onCompose,
+              icon: const Icon(Icons.edit_rounded),
+              tooltip: 'Compose',
+            ),
+          ),
+          SizedBox(height: context.space(8)),
           IconButton(
             onPressed: onSettingsTap,
             icon: const Icon(Icons.settings_rounded),

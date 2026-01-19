@@ -42,13 +42,16 @@ class GlassTheme {
     final spec = _specFor(variant, isDark);
     final effectiveAccent = accent ?? scheme.primary;
     final tintBoost = selected ? spec.selectedTintBoost : 0.0;
+    final tintColor = selected
+        ? effectiveAccent.withValues(alpha: spec.tintOpacity + tintBoost)
+        : Colors.transparent;
     final fill = Color.alphaBlend(
-      effectiveAccent.withValues(alpha: spec.tintOpacity + tintBoost),
+      tintColor,
       scheme.surface.withValues(alpha: spec.fillOpacity),
     );
     final borderColor = selected ? effectiveAccent : scheme.onSurface;
-    final border = borderColor.withValues(alpha: 
-      spec.borderOpacity + (selected ? spec.selectedBorderBoost : 0.0),
+    final border = borderColor.withValues(
+      alpha: spec.borderOpacity + (selected ? spec.selectedBorderBoost : 0.0),
     );
     final highlight = _highlightGradient(
       brightness: brightness,

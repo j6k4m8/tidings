@@ -54,8 +54,8 @@ class CurrentThreadPanel extends StatelessWidget {
                   Expanded(
                     child: Text(
                       thread.subject,
-                      style: Theme.of(context).textTheme.titleLarge,
-                      maxLines: 2,
+                      style: Theme.of(context).textTheme.titleMedium,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -89,10 +89,13 @@ class CurrentThreadPanel extends StatelessWidget {
                   emptyMessage: 'No messages in this thread.',
                   child: ListView.separated(
                     itemCount: messages.length,
-                    separatorBuilder: (_, _) =>
-                        SizedBox(height: context.space(12)),
-                      itemBuilder: (context, index) {
-                        final message = messages[index];
+                    separatorBuilder: (_, __) => Divider(
+                      height: context.space(16),
+                      thickness: 1,
+                      color: ColorTokens.border(context, 0.1),
+                    ),
+                    itemBuilder: (context, index) {
+                      final message = messages[index];
                         final isLatest = index == messages.length - 1;
                         final shouldExpand =
                           (settings.autoExpandLatest && isLatest) ||
@@ -197,16 +200,34 @@ class _MessageCardState extends State<MessageCard> {
     return _collapsedLineLimit * fontSize * 1.45;
   }
 
+  String _sanitizeHtml(String html) {
+    var value = html;
+    value = value.replaceAll(
+      RegExp(r'<!doctype[^>]*>', caseSensitive: false),
+      '',
+    );
+    value = value.replaceAll(
+      RegExp(r'<(script|style)[^>]*>[\s\S]*?</\1>', caseSensitive: false),
+      '',
+    );
+    value = value.replaceAll(
+      RegExp(r'<head[^>]*>[\s\S]*?</head>', caseSensitive: false),
+      '',
+    );
+    return value.trim();
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final showSubject = !context.tidingsSettings.hideThreadSubjects;
     final cardColor = widget.message.isMe
-        ? widget.accent.withValues(alpha: 0.18)
-        : ColorTokens.cardFill(context, 0.08);
+        ? widget.accent.withValues(alpha: 0.08)
+        : Colors.transparent;
     final bodyText = widget.message.bodyPlainText;
     final bodyHtml = widget.message.bodyHtml;
     final hasHtml = bodyHtml != null && bodyHtml.trim().isNotEmpty;
+    final sanitizedHtml = hasHtml ? _sanitizeHtml(bodyHtml!) : null;
     final shouldClamp = !_expanded && _isLongBody(bodyText);
 
     return GestureDetector(
@@ -214,11 +235,9 @@ class _MessageCardState extends State<MessageCard> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
-        padding: EdgeInsets.all(context.space(12)),
+        padding: EdgeInsets.all(context.space(10)),
         decoration: BoxDecoration(
           color: cardColor,
-          borderRadius: BorderRadius.circular(context.radius(18)),
-          border: Border.all(color: ColorTokens.border(context, 0.12)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -264,13 +283,19 @@ class _MessageCardState extends State<MessageCard> {
                 key: ValueKey('body-${_expanded ? 'expanded' : 'collapsed'}'),
                 builder: (context, constraints) {
                   final boundedWidth = constraints.maxWidth.isFinite;
-                  final htmlWidget = hasHtml
+                  final htmlWidget = (hasHtml && sanitizedHtml!.isNotEmpty)
                       ? Html(
-                          data: bodyHtml,
+                          data: sanitizedHtml,
                           shrinkWrap: true,
                           onLinkTap: (url, attributes, element) =>
                               _handleLinkTap(url),
                           style: {
+                            'html': Style(
+                              margin: Margins.zero,
+                              padding: HtmlPaddings.zero,
+                              backgroundColor: Colors.transparent,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
                             'body': Style(
                               margin: Margins.zero,
                               padding: HtmlPaddings.zero,
@@ -286,8 +311,91 @@ class _MessageCardState extends State<MessageCard> {
                                   .bodyLarge
                                   ?.fontWeight,
                               color: Theme.of(context).colorScheme.onSurface,
+                              backgroundColor: Colors.transparent,
                             ),
-                            'p': Style(margin: Margins.only(bottom: 8)),
+                            'p': Style(
+                              margin: Margins.only(bottom: 8),
+                              color:
+                                  Theme.of(context).colorScheme.onSurface,
+                            ),
+                            'img': Style(
+                              width: Width.auto(),
+                              display: Display.block,
+                              margin: Margins.only(bottom: 8),
+                            ),
+                            'table': Style(
+                              width: Width.auto(),
+                              margin: Margins.only(bottom: 8),
+                              border: Border.all(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.12),
+                              ),
+                            ),
+                            'th': Style(
+                              padding: HtmlPaddings.all(6),
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .surface
+                                  .withValues(alpha: 0.5),
+                            ),
+                            'td': Style(
+                              padding: HtmlPaddings.all(6),
+                              border: Border.all(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.08),
+                              ),
+                            ),
+                            'div': Style(
+                              color:
+                                  Theme.of(context).colorScheme.onSurface,
+                            ),
+                            'span': Style(
+                              color:
+                                  Theme.of(context).colorScheme.onSurface,
+                            ),
+                            'ul': Style(
+                              margin: Margins.only(bottom: 8),
+                              padding: HtmlPaddings.only(left: 16),
+                            ),
+                            'ol': Style(
+                              margin: Margins.only(bottom: 8),
+                              padding: HtmlPaddings.only(left: 16),
+                            ),
+                            'li': Style(
+                              margin: Margins.only(bottom: 4),
+                              color:
+                                  Theme.of(context).colorScheme.onSurface,
+                            ),
+                            'pre': Style(
+                              padding: HtmlPaddings.all(8),
+                              margin: Margins.only(bottom: 8),
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .surface
+                                  .withValues(alpha: 0.5),
+                            ),
+                            'code': Style(
+                              fontFamily: 'SF Mono',
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .surface
+                                  .withValues(alpha: 0.5),
+                            ),
+                            'hr': Style(
+                              margin: Margins.symmetric(vertical: 12),
+                              border: Border(
+                                top: BorderSide(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.12),
+                                ),
+                              ),
+                            ),
                             'blockquote': Style(
                               margin: Margins.symmetric(vertical: 8),
                               padding: HtmlPaddings.only(left: 12),
@@ -335,33 +443,44 @@ class _MessageCardState extends State<MessageCard> {
                         ),
                       ),
                       Positioned(
-                        left: 0,
                         right: 0,
                         bottom: 0,
-                        child: IgnorePointer(
-                          child: Container(
-                            height: context.space(28),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  cardColor.withValues(alpha: 0.0),
-                                  cardColor,
-                                ],
-                              ),
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: context.space(8),
+                            vertical: context.space(4),
+                          ),
+                          decoration: BoxDecoration(
+                            color: ColorTokens.cardFill(context, 0.12),
+                            borderRadius:
+                                BorderRadius.circular(context.radius(999)),
+                            border: Border.all(
+                              color: ColorTokens.border(context, 0.12),
                             ),
                           ),
-                        ),
-                      ),
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: Text(
-                          'Show more',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: scheme.onSurface.withValues(alpha: 0.6),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.expand_more_rounded,
+                                size: 14,
+                                color: widget.accent.withValues(alpha: 0.9),
                               ),
+                              SizedBox(width: context.space(4)),
+                              Text(
+                                'Show more',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color:
+                                          widget.accent.withValues(alpha: 0.9),
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0,
+                                    ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],

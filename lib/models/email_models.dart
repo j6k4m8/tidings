@@ -107,15 +107,21 @@ class EmailMessage {
 }
 
 String _stripHtml(String html) {
-  var text = html;
+  var text = _unescapeHtml(html);
+  text = text.replaceAll(RegExp(r'<!doctype[^>]*>', caseSensitive: false), '');
   text = text.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
   text = text.replaceAll(RegExp(r'</p>', caseSensitive: false), '\n');
   text = text.replaceAll(RegExp(r'<[^>]+>'), '');
+  return text.trim();
+}
+
+String _unescapeHtml(String input) {
+  var text = input;
   text = text.replaceAll('&nbsp;', ' ');
   text = text.replaceAll('&amp;', '&');
   text = text.replaceAll('&lt;', '<');
   text = text.replaceAll('&gt;', '>');
   text = text.replaceAll('&quot;', '"');
   text = text.replaceAll('&#39;', "'");
-  return text.trim();
+  return text;
 }

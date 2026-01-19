@@ -20,8 +20,8 @@ class ThreadSearchRow extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderRadius = BorderRadius.circular(context.radius(18));
     final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.16)
-        : Colors.black.withValues(alpha: 0.12);
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.08);
     return TextField(
       decoration: InputDecoration(
         hintText: 'Search threads, people, or labels',
@@ -42,29 +42,9 @@ class ThreadSearchRow extends StatelessWidget {
         focusedBorder: OutlineInputBorder(
           borderRadius: borderRadius,
           borderSide:
-              BorderSide(color: accent.withValues(alpha: 0.6), width: 1.2),
+              BorderSide(color: accent.withValues(alpha: 0.4), width: 1.2),
         ),
       ),
-    );
-  }
-}
-
-class ThreadQuickChips extends StatelessWidget {
-  const ThreadQuickChips({super.key, required this.accent});
-
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: context.space(8),
-      runSpacing: context.space(8),
-      children: [
-        GlassPill(label: 'Unread', accent: accent, selected: true, dense: true),
-        const GlassPill(label: 'Pinned', dense: true),
-        const GlassPill(label: 'Follow up', dense: true),
-        const GlassPill(label: 'Snoozed', dense: true),
-      ],
     );
   }
 }
@@ -94,22 +74,27 @@ class ThreadListPanel extends StatelessWidget {
       builder: (context, _) {
         final status = provider.status;
         final threads = provider.threads;
+        final entries = _buildThreadEntries(threads);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (!isCompact) ...[
               Row(
                 children: [
-                  Text('Inbox', style: Theme.of(context).textTheme.displaySmall),
+                  Text('Inbox', style: Theme.of(context).textTheme.titleLarge),
                   const Spacer(),
-                  GlassPill(label: 'Focused', accent: accent, selected: true),
+                  GlassPill(
+                    label: 'Focused',
+                    accent: accent,
+                    selected: true,
+                    dense: true,
+                  ),
                 ],
               ),
               SizedBox(height: context.space(12)),
               ThreadSearchRow(accent: accent),
               SizedBox(height: context.space(12)),
-              ThreadQuickChips(accent: accent),
-              SizedBox(height: context.space(12)),
+              SizedBox(height: context.space(8)),
             ],
             Expanded(
               child: ProviderBody(
@@ -119,10 +104,14 @@ class ThreadListPanel extends StatelessWidget {
                 isEmpty: threads.isEmpty,
                 emptyMessage: 'No messages yet.',
                 child: ListView.builder(
-                  itemCount: threads.length,
+                  itemCount: entries.length,
                   itemBuilder: (context, index) {
-                    final thread = threads[index];
-                    final selected = index == selectedIndex;
+                    final entry = entries[index];
+                    if (entry.header != null) {
+                      return _ThreadSectionHeader(label: entry.header!);
+                    }
+                    final thread = entry.thread!;
+                    final selected = entry.index == selectedIndex;
                     final latestMessage =
                         provider.latestMessageForThread(thread.id);
                     final participants = _filterParticipants(
@@ -130,19 +119,26 @@ class ThreadListPanel extends StatelessWidget {
                       currentUserEmail,
                       context.tidingsSettings.hideSelfInThreadList,
                     );
-                    return StaggeredFadeIn(
-                      index: index,
-                      child: Padding(
-                        padding: EdgeInsets.only(bottom: context.space(8)),
-                        child: ThreadTile(
-                          thread: thread,
-                          participants: participants,
-                          latestMessage: latestMessage,
-                          accent: accent,
-                          selected: selected && !isCompact,
-                          onTap: () => onSelected(index),
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        StaggeredFadeIn(
+                          index: entry.index ?? 0,
+                          child: ThreadTile(
+                            thread: thread,
+                            participants: participants,
+                            latestMessage: latestMessage,
+                            accent: accent,
+                            selected: selected && !isCompact,
+                            onTap: () => onSelected(entry.index ?? 0),
+                          ),
                         ),
-                      ),
+                        Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: ColorTokens.border(context, 0.08),
+                        ),
+                      ],
                     );
                   },
                 ),
@@ -204,21 +200,18 @@ class _ThreadTileState extends State<ThreadTile> {
     final isUnread = widget.thread.unread || (latestMessage?.isUnread ?? false);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final baseFill = widget.selected
-        ? widget.accent.withValues(alpha: 0.16)
-        : isUnread
+        ? widget.accent.withValues(alpha: 0.12)
+        : (_hovered || _pressed)
             ? (isDark
-                ? Colors.white.withValues(alpha: 0.14)
-                : Colors.white.withValues(alpha: 0.7))
-            : ColorTokens.cardFill(context, 0.04);
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.black.withValues(alpha: 0.04))
+            : Colors.transparent;
     final hoverOverlay = isDark
         ? Colors.white.withValues(alpha: _pressed ? 0.1 : 0.06)
         : Colors.black.withValues(alpha: _pressed ? 0.08 : 0.04);
     final fill = _hovered || _pressed
         ? Color.alphaBlend(hoverOverlay, baseFill)
         : baseFill;
-    final borderColor = widget.selected
-        ? widget.accent.withValues(alpha: 0.45)
-        : ColorTokens.border(context, 0.12);
     final baseParticipantStyle =
         Theme.of(context).textTheme.labelMedium?.copyWith(
               color: widget.selected
@@ -245,6 +238,13 @@ class _ThreadTileState extends State<ThreadTile> {
       widget.participants,
       latestSender,
     );
+    final snippet = latestMessage?.bodyPlainText ?? '';
+    final subjectSnippet = subject.isEmpty
+        ? snippet
+        : snippet.isEmpty
+            ? subject
+            : '$subject — $snippet';
+    const previewLines = 2;
 
     return MouseRegion(
       onEnter: (_) => _setHovered(true),
@@ -256,148 +256,145 @@ class _ThreadTileState extends State<ThreadTile> {
         onTapUp: (_) => _setPressed(false),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: EdgeInsets.all(context.space(12)),
-          decoration: BoxDecoration(
-            color: fill,
-            borderRadius: BorderRadius.circular(context.radius(16)),
-            border: Border.all(color: borderColor),
+          padding: EdgeInsets.symmetric(
+            vertical: context.space(10),
+            horizontal: context.space(12),
           ),
-          child: Stack(
-            children: [
-              if (widget.selected)
-                Positioned(
-                  left: 0,
-                  top: context.space(6),
-                  bottom: context.space(6),
-                  child: Container(
-                    width: 3,
-                    decoration: BoxDecoration(
-                      color: widget.accent,
-                      borderRadius: BorderRadius.circular(context.radius(6)),
+          decoration: BoxDecoration(color: fill),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: context.space(52)),
+            child: Stack(
+              children: [
+                if (widget.selected)
+                  Positioned(
+                    left: 0,
+                    top: context.space(6),
+                    bottom: context.space(6),
+                    child: Container(
+                      width: 3,
+                      decoration: BoxDecoration(
+                        color: widget.accent,
+                        borderRadius: BorderRadius.circular(context.radius(6)),
+                      ),
                     ),
                   ),
-                ),
-              Padding(
-                padding: EdgeInsets.only(
-                  left: widget.selected ? context.space(6) : 0,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _SenderStack(participants: participants),
-                    SizedBox(width: context.space(12)),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              if (isUnread)
-                                Container(
-                                  width: context.space(6),
-                                  height: context.space(6),
-                                  margin:
-                                      EdgeInsets.only(right: context.space(6)),
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: widget.accent,
+                Padding(
+                  padding: EdgeInsets.only(
+                    left: widget.selected ? context.space(6) : 0,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _SenderStack(participants: participants),
+                      SizedBox(width: context.space(12)),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                if (isUnread)
+                                  Container(
+                                    width: context.space(6),
+                                    height: context.space(6),
+                                    margin:
+                                        EdgeInsets.only(right: context.space(6)),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: widget.accent,
+                                    ),
+                                  )
+                                else
+                                  const SizedBox.shrink(),
+                                Expanded(
+                                  child: RichText(
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    text: TextSpan(
+                                      children: [
+                                        for (var i = 0;
+                                            i < widget.participants.length;
+                                            i++)
+                                          TextSpan(
+                                            text: widget.participants[i]
+                                                    .normalizedDisplayName +
+                                                (i ==
+                                                        widget.participants
+                                                                .length -
+                                                            1
+                                                    ? ''
+                                                    : ', '),
+                                            style: widget.participants[i]
+                                                        .email ==
+                                                    latestSender
+                                                ? highlightParticipantStyle
+                                                : baseParticipantStyle,
+                                          ),
+                                      ],
+                                    ),
                                   ),
-                                )
-                              else
-                                SizedBox(width: context.space(12)),
-                              Expanded(
-                                child: RichText(
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  text: TextSpan(
+                                ),
+                                SizedBox(width: context.space(8)),
+                                SizedBox(
+                                  width: context.space(100),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
                                     children: [
-                                      for (var i = 0;
-                                          i < widget.participants.length;
-                                          i++)
-                                        TextSpan(
-                                          text: widget.participants[i]
-                                                  .normalizedDisplayName +
-                                              (i ==
-                                                      widget.participants
-                                                              .length -
-                                                          1
-                                                  ? ''
-                                                  : ', '),
-                                          style: widget.participants[i].email ==
-                                                  latestSender
-                                              ? highlightParticipantStyle
-                                              : baseParticipantStyle,
+                                      if (widget.thread.starred) ...[
+                                        Icon(
+                                          Icons.star_rounded,
+                                          color: widget.accent,
+                                          size: 16,
                                         ),
+                                        SizedBox(width: context.space(4)),
+                                      ],
+                                      Flexible(
+                                        child: Text(
+                                          displayTime,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          softWrap: false,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelSmall
+                                              ?.copyWith(
+                                                color: scheme.onSurface
+                                                    .withValues(alpha: 0.55),
+                                              ),
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
-                              ),
-                              SizedBox(width: context.space(8)),
-                              Text(
-                                displayTime,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .labelSmall
-                                    ?.copyWith(
-                                      color: scheme.onSurface
-                                          .withValues(alpha: 0.55),
-                                    ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: context.space(4)),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  subject,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleSmall
-                                      ?.copyWith(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
-                                        color: widget.selected
-                                            ? scheme.onSurface
-                                            : (widget.thread.unread
-                                                ? scheme.onSurface
-                                                : scheme.onSurface.withValues(
-                                                    alpha: 0.5,
-                                                  )),
-                                      ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (widget.thread.starred)
-                                Icon(
-                                  Icons.star_rounded,
-                                  color: widget.accent,
-                                  size: 18,
-                                ),
-                            ],
-                          ),
-                          SizedBox(height: context.space(6)),
-                          Text(
-                            latestMessage?.bodyPlainText ?? '',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: scheme.onSurface.withValues(
-                                        alpha: widget.selected
-                                            ? 0.7
-                                            : (isUnread ? 0.62 : 0.34),
-                                      ),
-                                    ),
-                          ),
-                        ],
+                              ],
+                            ),
+                            SizedBox(height: context.space(4)),
+                            Text(
+                              subjectSnippet,
+                              maxLines: previewLines,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    fontWeight: widget.thread.unread
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                    color: widget.selected
+                                        ? scheme.onSurface
+                                        : scheme.onSurface.withValues(
+                                            alpha: isUnread ? 0.82 : 0.6,
+                                          ),
+                                  ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -535,3 +532,79 @@ const List<String> _monthAbbrev = [
   'Nov',
   'Dec',
 ];
+
+class _ThreadListEntry {
+  const _ThreadListEntry.header(this.header)
+      : thread = null,
+        index = null;
+  const _ThreadListEntry.thread(this.thread, this.index) : header = null;
+
+  final String? header;
+  final EmailThread? thread;
+  final int? index;
+}
+
+List<_ThreadListEntry> _buildThreadEntries(List<EmailThread> threads) {
+  final entries = <_ThreadListEntry>[];
+  String? currentHeader;
+  for (var i = 0; i < threads.length; i++) {
+    final thread = threads[i];
+    final label = _sectionLabel(thread.receivedAt);
+    if (label != currentHeader) {
+      currentHeader = label;
+      entries.add(_ThreadListEntry.header(label));
+    }
+    entries.add(_ThreadListEntry.thread(thread, i));
+  }
+  return entries;
+}
+
+String _sectionLabel(DateTime? timestamp) {
+  if (timestamp == null) {
+    return 'Earlier';
+  }
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final date = DateTime(timestamp.year, timestamp.month, timestamp.day);
+  if (date == today) {
+    return 'Today';
+  }
+  if (date == today.subtract(const Duration(days: 1))) {
+    return 'Yesterday';
+  }
+  return 'Earlier';
+}
+
+class _ThreadSectionHeader extends StatelessWidget {
+  const _ThreadSectionHeader({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: ColorTokens.textSecondary(context, 0.6),
+          letterSpacing: 0.6,
+        );
+    return Padding(
+      padding: EdgeInsets.only(
+        top: context.space(12),
+        bottom: context.space(6),
+        left: context.space(6),
+      ),
+      child: Row(
+        children: [
+          Text(label.toUpperCase(), style: style),
+          SizedBox(width: context.space(10)),
+          Expanded(
+            child: Divider(
+              color: ColorTokens.border(context, 0.08),
+              thickness: 1,
+              height: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

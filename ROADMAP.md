@@ -17,6 +17,14 @@
 -   [x] put "reply" to threads back inline, not a popout to the compose panel. add a "expand" button which puts the full to / cc / bcc / subject in the thread view, and the body below that with formatting toolbar etc. REFACTOR THE COMPOSE PANEL TO BE GENERIC FOR NEW COMPOSES AND INLINE REPLIES, and not have two separate UIs for that.
 -   [x] ui bug: allow tab to move focus from compose subject line to body.
 -   [ ] desktop: pop-out compose should open a new OS window (mobile keeps route-based pop-out).
+-   [x] flatten thread list into minimalist rows with dividers instead of cards
+-   [x] align sender/subject/snippet/time hierarchy and unify row height
+-   [x] add thread list section headers (Today/Yesterday/Earlier)
+-   [x] show 2-line previews only on hover/selection
+-   [x] compress thread detail header for readability
+-   [x] flatten thread message cards into a lighter stacked list
+-   [x] reduce sidebar pin noise (only show when hovered or pinned)
+-   [x] trim search/chip chrome for a calmer header
 
 ## Product Definition
 
