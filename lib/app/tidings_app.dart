@@ -8,6 +8,7 @@ import '../state/app_state.dart';
 import '../state/tidings_settings.dart';
 import '../theme/account_accent.dart';
 import '../theme/tidings_theme.dart';
+import '../widgets/tidings_background.dart';
 
 class TidingsApp extends StatefulWidget {
   const TidingsApp({super.key});
@@ -74,7 +75,7 @@ class _TidingsAppState extends State<TidingsApp> {
                   fontScale: 1.0,
                 ),
                 home: snapshot.connectionState != ConnectionState.done
-                    ? const Scaffold(body: SizedBox.shrink())
+                    ? _BootSplash(accent: accent)
                     : _appState.hasAccounts
                         ? HomeScreen(
                             appState: _appState,
@@ -88,6 +89,41 @@ class _TidingsAppState extends State<TidingsApp> {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class _BootSplash extends StatelessWidget {
+  const _BootSplash({required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = Theme.of(context).textTheme.titleMedium;
+    return Scaffold(
+      body: TidingsBackground(
+        accent: accent,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.6,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    accent.withValues(alpha: 0.85),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text('Loading your mail…', style: textStyle),
+            ],
+          ),
+        ),
       ),
     );
   }

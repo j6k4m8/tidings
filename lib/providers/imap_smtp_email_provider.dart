@@ -31,6 +31,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
   String _currentMailboxPath = 'INBOX';
   String? _sentMailboxPath;
   String? _draftsMailboxPath;
+  bool _crossFolderThreadingEnabled = false;
   Duration _inboxRefreshInterval = const Duration(minutes: 5);
   Timer? _inboxRefreshTimer;
 
@@ -70,8 +71,10 @@ class ImapSmtpEmailProvider extends EmailProvider {
       await _client!.login(config.username, config.password);
       _inboxRefreshInterval =
           Duration(minutes: config.checkMailIntervalMinutes);
+      _crossFolderThreadingEnabled = config.crossFolderThreadingEnabled;
       _scheduleInboxRefresh();
       await _loadFolders();
+      _warmThreadingFolders();
       await _loadMailboxAndCache(_currentMailboxPath);
       _status = ProviderStatus.ready;
       notifyListeners();
@@ -99,7 +102,38 @@ class ImapSmtpEmailProvider extends EmailProvider {
 
   @override
   List<EmailMessage> messagesForThread(String threadId) {
-    return _messages[threadId] ?? const [];
+    if (!_crossFolderThreadingEnabled &&
+        _sentMailboxPath == null &&
+        _draftsMailboxPath == null) {
+      return _messages[threadId] ?? const [];
+    }
+    final merged = <String, EmailMessage>{};
+    void addAll(List<EmailMessage>? messages) {
+      if (messages == null) {
+        return;
+      }
+      for (final message in messages) {
+        merged[message.id] = message;
+      }
+    }
+    addAll(_messages[threadId]);
+    final includedPaths = _threadingFolderPaths(
+      includeOtherFolders: _crossFolderThreadingEnabled,
+    );
+    for (final path in includedPaths) {
+      final entry = _folderCache[path];
+      if (entry == null) {
+        continue;
+      }
+      addAll(entry.data.messages[threadId]);
+    }
+    final list = merged.values.toList();
+    list.sort((a, b) {
+      final aTime = a.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bTime = b.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return aTime.compareTo(bTime);
+    });
+    return list;
   }
 
   @override
@@ -128,6 +162,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
       notifyListeners();
     }
     _startFolderLoad(path, showErrors: cached == null);
+    _warmThreadingFolders();
   }
 
   @override
@@ -722,31 +757,41 @@ class ImapSmtpEmailProvider extends EmailProvider {
     String? messageId,
     String? inReplyTo,
   }) {
+    final normalized = _normalizeSubject(subject);
+    final subjectThreadId = _subjectThreadId.putIfAbsent(
+      normalized,
+      () => 'imap-${normalized.hashCode}',
+    );
     if (inReplyTo != null && inReplyTo.isNotEmpty) {
-      return _messageIdToThreadId[inReplyTo] ?? inReplyTo;
+      final existing = _messageIdToThreadId[inReplyTo];
+      if (existing != null) {
+        if (messageId != null && messageId.isNotEmpty) {
+          _messageIdToThreadId[messageId] = existing;
+        }
+        return existing;
+      }
     }
     if (messageId != null && messageId.isNotEmpty) {
       final existing = _messageIdToThreadId[messageId];
       if (existing != null) {
         return existing;
       }
-      _messageIdToThreadId[messageId] = messageId;
-      return messageId;
+      _messageIdToThreadId[messageId] = subjectThreadId;
+      if (inReplyTo != null && inReplyTo.isNotEmpty) {
+        _messageIdToThreadId[inReplyTo] = subjectThreadId;
+      }
+      return subjectThreadId;
     }
-    final normalized = _normalizeSubject(subject);
-    final existing = _subjectThreadId[normalized];
-    if (existing != null) {
-      return existing;
+    if (inReplyTo != null && inReplyTo.isNotEmpty) {
+      _messageIdToThreadId[inReplyTo] = subjectThreadId;
     }
-    final id = 'imap-${normalized.hashCode}';
-    _subjectThreadId[normalized] = id;
-    return id;
+    return subjectThreadId;
   }
 
   String _normalizeSubject(String subject) {
     var value = subject.toLowerCase().trim();
-    value = value.replaceAll(RegExp(r'^(re|fwd|fw):\\s*'), '');
-    value = value.replaceAll(RegExp(r'\\s+'), ' ').trim();
+    value = value.replaceAll(RegExp(r'^(re|fwd|fw):\s*'), '');
+    value = value.replaceAll(RegExp(r'\s+'), ' ').trim();
     return value;
   }
 
@@ -756,9 +801,46 @@ class ImapSmtpEmailProvider extends EmailProvider {
     return '$hours:$minutes';
   }
 
+  void updateCrossFolderThreading(bool enabled) {
+    if (_crossFolderThreadingEnabled == enabled) {
+      return;
+    }
+    _crossFolderThreadingEnabled = enabled;
+    _warmThreadingFolders();
+    _startFolderLoad(_currentMailboxPath, showErrors: false);
+  }
+
   void updateInboxRefreshInterval(Duration interval) {
     _inboxRefreshInterval = interval;
     _scheduleInboxRefresh();
+  }
+
+  void _warmThreadingFolders() {
+    final paths = _threadingFolderPaths(
+      includeOtherFolders: _crossFolderThreadingEnabled,
+    );
+    for (final path in paths) {
+      if (_folderCache.containsKey(path) || _loadingFolders.contains(path)) {
+        continue;
+      }
+      _startFolderLoad(path, showErrors: false);
+    }
+  }
+
+  Set<String> _threadingFolderPaths({
+    required bool includeOtherFolders,
+  }) {
+    final paths = <String>{_currentMailboxPath, 'INBOX'};
+    if (_sentMailboxPath != null && _sentMailboxPath!.isNotEmpty) {
+      paths.add(_sentMailboxPath!);
+    }
+    if (_draftsMailboxPath != null && _draftsMailboxPath!.isNotEmpty) {
+      paths.add(_draftsMailboxPath!);
+    }
+    if (includeOtherFolders) {
+      paths.addAll(_folderCache.keys);
+    }
+    return paths;
   }
 
   void _scheduleInboxRefresh() {

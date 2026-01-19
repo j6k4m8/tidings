@@ -19,6 +19,7 @@ class ImapAccountConfig {
     required this.smtpPassword,
     required this.smtpUseTls,
     required this.smtpUseImapCredentials,
+    this.crossFolderThreadingEnabled = false,
     this.checkMailIntervalMinutes = 5,
   });
 
@@ -33,6 +34,7 @@ class ImapAccountConfig {
   final String smtpPassword;
   final bool smtpUseTls;
   final bool smtpUseImapCredentials;
+  final bool crossFolderThreadingEnabled;
   final int checkMailIntervalMinutes;
 
   Map<String, Object?> toStorageJson() {
@@ -46,6 +48,7 @@ class ImapAccountConfig {
       'smtpUsername': smtpUsername,
       'smtpUseTls': smtpUseTls,
       'smtpUseImapCredentials': smtpUseImapCredentials,
+      'crossFolderThreadingEnabled': crossFolderThreadingEnabled,
       'checkMailIntervalMinutes': checkMailIntervalMinutes,
     };
   }
@@ -53,6 +56,7 @@ class ImapAccountConfig {
   ImapAccountConfig copyWith({
     String? password,
     String? smtpPassword,
+    bool? crossFolderThreadingEnabled,
     int? checkMailIntervalMinutes,
   }) {
     return ImapAccountConfig(
@@ -67,6 +71,8 @@ class ImapAccountConfig {
       smtpPassword: smtpPassword ?? this.smtpPassword,
       smtpUseTls: smtpUseTls,
       smtpUseImapCredentials: smtpUseImapCredentials,
+      crossFolderThreadingEnabled:
+          crossFolderThreadingEnabled ?? this.crossFolderThreadingEnabled,
       checkMailIntervalMinutes:
           checkMailIntervalMinutes ?? this.checkMailIntervalMinutes,
     );
@@ -99,6 +105,8 @@ class ImapAccountConfig {
       smtpPassword: smtpUseImapCredentials ? password : (smtpPassword ?? ''),
       smtpUseTls: json['smtpUseTls'] as bool? ?? true,
       smtpUseImapCredentials: smtpUseImapCredentials,
+      crossFolderThreadingEnabled:
+          json['crossFolderThreadingEnabled'] as bool? ?? false,
       checkMailIntervalMinutes:
           (json['checkMailIntervalMinutes'] as num?)?.toInt() ?? 5,
     );

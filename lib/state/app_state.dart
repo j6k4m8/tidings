@@ -208,6 +208,30 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setAccountCrossFolderThreading({
+    required String accountId,
+    required bool enabled,
+  }) async {
+    final index = _accounts.indexWhere((account) => account.id == accountId);
+    if (index == -1) {
+      return;
+    }
+    final account = _accounts[index];
+    final config = account.imapConfig;
+    if (config == null) {
+      return;
+    }
+    final updatedConfig =
+        config.copyWith(crossFolderThreadingEnabled: enabled);
+    _accounts[index] = account.copyWith(imapConfig: updatedConfig);
+    final provider = _providers[accountId];
+    if (provider is ImapSmtpEmailProvider) {
+      provider.updateCrossFolderThreading(enabled);
+    }
+    await _persistConfig();
+    notifyListeners();
+  }
+
   Future<void> selectAccount(int index) async {
     if (index < 0 || index >= _accounts.length) {
       return;

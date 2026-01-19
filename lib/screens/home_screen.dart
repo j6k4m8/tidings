@@ -813,6 +813,8 @@ class SidebarPanel extends StatelessWidget {
                                   ?.copyWith(
                                     color: ColorTokens.textSecondary(context),
                                   ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
@@ -1746,6 +1748,8 @@ class _AccountSectionState extends State<_AccountSection> {
     final appState = widget.appState;
     final accent = widget.accent;
     final checkMinutes = account.imapConfig?.checkMailIntervalMinutes ?? 5;
+    final crossFolderEnabled =
+        account.imapConfig?.crossFolderThreadingEnabled ?? false;
     final baseAccent = account.accentColorValue == null
         ? accentFromAccount(account.id)
         : Color(account.accentColorValue!);
@@ -1870,6 +1874,21 @@ class _AccountSectionState extends State<_AccountSection> {
                           DropdownMenuItem(value: 30, child: Text('30 min')),
                           DropdownMenuItem(value: 60, child: Text('60 min')),
                         ],
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: context.space(16)),
+                  SettingRow(
+                    title: 'Include other folders in threads',
+                    subtitle:
+                        'Show messages from folders already fetched.',
+                    trailing: AccentSwitch(
+                      accent: accent,
+                      value: crossFolderEnabled,
+                      onChanged: (value) => appState
+                          .setAccountCrossFolderThreading(
+                        accountId: account.id,
+                        enabled: value,
                       ),
                     ),
                   ),

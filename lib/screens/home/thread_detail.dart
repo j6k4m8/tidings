@@ -101,7 +101,7 @@ class CurrentThreadPanel extends StatelessWidget {
                         key: ValueKey(message.id),
                         message: message,
                         accent: accent,
-                        initiallyExpanded: shouldExpand,
+                        shouldAutoExpand: shouldExpand,
                       );
                     },
                   ),
@@ -127,12 +127,12 @@ class MessageCard extends StatefulWidget {
     super.key,
     required this.message,
     required this.accent,
-    required this.initiallyExpanded,
+    required this.shouldAutoExpand,
   });
 
   final EmailMessage message;
   final Color accent;
-  final bool initiallyExpanded;
+  final bool shouldAutoExpand;
 
   @override
   State<MessageCard> createState() => _MessageCardState();
@@ -140,18 +140,29 @@ class MessageCard extends StatefulWidget {
 
 class _MessageCardState extends State<MessageCard> {
   late bool _expanded;
+  late bool _lastAutoExpand;
+  static const int _collapsedLineLimit = 6;
+  static const int _collapsedCharLimit = 420;
+  static const int _collapsedNewlineLimit = 6;
 
   @override
   void initState() {
     super.initState();
-    _expanded = widget.initiallyExpanded;
+    _expanded = widget.shouldAutoExpand;
+    _lastAutoExpand = widget.shouldAutoExpand;
   }
 
   @override
   void didUpdateWidget(covariant MessageCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.message.id != widget.message.id) {
-      _expanded = widget.initiallyExpanded;
+      _expanded = widget.shouldAutoExpand;
+      _lastAutoExpand = widget.shouldAutoExpand;
+      return;
+    }
+    if (widget.shouldAutoExpand != _lastAutoExpand) {
+      _expanded = widget.shouldAutoExpand;
+      _lastAutoExpand = widget.shouldAutoExpand;
     }
   }
 
@@ -172,6 +183,20 @@ class _MessageCardState extends State<MessageCard> {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
+  bool _isLongBody(String text) {
+    if (text.length > _collapsedCharLimit) {
+      return true;
+    }
+    final newlines = '\n'.allMatches(text).length;
+    return newlines > _collapsedNewlineLimit;
+  }
+
+  double _collapsedHeight(BuildContext context) {
+    final fontSize =
+        Theme.of(context).textTheme.bodyLarge?.fontSize ?? 14;
+    return _collapsedLineLimit * fontSize * 1.45;
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -179,6 +204,10 @@ class _MessageCardState extends State<MessageCard> {
     final cardColor = widget.message.isMe
         ? widget.accent.withValues(alpha: 0.18)
         : ColorTokens.cardFill(context, 0.08);
+    final bodyText = widget.message.bodyPlainText;
+    final bodyHtml = widget.message.bodyHtml;
+    final hasHtml = bodyHtml != null && bodyHtml.trim().isNotEmpty;
+    final shouldClamp = !_expanded && _isLongBody(bodyText);
 
     return GestureDetector(
       onTap: _toggle,
@@ -231,56 +260,114 @@ class _MessageCardState extends State<MessageCard> {
               switchOutCurve: Curves.easeInCubic,
               transitionBuilder: (child, animation) =>
                   FadeTransition(opacity: animation, child: child),
-              child: _expanded && widget.message.bodyHtml != null
-                  ? LayoutBuilder(
-                      key: const ValueKey('html-body'),
-                      builder: (context, constraints) {
-                        final boundedWidth = constraints.maxWidth.isFinite;
-                        return ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minWidth: boundedWidth ? constraints.maxWidth : 0,
-                            maxWidth: boundedWidth
-                                ? constraints.maxWidth
-                                : double.infinity,
-                          ),
-                          child: Html(
-                            data: widget.message.bodyHtml,
-                            shrinkWrap: true,
-                            onLinkTap: (url, attributes, element) =>
-                                _handleLinkTap(url),
-                            style: {
-                              'body': Style(
-                                margin: Margins.zero,
-                                padding: HtmlPaddings.zero,
-                                fontSize: FontSize(
-                                  Theme.of(context)
-                                          .textTheme
-                                          .bodyLarge
-                                          ?.fontSize ??
-                                      14,
+              child: LayoutBuilder(
+                key: ValueKey('body-${_expanded ? 'expanded' : 'collapsed'}'),
+                builder: (context, constraints) {
+                  final boundedWidth = constraints.maxWidth.isFinite;
+                  final htmlWidget = hasHtml
+                      ? Html(
+                          data: bodyHtml,
+                          shrinkWrap: true,
+                          onLinkTap: (url, attributes, element) =>
+                              _handleLinkTap(url),
+                          style: {
+                            'body': Style(
+                              margin: Margins.zero,
+                              padding: HtmlPaddings.zero,
+                              fontSize: FontSize(
+                                Theme.of(context)
+                                        .textTheme
+                                        .bodyLarge
+                                        ?.fontSize ??
+                                    14,
+                              ),
+                              fontWeight: Theme.of(context)
+                                  .textTheme
+                                  .bodyLarge
+                                  ?.fontWeight,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                            'p': Style(margin: Margins.only(bottom: 8)),
+                            'blockquote': Style(
+                              margin: Margins.symmetric(vertical: 8),
+                              padding: HtmlPaddings.only(left: 12),
+                              border: Border(
+                                left: BorderSide(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.18),
+                                  width: 2,
                                 ),
-                                fontWeight: Theme.of(context)
-                                    .textTheme
-                                    .bodyLarge
-                                    ?.fontWeight,
-                                color: Theme.of(context).colorScheme.onSurface,
                               ),
-                              'p': Style(margin: Margins.only(bottom: 8)),
-                              'a': Style(
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            },
-                          ),
+                            ),
+                            'a': Style(
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          },
+                        )
+                      : Text(
+                          bodyText,
+                          style: Theme.of(context).textTheme.bodyLarge,
                         );
-                      },
-                    )
-                  : Text(
-                      widget.message.bodyPlainText,
-                      key: const ValueKey('text-body'),
-                      maxLines: _expanded ? null : 3,
-                      overflow: _expanded ? null : TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyLarge,
+                  final content = ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minWidth: boundedWidth ? constraints.maxWidth : 0,
+                      maxWidth:
+                          boundedWidth ? constraints.maxWidth : double.infinity,
                     ),
+                    child: htmlWidget,
+                  );
+
+                  if (!shouldClamp) {
+                    return content;
+                  }
+
+                  return Stack(
+                    children: [
+                      ClipRect(
+                        child: SizedBox(
+                          height: _collapsedHeight(context),
+                          child: Align(
+                            alignment: Alignment.topLeft,
+                            child: content,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: IgnorePointer(
+                          child: Container(
+                            height: context.space(28),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  cardColor.withValues(alpha: 0.0),
+                                  cardColor,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Text(
+                          'Show more',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: scheme.onSurface.withValues(alpha: 0.6),
+                              ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
           ],
         ),
