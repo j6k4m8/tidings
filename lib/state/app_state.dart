@@ -4,14 +4,13 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:yaml/yaml.dart';
-
 import 'package:enough_mail/enough_mail.dart';
 
 import '../models/account_models.dart';
 import '../providers/email_provider.dart';
 import '../providers/imap_smtp_email_provider.dart';
 import '../providers/mock_email_provider.dart';
+import 'config_store.dart';
 
 class AppState extends ChangeNotifier {
   final Random _random = Random();
@@ -308,10 +307,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _persistConfig() async {
-    final file = await _configFile();
-    if (file == null) {
-      return;
-    }
+    final existing = await TidingsConfigStore.loadConfigOrEmpty();
     final payload = <String, Object?>{
       'selectedAccountId': selectedAccount?.id,
       'accounts': _accounts.map((account) {
@@ -333,70 +329,19 @@ class AppState extends ChangeNotifier {
         return json;
       }).toList(),
     };
-    await _writeConfig(file, payload);
+    final settings = existing['settings'];
+    if (settings is Map) {
+      payload['settings'] = settings;
+    }
+    await TidingsConfigStore.writeConfig(payload);
   }
 
   Future<Map<String, Object?>?> _loadConfig() async {
-    final file = await _configFile();
-    final legacyFile = await _legacyConfigFile();
-    if (file == null) {
-      return null;
-    }
-    File? source = file;
-    if (!await file.exists()) {
-      if (legacyFile != null && await legacyFile.exists()) {
-        source = legacyFile;
-      } else {
-        return null;
-      }
-    }
-    try {
-      final raw = await source.readAsString();
-      final decoded = loadYaml(raw);
-      if (decoded is! YamlMap) {
-        return null;
-      }
-      final mapped = _yamlToMap(decoded);
-      if (source.path != file.path) {
-        await _writeConfig(file, mapped);
-      }
-      return mapped;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<File?> _configFile() async {
-    final dir = await _configDirectory();
-    if (dir == null) {
-      return null;
-    }
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    return File('${dir.path}/config.yml');
-  }
-
-  Future<Directory?> _configDirectory() async {
-    final home = Platform.environment['HOME'] ??
-        Platform.environment['USERPROFILE'];
-    if (home == null || home.isEmpty) {
-      return null;
-    }
-    return Directory('$home/.config/tidings');
-  }
-
-  Future<File?> _legacyConfigFile() async {
-    final home = Platform.environment['HOME'] ??
-        Platform.environment['USERPROFILE'];
-    if (home == null || home.isEmpty) {
-      return null;
-    }
-    return File('$home/.config/tidings.yml');
+    return TidingsConfigStore.loadConfig();
   }
 
   Future<String?> openConfigDirectory() async {
-    final dir = await _configDirectory();
+    final dir = await TidingsConfigStore.configDirectory();
     if (dir == null) {
       return 'Unable to resolve the config directory.';
     }
@@ -428,10 +373,6 @@ class AppState extends ChangeNotifier {
         .toARGB32();
   }
 
-  Future<void> _writeConfig(File file, Map<String, Object?> payload) async {
-    final yaml = _toYaml(payload);
-    await file.writeAsString(yaml);
-  }
 
   Future<ConnectionTestReport> testAccountConnection(
     EmailAccount account,
@@ -506,84 +447,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-
-  Map<String, Object?> _yamlToMap(YamlMap map) {
-    final result = <String, Object?>{};
-    for (final entry in map.entries) {
-      final key = entry.key;
-      if (key is! String) {
-        continue;
-      }
-      result[key] = _yamlToValue(entry.value);
-    }
-    return result;
-  }
-
-  Object? _yamlToValue(Object? value) {
-    if (value is YamlMap) {
-      return _yamlToMap(value);
-    }
-    if (value is YamlList) {
-      return value.map(_yamlToValue).toList();
-    }
-    return value;
-  }
-
-  String _toYaml(Object? value, {int indent = 0}) {
-    final space = ' ' * indent;
-    if (value is Map) {
-      final buffer = StringBuffer();
-      for (final entry in value.entries) {
-        final key = entry.key;
-        if (key == null) {
-          continue;
-        }
-        final keyText = key.toString();
-        final entryValue = entry.value;
-        if (entryValue is Map || entryValue is List) {
-          buffer.writeln('$space$keyText:');
-          buffer.write(_toYaml(entryValue, indent: indent + 2));
-        } else {
-          buffer.writeln('$space$keyText: ${_yamlScalar(entryValue)}');
-        }
-      }
-      return buffer.toString();
-    }
-    if (value is List) {
-      final buffer = StringBuffer();
-      for (final item in value) {
-        if (item is Map || item is List) {
-          buffer.writeln('$space-');
-          buffer.write(_toYaml(item, indent: indent + 2));
-        } else {
-          buffer.writeln('$space- ${_yamlScalar(item)}');
-        }
-      }
-      return buffer.toString();
-    }
-    return '$space${_yamlScalar(value)}\n';
-  }
-
-  String _yamlScalar(Object? value) {
-    if (value == null) {
-      return 'null';
-    }
-    if (value is bool || value is num) {
-      return value.toString();
-    }
-    final text = value.toString();
-    final needsQuotes = text.isEmpty ||
-        text.contains(':') ||
-        text.contains('#') ||
-        text.contains('\n') ||
-        text.startsWith(' ') ||
-        text.endsWith(' ');
-    if (!needsQuotes) {
-      return text;
-    }
-    final escaped = text.replaceAll('"', r'\"');
-    return '"$escaped"';
-  }
 
   String? _decodePassword(Object? raw) {
     if (raw is! String || raw.isEmpty) {

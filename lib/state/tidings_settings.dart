@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 
 import '../theme/theme_palette.dart';
+import 'config_store.dart';
 import 'keyboard_shortcut.dart';
 import 'shortcut_definitions.dart';
 
 class TidingsSettings extends ChangeNotifier {
-  SharedPreferences? _prefs;
   ThemeMode _themeMode = ThemeMode.system;
   ThemePaletteSource _paletteSource = ThemePaletteSource.defaultPalette;
   LayoutDensity _layoutDensity = LayoutDensity.standard;
@@ -17,6 +17,8 @@ class TidingsSettings extends ChangeNotifier {
   bool _hideSelfInThreadList = false;
   bool _showFolderLabels = true;
   bool _showFolderUnreadCounts = true;
+  bool _sidebarCollapsed = false;
+  double _threadPanelFraction = 0.58;
   final Set<String> _pinnedFolderPaths = {};
   final Map<ShortcutAction, KeyboardShortcut> _shortcutPrimary = {};
   final Map<ShortcutAction, KeyboardShortcut?> _shortcutSecondary = {};
@@ -31,31 +33,19 @@ class TidingsSettings extends ChangeNotifier {
   bool get hideSelfInThreadList => _hideSelfInThreadList;
   bool get showFolderLabels => _showFolderLabels;
   bool get showFolderUnreadCounts => _showFolderUnreadCounts;
+  bool get sidebarCollapsed => _sidebarCollapsed;
+  double get threadPanelFraction => _threadPanelFraction;
   Set<String> get pinnedFolderPaths => Set.unmodifiable(_pinnedFolderPaths);
 
   double get densityScale => _layoutDensity.scale;
   double get cornerRadiusScale => _cornerRadiusStyle.scale;
 
   Future<void> load() async {
-    try {
-      _prefs ??= await SharedPreferences.getInstance();
-    } catch (_) {
-      return;
+    final config = await TidingsConfigStore.loadConfig();
+    if (config != null) {
+      _loadFromConfig(config);
     }
-    for (final definition in shortcutDefinitions) {
-      final primaryKey = _shortcutStorageKey(definition.action);
-      final secondaryKey = _shortcutStorageKey(definition.action, secondary: true);
-      final primaryRaw = _prefs?.getString(primaryKey);
-      final secondaryRaw = _prefs?.getString(secondaryKey);
-      final primaryParsed = KeyboardShortcut.tryParse(primaryRaw);
-      final secondaryParsed = KeyboardShortcut.tryParse(secondaryRaw);
-      _shortcutPrimary[definition.action] =
-          primaryParsed ?? definition.primaryDefault;
-      if (definition.secondaryDefault != null) {
-        _shortcutSecondary[definition.action] =
-            secondaryParsed ?? definition.secondaryDefault;
-      }
-    }
+    _ensureShortcutDefaults();
     notifyListeners();
   }
 
@@ -88,6 +78,180 @@ class TidingsSettings extends ChangeNotifier {
     return '$primary / ${secondary.label()}';
   }
 
+  void _loadFromConfig(Map<String, Object?> config) {
+    final rawSettings = config['settings'];
+    if (rawSettings is! Map) {
+      return;
+    }
+    final settings = rawSettings.cast<String, Object?>();
+    _themeMode = _themeModeFromStorage(settings['themeMode']);
+    _paletteSource = ThemePaletteSourceMeta.fromStorage(
+      settings['paletteSource'] as String?,
+    );
+    _layoutDensity = _layoutDensityFromStorage(settings['layoutDensity']);
+    _cornerRadiusStyle =
+        _cornerRadiusFromStorage(settings['cornerRadiusStyle']);
+    _autoExpandUnread =
+        _boolFromStorage(settings['autoExpandUnread'], _autoExpandUnread);
+    _autoExpandLatest =
+        _boolFromStorage(settings['autoExpandLatest'], _autoExpandLatest);
+    _hideThreadSubjects =
+        _boolFromStorage(settings['hideThreadSubjects'], _hideThreadSubjects);
+    _hideSelfInThreadList =
+        _boolFromStorage(settings['hideSelfInThreadList'], _hideSelfInThreadList);
+    _showFolderLabels =
+        _boolFromStorage(settings['showFolderLabels'], _showFolderLabels);
+    _showFolderUnreadCounts =
+        _boolFromStorage(settings['showFolderUnreadCounts'], _showFolderUnreadCounts);
+    _sidebarCollapsed =
+        _boolFromStorage(settings['sidebarCollapsed'], _sidebarCollapsed);
+    _threadPanelFraction = _doubleFromStorage(
+      settings['threadPanelFraction'],
+      _threadPanelFraction,
+    ).clamp(0.3, 0.8);
+    _pinnedFolderPaths
+      ..clear()
+      ..addAll(_stringListFromStorage(settings['pinnedFolderPaths']));
+
+    final rawShortcuts = settings['shortcuts'];
+    if (rawShortcuts is Map) {
+      _loadShortcuts(rawShortcuts.cast<String, Object?>());
+    }
+  }
+
+  void _loadShortcuts(Map<String, Object?> raw) {
+    final primary = raw['primary'];
+    final secondary = raw['secondary'];
+    final primaryMap = primary is Map ? primary.cast<String, Object?>() : null;
+    final secondaryMap =
+        secondary is Map ? secondary.cast<String, Object?>() : null;
+    for (final definition in shortcutDefinitions) {
+      final primaryRaw = primaryMap?[definition.action.name] as String?;
+      final secondaryRaw = secondaryMap?[definition.action.name] as String?;
+      final primaryParsed = KeyboardShortcut.tryParse(primaryRaw);
+      final secondaryParsed = KeyboardShortcut.tryParse(secondaryRaw);
+      if (primaryParsed != null) {
+        _shortcutPrimary[definition.action] = primaryParsed;
+      }
+      if (secondaryParsed != null) {
+        _shortcutSecondary[definition.action] = secondaryParsed;
+      }
+    }
+  }
+
+  void _ensureShortcutDefaults() {
+    for (final definition in shortcutDefinitions) {
+      _shortcutPrimary.putIfAbsent(
+        definition.action,
+        () => definition.primaryDefault,
+      );
+      if (definition.secondaryDefault != null) {
+        _shortcutSecondary.putIfAbsent(
+          definition.action,
+          () => definition.secondaryDefault,
+        );
+      }
+    }
+  }
+
+  Future<void> _persist() async {
+    final config = await TidingsConfigStore.loadConfigOrEmpty();
+    config['settings'] = _settingsToMap();
+    await TidingsConfigStore.writeConfig(config);
+  }
+
+  Map<String, Object?> _settingsToMap() {
+    final primary = <String, String>{};
+    final secondary = <String, String>{};
+    for (final definition in shortcutDefinitions) {
+      primary[definition.action.name] =
+          shortcutFor(definition.action).serialize();
+      final secondaryShortcut = secondaryShortcutFor(definition.action);
+      if (secondaryShortcut != null) {
+        secondary[definition.action.name] = secondaryShortcut.serialize();
+      }
+    }
+    final pinned = _pinnedFolderPaths.toList()..sort();
+    return {
+      'themeMode': _themeMode.name,
+      'paletteSource': _paletteSource.storageKey,
+      'layoutDensity': _layoutDensity.name,
+      'cornerRadiusStyle': _cornerRadiusStyle.name,
+      'autoExpandUnread': _autoExpandUnread,
+      'autoExpandLatest': _autoExpandLatest,
+      'hideThreadSubjects': _hideThreadSubjects,
+      'hideSelfInThreadList': _hideSelfInThreadList,
+      'showFolderLabels': _showFolderLabels,
+      'showFolderUnreadCounts': _showFolderUnreadCounts,
+      'sidebarCollapsed': _sidebarCollapsed,
+      'threadPanelFraction': _threadPanelFraction,
+      'pinnedFolderPaths': pinned,
+      'shortcuts': {
+        'primary': primary,
+        if (secondary.isNotEmpty) 'secondary': secondary,
+      },
+    };
+  }
+
+  ThemeMode _themeModeFromStorage(Object? raw) {
+    final value = raw is String ? raw : null;
+    switch (value) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      case 'system':
+      default:
+        return ThemeMode.system;
+    }
+  }
+
+  LayoutDensity _layoutDensityFromStorage(Object? raw) {
+    if (raw is String) {
+      for (final density in LayoutDensity.values) {
+        if (density.name == raw) {
+          return density;
+        }
+      }
+    }
+    return _layoutDensity;
+  }
+
+  CornerRadiusStyle _cornerRadiusFromStorage(Object? raw) {
+    if (raw is String) {
+      for (final style in CornerRadiusStyle.values) {
+        if (style.name == raw) {
+          return style;
+        }
+      }
+    }
+    return _cornerRadiusStyle;
+  }
+
+  bool _boolFromStorage(Object? raw, bool fallback) {
+    return raw is bool ? raw : fallback;
+  }
+
+  double _doubleFromStorage(Object? raw, double fallback) {
+    if (raw is num) {
+      return raw.toDouble();
+    }
+    if (raw is String) {
+      final parsed = double.tryParse(raw);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+    return fallback;
+  }
+
+  List<String> _stringListFromStorage(Object? raw) {
+    if (raw is List) {
+      return raw.whereType<String>().toList();
+    }
+    return const [];
+  }
+
   void setShortcut(
     ShortcutAction action,
     KeyboardShortcut shortcut, {
@@ -98,10 +262,7 @@ class TidingsSettings extends ChangeNotifier {
     } else {
       _shortcutPrimary[action] = shortcut;
     }
-    _prefs?.setString(
-      _shortcutStorageKey(action, secondary: secondary),
-      shortcut.serialize(),
-    );
+    unawaited(_persist());
     notifyListeners();
   }
 
@@ -110,6 +271,7 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _themeMode = mode;
+    unawaited(_persist());
     notifyListeners();
   }
 
@@ -118,6 +280,7 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _paletteSource = source;
+    unawaited(_persist());
     notifyListeners();
   }
 
@@ -126,6 +289,7 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _layoutDensity = density;
+    unawaited(_persist());
     notifyListeners();
   }
 
@@ -134,6 +298,7 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _cornerRadiusStyle = style;
+    unawaited(_persist());
     notifyListeners();
   }
 
@@ -142,6 +307,7 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _autoExpandUnread = value;
+    unawaited(_persist());
     notifyListeners();
   }
 
@@ -150,6 +316,7 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _autoExpandLatest = value;
+    unawaited(_persist());
     notifyListeners();
   }
 
@@ -158,6 +325,7 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _hideThreadSubjects = value;
+    unawaited(_persist());
     notifyListeners();
   }
 
@@ -166,6 +334,7 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _hideSelfInThreadList = value;
+    unawaited(_persist());
     notifyListeners();
   }
 
@@ -174,6 +343,7 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _showFolderLabels = value;
+    unawaited(_persist());
     notifyListeners();
   }
 
@@ -182,6 +352,26 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _showFolderUnreadCounts = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setSidebarCollapsed(bool value) {
+    if (_sidebarCollapsed == value) {
+      return;
+    }
+    _sidebarCollapsed = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setThreadPanelFraction(double value) {
+    final clamped = value.clamp(0.3, 0.8);
+    if (_threadPanelFraction == clamped) {
+      return;
+    }
+    _threadPanelFraction = clamped;
+    unawaited(_persist());
     notifyListeners();
   }
 
@@ -195,13 +385,10 @@ class TidingsSettings extends ChangeNotifier {
     } else {
       _pinnedFolderPaths.add(path);
     }
+    unawaited(_persist());
     notifyListeners();
   }
 
-  String _shortcutStorageKey(ShortcutAction action, {bool secondary = false}) {
-    final suffix = secondary ? '.secondary' : '.primary';
-    return 'shortcut.${action.name}$suffix';
-  }
 }
 
 enum LayoutDensity {

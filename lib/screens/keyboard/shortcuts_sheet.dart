@@ -47,29 +47,28 @@ class _ShortcutsSheet extends StatelessWidget {
             LayoutBuilder(
               builder: (context, constraints) {
                 final twoColumn = constraints.maxWidth >= 560;
-                final rowExtent = twoColumn ? 64.0 : 60.0;
-                return GridView.builder(
-                  itemCount: shortcutDefinitions.length,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: twoColumn ? 2 : 1,
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    mainAxisExtent: rowExtent,
-                  ),
-                  itemBuilder: (context, index) {
-                    final definition = shortcutDefinitions[index];
-                    final primary = settings.shortcutFor(definition.action);
-                    final secondary =
-                        settings.secondaryShortcutFor(definition.action);
-                    return _ShortcutCard(
-                      label: definition.label,
-                      description: definition.description,
-                      primary: primary.label(),
-                      secondary: secondary?.label(),
-                    );
-                  },
+                final spacing = 10.0;
+                final itemWidth = twoColumn
+                    ? (constraints.maxWidth - spacing) / 2
+                    : constraints.maxWidth;
+                return Wrap(
+                  spacing: spacing,
+                  runSpacing: spacing,
+                  children: [
+                    for (final definition in shortcutDefinitions)
+                      SizedBox(
+                        width: itemWidth,
+                        child: _ShortcutCard(
+                          label: definition.label,
+                          description: definition.description,
+                          primary:
+                              settings.shortcutFor(definition.action).label(),
+                          secondary: settings
+                              .secondaryShortcutFor(definition.action)
+                              ?.label(),
+                        ),
+                      ),
+                  ],
                 );
               },
             ),

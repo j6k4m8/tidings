@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/account_models.dart';
 import '../models/email_models.dart';
@@ -67,8 +66,6 @@ enum _HomeScope {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const _threadPanelFractionKey = 'threadPanelFraction';
-  static const _sidebarCollapsedKey = 'sidebarCollapsed';
   static final _escapeKey = LogicalKeySet(LogicalKeyboardKey.escape);
   int _selectedThreadIndex = 0;
   int _selectedFolderIndex = 0;
@@ -77,7 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _sidebarCollapsed = false;
   double _threadPanelFraction = 0.58;
   bool _threadPanelOpen = true;
-  SharedPreferences? _prefs;
+  TidingsSettings? _settings;
   String? _lastAccountId;
   final FocusNode _searchFocusNode =
       FocusNode(debugLabel: 'ThreadSearchFocus');
@@ -94,7 +91,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadThreadPanelPrefs();
     _lastAccountId = widget.appState.selectedAccount?.id;
     widget.appState.addListener(_handleAppStateChange);
     FocusManager.instance.addListener(_handleGlobalFocusChange);
@@ -105,42 +101,23 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _loadThreadPanelPrefs() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final stored = prefs.getDouble(_threadPanelFractionKey);
-      final storedSidebar = prefs.getBool(_sidebarCollapsedKey);
-      if (!mounted) {
-        return;
-      }
-      _prefs = prefs;
-      if (stored != null) {
-        setState(() {
-          _threadPanelFraction = stored.clamp(0.3, 0.8);
-        });
-      }
-      if (storedSidebar != null) {
-        setState(() {
-          _sidebarCollapsed = storedSidebar;
-        });
-      }
-    } on PlatformException {
-      // SharedPreferences plugin can be unavailable during hot reload.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = context.tidingsSettings;
+    if (_settings != settings) {
+      _settings?.removeListener(_handleSettingsChange);
+      _settings = settings;
+      _settings?.addListener(_handleSettingsChange);
     }
-  }
-
-  void _persistThreadPanelFraction(double value) {
-    _prefs?.setDouble(_threadPanelFractionKey, value);
-  }
-
-  void _persistSidebarCollapsed(bool value) {
-    _prefs?.setBool(_sidebarCollapsedKey, value);
+    _handleSettingsChange();
   }
 
   @override
   void dispose() {
     widget.appState.removeListener(_handleAppStateChange);
     FocusManager.instance.removeListener(_handleGlobalFocusChange);
+    _settings?.removeListener(_handleSettingsChange);
     _searchFocusNode.dispose();
     _rootFocusNode.dispose();
     _threadListFocusNode.dispose();
@@ -154,6 +131,23 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (FocusManager.instance.primaryFocus == null) {
       _rootFocusNode.requestFocus();
+    }
+  }
+
+  void _handleSettingsChange() {
+    if (!mounted) {
+      return;
+    }
+    final settings = _settings;
+    if (settings == null) {
+      return;
+    }
+    if (_threadPanelFraction != settings.threadPanelFraction ||
+        _sidebarCollapsed != settings.sidebarCollapsed) {
+      setState(() {
+        _threadPanelFraction = settings.threadPanelFraction;
+        _sidebarCollapsed = settings.sidebarCollapsed;
+      });
     }
   }
 
@@ -595,7 +589,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   return;
                 }
                 _handleFolderSelected(nextProvider, item.index);
-                _toast('Opened ${item.name}.');
               },
             ),
           );
@@ -659,9 +652,8 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         setState(() {
           _sidebarCollapsed = !_sidebarCollapsed;
-          _persistSidebarCollapsed(_sidebarCollapsed);
         });
-        _toast(_sidebarCollapsed ? 'Sidebar collapsed.' : 'Sidebar expanded.');
+        context.tidingsSettings.setSidebarCollapsed(_sidebarCollapsed);
         break;
       case ShortcutAction.openThread:
         await _openSelectedThread(provider, account);
@@ -815,10 +807,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                 onFolderSelected: (index) =>
                                     _handleFolderSelected(provider, index),
                                 sidebarCollapsed: _sidebarCollapsed,
-                                onSidebarToggle: () => setState(() {
-                                  _sidebarCollapsed = !_sidebarCollapsed;
-                                  _persistSidebarCollapsed(_sidebarCollapsed);
-                                }),
+                                onSidebarToggle: () {
+                                  final next = !_sidebarCollapsed;
+                                  setState(() {
+                                    _sidebarCollapsed = next;
+                                  });
+                                  settings.setSidebarCollapsed(next);
+                                },
                                 onAccountTap: () => showAccountPickerSheet(
                                   context,
                                   appState: widget.appState,
@@ -843,7 +838,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                   setState(
                                     () => _threadPanelFraction = fraction,
                                   );
-                                  _persistThreadPanelFraction(fraction);
+                                },
+                                onThreadPanelResizeEnd: () {
+                                  settings.setThreadPanelFraction(
+                                    _threadPanelFraction,
+                                  );
                                 },
                                 onThreadPanelOpen: () =>
                                     setState(() => _threadPanelOpen = true),
@@ -951,6 +950,7 @@ class _WideLayout extends StatelessWidget {
     required this.threadPanelFraction,
     required this.threadPanelOpen,
     required this.onThreadPanelResize,
+    required this.onThreadPanelResizeEnd,
     required this.onThreadPanelOpen,
     required this.onThreadPanelClose,
     required this.onCompose,
@@ -982,6 +982,7 @@ class _WideLayout extends StatelessWidget {
   final double threadPanelFraction;
   final bool threadPanelOpen;
   final ValueChanged<double> onThreadPanelResize;
+  final VoidCallback onThreadPanelResizeEnd;
   final VoidCallback onThreadPanelOpen;
   final VoidCallback onThreadPanelClose;
   final VoidCallback onCompose;
@@ -1092,6 +1093,7 @@ class _WideLayout extends StatelessWidget {
                                       .clamp(0.3, 0.8);
                               onThreadPanelResize(nextFraction);
                             },
+                            onDragEnd: onThreadPanelResizeEnd,
                           ),
                         ),
                       ],
@@ -1152,7 +1154,10 @@ class _WideLayout extends StatelessWidget {
                           ),
                         ),
                       ),
-                      _ResizeHandle(onDragUpdate: handleResize),
+                      _ResizeHandle(
+                        onDragUpdate: handleResize,
+                        onDragEnd: onThreadPanelResizeEnd,
+                      ),
                       SizedBox(
                         width: detailWidth,
                         child: showSettings
@@ -1274,9 +1279,13 @@ const List<FolderItem> _fallbackRailItems = [
 ];
 
 class _ResizeHandle extends StatelessWidget {
-  const _ResizeHandle({required this.onDragUpdate});
+  const _ResizeHandle({
+    required this.onDragUpdate,
+    this.onDragEnd,
+  });
 
   final ValueChanged<double> onDragUpdate;
+  final VoidCallback? onDragEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -1285,6 +1294,7 @@ class _ResizeHandle extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onHorizontalDragUpdate: (details) => onDragUpdate(details.delta.dx),
+        onHorizontalDragEnd: (_) => onDragEnd?.call(),
         child: SizedBox(
           width: context.space(12),
           child: Center(
@@ -1309,12 +1319,14 @@ class _ThreadPanelHint extends StatelessWidget {
     required this.width,
     required this.onTap,
     required this.onDragUpdate,
+    this.onDragEnd,
   });
 
   final Color accent;
   final double width;
   final VoidCallback onTap;
   final ValueChanged<double> onDragUpdate;
+  final VoidCallback? onDragEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -1324,6 +1336,7 @@ class _ThreadPanelHint extends StatelessWidget {
         behavior: HitTestBehavior.translucent,
         onTap: onTap,
         onHorizontalDragUpdate: (details) => onDragUpdate(details.delta.dx),
+        onHorizontalDragEnd: (_) => onDragEnd?.call(),
         child: SizedBox(
           width: width,
           child: Center(
@@ -2664,6 +2677,68 @@ class _AccountSectionState extends State<_AccountSection> {
     _expanded = widget.defaultExpanded;
   }
 
+  Future<bool> _confirmDeleteAccount(
+    BuildContext context,
+    EmailAccount account,
+  ) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: GlassPanel(
+            borderRadius: BorderRadius.circular(20),
+            padding: const EdgeInsets.all(16),
+            variant: GlassVariant.sheet,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Delete account?',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                SizedBox(height: context.space(8)),
+                Text(
+                  'This removes ${account.displayName} from Tidings. '
+                  'Cached mail and settings for this account are deleted.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: ColorTokens.textSecondary(context),
+                      ),
+                ),
+                SizedBox(height: context.space(16)),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                    const Spacer(),
+                    OutlinedButton.icon(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.redAccent,
+                        side: BorderSide(
+                          color: Colors.redAccent.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      label: const Text('Delete account'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    return result ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final account = widget.account;
@@ -2727,16 +2802,33 @@ class _AccountSectionState extends State<_AccountSection> {
           ),
           AnimatedCrossFade(
             duration: const Duration(milliseconds: 200),
-            crossFadeState: _expanded
+              crossFadeState: _expanded
                 ? CrossFadeState.showFirst
                 : CrossFadeState.showSecond,
             firstChild: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(height: context.space(8)),
-                Text(
-                  'Accent',
-                  style: Theme.of(context).textTheme.titleMedium,
+                Row(
+                  children: [
+                    Text(
+                      'Accent',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: () =>
+                          appState.randomizeAccountAccentColor(account.id),
+                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      label: const Text('Shuffle'),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: context.space(8),
+                          vertical: context.space(4),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 SizedBox(height: context.space(8)),
                 Wrap(
@@ -2759,14 +2851,9 @@ class _AccountSectionState extends State<_AccountSection> {
                       ),
                   ],
                 ),
-                SizedBox(height: context.space(12)),
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      appState.randomizeAccountAccentColor(account.id),
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Shuffle'),
-                ),
                 SizedBox(height: context.space(16)),
+                Divider(color: ColorTokens.border(context, 0.12)),
+                SizedBox(height: context.space(12)),
                 Text(
                   'Connection',
                   style: Theme.of(context).textTheme.titleMedium,
@@ -2815,7 +2902,7 @@ class _AccountSectionState extends State<_AccountSection> {
                     ),
                   ),
                 ],
-                SizedBox(height: context.space(8)),
+                SizedBox(height: context.space(12)),
                 Wrap(
                   spacing: context.space(8),
                   runSpacing: context.space(8),
@@ -2915,6 +3002,30 @@ class _AccountSectionState extends State<_AccountSection> {
                     ),
                   ),
                 ],
+                SizedBox(height: context.space(16)),
+                Divider(color: ColorTokens.border(context, 0.12)),
+                SizedBox(height: context.space(12)),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final confirmed =
+                          await _confirmDeleteAccount(context, account);
+                      if (!confirmed) {
+                        return;
+                      }
+                      await appState.removeAccount(account.id);
+                    },
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    label: const Text('Delete account'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                      side: BorderSide(
+                        color: Colors.redAccent.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
             secondChild: const SizedBox.shrink(),
