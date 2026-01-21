@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/theme_palette.dart';
+import 'keyboard_shortcut.dart';
+import 'shortcut_definitions.dart';
 
 class TidingsSettings extends ChangeNotifier {
+  SharedPreferences? _prefs;
   ThemeMode _themeMode = ThemeMode.system;
   ThemePaletteSource _paletteSource = ThemePaletteSource.defaultPalette;
   LayoutDensity _layoutDensity = LayoutDensity.standard;
@@ -14,6 +18,8 @@ class TidingsSettings extends ChangeNotifier {
   bool _showFolderLabels = true;
   bool _showFolderUnreadCounts = true;
   final Set<String> _pinnedFolderPaths = {};
+  final Map<ShortcutAction, KeyboardShortcut> _shortcutPrimary = {};
+  final Map<ShortcutAction, KeyboardShortcut?> _shortcutSecondary = {};
 
   ThemeMode get themeMode => _themeMode;
   ThemePaletteSource get paletteSource => _paletteSource;
@@ -29,6 +35,75 @@ class TidingsSettings extends ChangeNotifier {
 
   double get densityScale => _layoutDensity.scale;
   double get cornerRadiusScale => _cornerRadiusStyle.scale;
+
+  Future<void> load() async {
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+    } catch (_) {
+      return;
+    }
+    for (final definition in shortcutDefinitions) {
+      final primaryKey = _shortcutStorageKey(definition.action);
+      final secondaryKey = _shortcutStorageKey(definition.action, secondary: true);
+      final primaryRaw = _prefs?.getString(primaryKey);
+      final secondaryRaw = _prefs?.getString(secondaryKey);
+      final primaryParsed = KeyboardShortcut.tryParse(primaryRaw);
+      final secondaryParsed = KeyboardShortcut.tryParse(secondaryRaw);
+      _shortcutPrimary[definition.action] =
+          primaryParsed ?? definition.primaryDefault;
+      if (definition.secondaryDefault != null) {
+        _shortcutSecondary[definition.action] =
+            secondaryParsed ?? definition.secondaryDefault;
+      }
+    }
+    notifyListeners();
+  }
+
+  KeyboardShortcut shortcutFor(
+    ShortcutAction action, {
+    bool secondary = false,
+  }) {
+    final definition = definitionFor(action);
+    if (secondary) {
+      return _shortcutSecondary[action] ??
+          definition.secondaryDefault ??
+          definition.primaryDefault;
+    }
+    return _shortcutPrimary[action] ?? definition.primaryDefault;
+  }
+
+  KeyboardShortcut? secondaryShortcutFor(ShortcutAction action) {
+    return _shortcutSecondary[action];
+  }
+
+  String shortcutLabel(
+    ShortcutAction action, {
+    bool includeSecondary = true,
+  }) {
+    final primary = shortcutFor(action).label();
+    final secondary = secondaryShortcutFor(action);
+    if (!includeSecondary || secondary == null) {
+      return primary;
+    }
+    return '$primary / ${secondary.label()}';
+  }
+
+  void setShortcut(
+    ShortcutAction action,
+    KeyboardShortcut shortcut, {
+    bool secondary = false,
+  }) {
+    if (secondary) {
+      _shortcutSecondary[action] = shortcut;
+    } else {
+      _shortcutPrimary[action] = shortcut;
+    }
+    _prefs?.setString(
+      _shortcutStorageKey(action, secondary: secondary),
+      shortcut.serialize(),
+    );
+    notifyListeners();
+  }
 
   void setThemeMode(ThemeMode mode) {
     if (_themeMode == mode) {
@@ -121,6 +196,11 @@ class TidingsSettings extends ChangeNotifier {
       _pinnedFolderPaths.add(path);
     }
     notifyListeners();
+  }
+
+  String _shortcutStorageKey(ShortcutAction action, {bool secondary = false}) {
+    final suffix = secondary ? '.secondary' : '.primary';
+    return 'shortcut.${action.name}$suffix';
   }
 }
 

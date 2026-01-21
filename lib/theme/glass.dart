@@ -201,6 +201,7 @@ class GlassPanel extends StatelessWidget {
     this.variant = GlassVariant.panel,
     this.accent,
     this.selected = false,
+    this.flat = false,
   });
 
   final Widget child;
@@ -209,6 +210,7 @@ class GlassPanel extends StatelessWidget {
   final GlassVariant variant;
   final Color? accent;
   final bool selected;
+  final bool flat;
 
   @override
   Widget build(BuildContext context) {
@@ -238,13 +240,14 @@ class GlassPanel extends StatelessWidget {
           ),
           child: Stack(
             children: [
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(gradient: style.highlight),
+              if (!flat)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(gradient: style.highlight),
+                    ),
                   ),
                 ),
-              ),
               content,
             ],
           ),

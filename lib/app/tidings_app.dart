@@ -23,6 +23,12 @@ class _TidingsAppState extends State<TidingsApp> {
   late final Future<void> _initFuture = _appState.initialize();
 
   @override
+  void initState() {
+    super.initState();
+    _settings.load();
+  }
+
+  @override
   void dispose() {
     _settings.dispose();
     _appState.dispose();

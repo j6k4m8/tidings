@@ -20,6 +20,11 @@ class CurrentThreadPanel extends StatelessWidget {
     required this.provider,
     required this.isCompact,
     required this.currentUserEmail,
+    required this.selectedMessageIndex,
+    required this.onMessageSelected,
+    required this.isFocused,
+    this.parentFocusNode,
+    this.replyController,
   });
 
   final Color accent;
@@ -27,6 +32,11 @@ class CurrentThreadPanel extends StatelessWidget {
   final EmailProvider provider;
   final bool isCompact;
   final String currentUserEmail;
+  final int selectedMessageIndex;
+  final ValueChanged<int> onMessageSelected;
+  final bool isFocused;
+  final FocusNode? parentFocusNode;
+  final InlineReplyController? replyController;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +51,9 @@ class CurrentThreadPanel extends StatelessWidget {
             isCompact ? context.space(16) : context.space(18),
           ),
           variant: GlassVariant.sheet,
+          accent: accent,
+          selected: isFocused,
+          flat: true,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -89,15 +102,15 @@ class CurrentThreadPanel extends StatelessWidget {
                   emptyMessage: 'No messages in this thread.',
                   child: ListView.separated(
                     itemCount: messages.length,
-                    separatorBuilder: (_, __) => Divider(
+                    separatorBuilder: (context, index) => Divider(
                       height: context.space(16),
                       thickness: 1,
                       color: ColorTokens.border(context, 0.1),
                     ),
                     itemBuilder: (context, index) {
                       final message = messages[index];
-                        final isLatest = index == messages.length - 1;
-                        final shouldExpand =
+                      final isLatest = index == messages.length - 1;
+                      final shouldExpand =
                           (settings.autoExpandLatest && isLatest) ||
                           (settings.autoExpandUnread && message.isUnread);
                       return MessageCard(
@@ -105,6 +118,8 @@ class CurrentThreadPanel extends StatelessWidget {
                         message: message,
                         accent: accent,
                         shouldAutoExpand: shouldExpand,
+                        isSelected: index == selectedMessageIndex,
+                        onSelected: () => onMessageSelected(index),
                       );
                     },
                   ),
@@ -116,6 +131,8 @@ class CurrentThreadPanel extends StatelessWidget {
                 provider: provider,
                 thread: thread,
                 currentUserEmail: currentUserEmail,
+                parentFocusNode: parentFocusNode,
+                controller: replyController,
               ),
             ],
           ),
@@ -131,11 +148,15 @@ class MessageCard extends StatefulWidget {
     required this.message,
     required this.accent,
     required this.shouldAutoExpand,
+    required this.isSelected,
+    this.onSelected,
   });
 
   final EmailMessage message;
   final Color accent;
   final bool shouldAutoExpand;
+  final bool isSelected;
+  final VoidCallback? onSelected;
 
   @override
   State<MessageCard> createState() => _MessageCardState();
@@ -207,6 +228,13 @@ class _MessageCardState extends State<MessageCard> {
       '',
     );
     value = value.replaceAll(
+      RegExp(
+        "\\sstyle\\s*=\\s*(\"[^\"]*\"|'[^']*')",
+        caseSensitive: false,
+      ),
+      '',
+    );
+    value = value.replaceAll(
       RegExp(r'<(script|style)[^>]*>[\s\S]*?</\1>', caseSensitive: false),
       '',
     );
@@ -214,6 +242,13 @@ class _MessageCardState extends State<MessageCard> {
       RegExp(r'<head[^>]*>[\s\S]*?</head>', caseSensitive: false),
       '',
     );
+    final bodyMatch = RegExp(
+      r'<body[^>]*>([\s\S]*?)</body>',
+      caseSensitive: false,
+    ).firstMatch(value);
+    if (bodyMatch != null) {
+      value = bodyMatch.group(1) ?? value;
+    }
     return value.trim();
   }
 
@@ -221,23 +256,44 @@ class _MessageCardState extends State<MessageCard> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final showSubject = !context.tidingsSettings.hideThreadSubjects;
-    final cardColor = widget.message.isMe
+    final baseColor = widget.message.isMe
         ? widget.accent.withValues(alpha: 0.08)
         : Colors.transparent;
+    final cardColor = widget.isSelected
+        ? Color.alphaBlend(
+            widget.accent.withValues(alpha: 0.12),
+            baseColor,
+          )
+        : baseColor;
     final bodyText = widget.message.bodyPlainText;
     final bodyHtml = widget.message.bodyHtml;
-    final hasHtml = bodyHtml != null && bodyHtml.trim().isNotEmpty;
-    final sanitizedHtml = hasHtml ? _sanitizeHtml(bodyHtml!) : null;
+    String? sanitizedHtml;
+    if (bodyHtml != null && bodyHtml.trim().isNotEmpty) {
+      sanitizedHtml = _sanitizeHtml(bodyHtml);
+    }
+    final useHtml =
+        sanitizedHtml != null && sanitizedHtml.trim().isNotEmpty;
     final shouldClamp = !_expanded && _isLongBody(bodyText);
 
     return GestureDetector(
-      onTap: _toggle,
+      onTap: () {
+        widget.onSelected?.call();
+        _toggle();
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
         padding: EdgeInsets.all(context.space(10)),
         decoration: BoxDecoration(
           color: cardColor,
+          border: widget.isSelected
+              ? Border(
+                  left: BorderSide(
+                    color: widget.accent.withValues(alpha: 0.7),
+                    width: 2,
+                  ),
+                )
+              : null,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -283,7 +339,7 @@ class _MessageCardState extends State<MessageCard> {
                 key: ValueKey('body-${_expanded ? 'expanded' : 'collapsed'}'),
                 builder: (context, constraints) {
                   final boundedWidth = constraints.maxWidth.isFinite;
-                  final htmlWidget = (hasHtml && sanitizedHtml!.isNotEmpty)
+                  final htmlWidget = useHtml
                       ? Html(
                           data: sanitizedHtml,
                           shrinkWrap: true,
@@ -502,12 +558,16 @@ class ComposeBar extends StatelessWidget {
     required this.provider,
     required this.thread,
     required this.currentUserEmail,
+    this.parentFocusNode,
+    this.controller,
   });
 
   final Color accent;
   final EmailProvider provider;
   final EmailThread thread;
   final String currentUserEmail;
+  final FocusNode? parentFocusNode;
+  final InlineReplyController? controller;
 
   @override
   Widget build(BuildContext context) {
@@ -516,6 +576,8 @@ class ComposeBar extends StatelessWidget {
       provider: provider,
       thread: thread,
       currentUserEmail: currentUserEmail,
+      parentFocusNode: parentFocusNode,
+      controller: controller,
     );
   }
 }
@@ -537,6 +599,9 @@ class ThreadScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final messages = provider.messagesForThread(thread.id);
+    final selectedMessageIndex =
+        messages.isEmpty ? 0 : messages.length - 1;
     return Scaffold(
       body: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle(
@@ -561,6 +626,9 @@ class ThreadScreen extends StatelessWidget {
                 provider: provider,
                 isCompact: true,
                 currentUserEmail: currentUserEmail,
+                selectedMessageIndex: selectedMessageIndex,
+                onMessageSelected: (_) {},
+                isFocused: true,
               ),
             ),
           ),

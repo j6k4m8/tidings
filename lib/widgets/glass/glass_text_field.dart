@@ -11,6 +11,7 @@ class GlassTextField extends StatelessWidget {
     this.focusNode,
     this.textInputAction,
     this.onSubmitted,
+    this.onChanged,
     this.keyboardType,
     this.textStyle,
   });
@@ -20,6 +21,7 @@ class GlassTextField extends StatelessWidget {
   final FocusNode? focusNode;
   final TextInputAction? textInputAction;
   final ValueChanged<String>? onSubmitted;
+  final ValueChanged<String>? onChanged;
   final TextInputType? keyboardType;
   final TextStyle? textStyle;
 
@@ -40,6 +42,7 @@ class GlassTextField extends StatelessWidget {
         focusNode: focusNode,
         textInputAction: textInputAction,
         onSubmitted: onSubmitted,
+        onChanged: onChanged,
         keyboardType: keyboardType,
         style: textStyle,
         decoration: InputDecoration.collapsed(

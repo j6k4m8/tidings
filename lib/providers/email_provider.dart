@@ -43,4 +43,6 @@ abstract class EmailProvider extends ChangeNotifier {
     required String bodyHtml,
     required String bodyText,
   });
+
+  Future<String?> archiveThread(EmailThread thread);
 }

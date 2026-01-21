@@ -1,19 +1,59 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
+import '../../models/folder_models.dart';
 import '../../state/tidings_settings.dart';
 import '../../theme/account_accent.dart';
 import '../../theme/color_tokens.dart';
-import '../../theme/glass.dart';
 import '../../widgets/animations/staggered_fade_in.dart';
-import '../../widgets/glass/glass_pill.dart';
 import 'provider_body.dart';
 
-class ThreadSearchRow extends StatelessWidget {
-  const ThreadSearchRow({super.key, required this.accent});
+class ThreadSearchRow extends StatefulWidget {
+  const ThreadSearchRow({
+    super.key,
+    required this.accent,
+    this.focusNode,
+  });
 
   final Color accent;
+  final FocusNode? focusNode;
+
+  @override
+  State<ThreadSearchRow> createState() => _ThreadSearchRowState();
+}
+
+class _ThreadSearchRowState extends State<ThreadSearchRow> {
+  late FocusNode _focusNode;
+  late bool _ownsFocusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = widget.focusNode ?? FocusNode(debugLabel: 'ThreadSearch');
+    _ownsFocusNode = widget.focusNode == null;
+  }
+
+  @override
+  void didUpdateWidget(covariant ThreadSearchRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode != widget.focusNode) {
+      if (_ownsFocusNode) {
+        _focusNode.dispose();
+      }
+      _focusNode = widget.focusNode ?? FocusNode(debugLabel: 'ThreadSearch');
+      _ownsFocusNode = widget.focusNode == null;
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_ownsFocusNode) {
+      _focusNode.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,31 +62,51 @@ class ThreadSearchRow extends StatelessWidget {
     final borderColor = isDark
         ? Colors.white.withValues(alpha: 0.08)
         : Colors.black.withValues(alpha: 0.08);
-    return TextField(
-      decoration: InputDecoration(
-        hintText: 'Search threads, people, or labels',
-        prefixIcon: const Icon(Icons.search_rounded),
-        isDense: true,
-        filled: true,
-        fillColor: isDark
-            ? ColorTokens.cardFill(context, 0.14)
-            : ColorTokens.cardFillStrong(context, 0.2),
-        contentPadding: EdgeInsets.symmetric(
-          vertical: context.space(10),
-          horizontal: context.space(12),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: borderRadius,
-          borderSide: BorderSide(color: borderColor),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: borderRadius,
-          borderSide:
-              BorderSide(color: accent.withValues(alpha: 0.4), width: 1.2),
+    return Shortcuts(
+      shortcuts: {
+        LogicalKeySet(LogicalKeyboardKey.escape): const _EscapeIntent(),
+      },
+      child: Actions(
+        actions: {
+          _EscapeIntent: CallbackAction<_EscapeIntent>(
+            onInvoke: (intent) {
+              _focusNode.unfocus();
+              return null;
+            },
+          ),
+        },
+        child: TextField(
+          focusNode: _focusNode,
+          decoration: InputDecoration(
+            hintText: 'Search threads, people, or labels',
+            prefixIcon: const Icon(Icons.search_rounded),
+            isDense: true,
+            filled: true,
+            fillColor: isDark
+                ? ColorTokens.cardFill(context, 0.14)
+                : ColorTokens.cardFillStrong(context, 0.2),
+            contentPadding: EdgeInsets.symmetric(
+              vertical: context.space(10),
+              horizontal: context.space(12),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: borderRadius,
+              borderSide: BorderSide(color: borderColor),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: borderRadius,
+              borderSide:
+                  BorderSide(color: widget.accent.withValues(alpha: 0.4), width: 1.2),
+            ),
+          ),
         ),
       ),
     );
   }
+}
+
+class _EscapeIntent extends Intent {
+  const _EscapeIntent();
 }
 
 class ThreadListPanel extends StatelessWidget {
@@ -58,6 +118,7 @@ class ThreadListPanel extends StatelessWidget {
     required this.onSelected,
     required this.isCompact,
     required this.currentUserEmail,
+    this.searchFocusNode,
   });
 
   final Color accent;
@@ -66,6 +127,7 @@ class ThreadListPanel extends StatelessWidget {
   final ValueChanged<int> onSelected;
   final bool isCompact;
   final String currentUserEmail;
+  final FocusNode? searchFocusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -81,18 +143,19 @@ class ThreadListPanel extends StatelessWidget {
             if (!isCompact) ...[
               Row(
                 children: [
-                  Text('Inbox', style: Theme.of(context).textTheme.titleLarge),
-                  const Spacer(),
-                  GlassPill(
-                    label: 'Focused',
-                    accent: accent,
-                    selected: true,
-                    dense: true,
+                  Text(
+                    _folderLabelForPath(
+                          provider.folderSections,
+                          provider.selectedFolderPath,
+                        ) ??
+                        'Inbox',
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
+                  const Spacer(),
                 ],
               ),
               SizedBox(height: context.space(12)),
-              ThreadSearchRow(accent: accent),
+              ThreadSearchRow(accent: accent, focusNode: searchFocusNode),
               SizedBox(height: context.space(12)),
               SizedBox(height: context.space(8)),
             ],
@@ -607,4 +670,18 @@ class _ThreadSectionHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+String? _folderLabelForPath(
+  List<FolderSection> sections,
+  String path,
+) {
+  for (final section in sections) {
+    for (final item in section.items) {
+      if (item.path == path) {
+        return item.name;
+      }
+    }
+  }
+  return null;
 }

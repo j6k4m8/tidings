@@ -9,6 +9,68 @@ import '../../state/tidings_settings.dart';
 import 'compose_editor.dart';
 import 'compose_utils.dart';
 
+class InlineReplyController {
+  ReplyMode? _pendingMode;
+  bool _pendingFocus = false;
+  String? _pendingThreadId;
+  String? _attachedThreadId;
+  void Function(ReplyMode mode)? _setMode;
+  VoidCallback? _focusEditor;
+  Future<void> Function()? _send;
+
+  void attach({
+    required String threadId,
+    required void Function(ReplyMode mode) setMode,
+    required VoidCallback focusEditor,
+    required Future<void> Function() send,
+  }) {
+    _attachedThreadId = threadId;
+    _setMode = setMode;
+    _focusEditor = focusEditor;
+    _send = send;
+    if (_pendingMode != null && _pendingThreadId == threadId) {
+      _setMode?.call(_pendingMode!);
+      _pendingMode = null;
+    }
+    if (_pendingFocus && _pendingThreadId == threadId) {
+      _focusEditor?.call();
+      _pendingFocus = false;
+    }
+  }
+
+  void detach(String threadId) {
+    if (_attachedThreadId != threadId) {
+      return;
+    }
+    _attachedThreadId = null;
+    _setMode = null;
+    _focusEditor = null;
+    _send = null;
+  }
+
+  void setModeForThread(String threadId, ReplyMode mode) {
+    if (_setMode == null || _attachedThreadId != threadId) {
+      _pendingThreadId = threadId;
+      _pendingMode = mode;
+      return;
+    }
+    _setMode?.call(mode);
+  }
+
+  void focusEditorForThread(String threadId) {
+    if (_focusEditor == null || _attachedThreadId != threadId) {
+      _pendingThreadId = threadId;
+      _pendingFocus = true;
+      return;
+    }
+    _focusEditor?.call();
+  }
+
+  Future<void> send() async {
+    await _send?.call();
+  }
+}
+
 class InlineReplyComposer extends StatefulWidget {
   const InlineReplyComposer({
     super.key,
@@ -16,19 +78,26 @@ class InlineReplyComposer extends StatefulWidget {
     required this.provider,
     required this.thread,
     required this.currentUserEmail,
+    this.parentFocusNode,
+    this.controller,
   });
 
   final Color accent;
   final EmailProvider provider;
   final EmailThread thread;
   final String currentUserEmail;
+  final FocusNode? parentFocusNode;
+  final InlineReplyController? controller;
 
   @override
   State<InlineReplyComposer> createState() => _InlineReplyComposerState();
 }
 
 class _InlineReplyComposerState extends State<InlineReplyComposer> {
+  static final _escapeKey =
+      LogicalKeySet(LogicalKeyboardKey.escape);
   late final QuillController _controller;
+  final FocusNode _editorFocusNode = FocusNode();
   final TextEditingController _toController = TextEditingController();
   final TextEditingController _ccController = TextEditingController();
   final TextEditingController _bccController = TextEditingController();
@@ -36,13 +105,19 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
   bool _showDetails = false;
   bool _isSending = false;
   String? _sendError;
-  _ReplyMode _replyMode = _ReplyMode.reply;
+  ReplyMode _replyMode = ReplyMode.reply;
 
   @override
   void initState() {
     super.initState();
     _controller = QuillController.basic();
     _applyMode(_replyMode);
+    widget.controller?.attach(
+      threadId: widget.thread.id,
+      setMode: _setReplyMode,
+      focusEditor: _focusEditor,
+      send: _send,
+    );
   }
 
   @override
@@ -51,15 +126,39 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
     if (oldWidget.thread.id != widget.thread.id) {
       _applyMode(_replyMode);
     }
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?.detach(oldWidget.thread.id);
+      widget.controller?.attach(
+        threadId: widget.thread.id,
+        setMode: _setReplyMode,
+        focusEditor: _focusEditor,
+        send: _send,
+      );
+    } else if (oldWidget.thread.id != widget.thread.id) {
+      widget.controller?.attach(
+        threadId: widget.thread.id,
+        setMode: _setReplyMode,
+        focusEditor: _focusEditor,
+        send: _send,
+      );
+    }
   }
 
-  void _applyMode(_ReplyMode mode) {
+  void _setReplyMode(ReplyMode mode) {
+    setState(() {
+      _replyMode = mode;
+      _applyMode(mode);
+    });
+    _focusEditor();
+  }
+
+  void _applyMode(ReplyMode mode) {
     final latest = widget.provider.latestMessageForThread(widget.thread.id);
-    if (mode == _ReplyMode.forward) {
+    if (mode == ReplyMode.forward) {
       _subjectController.text = _forwardSubject(widget.thread.subject);
       _toController.text = '';
       _showDetails = true;
-    } else if (mode == _ReplyMode.replyAll) {
+    } else if (mode == ReplyMode.replyAll) {
       _subjectController.text = replySubject(widget.thread.subject);
       _toController.text = replyRecipients(
         widget.thread.participants,
@@ -74,10 +173,12 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
   @override
   void dispose() {
     _controller.dispose();
+    _editorFocusNode.dispose();
     _toController.dispose();
     _ccController.dispose();
     _bccController.dispose();
     _subjectController.dispose();
+    widget.controller?.detach(widget.thread.id);
     super.dispose();
   }
 
@@ -127,10 +228,29 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
     final latest = widget.provider.latestMessageForThread(widget.thread.id);
     final sender = latest?.from;
     final name = sender?.displayName ?? sender?.email ?? 'thread';
-    if (_replyMode == _ReplyMode.forward) {
+    if (_replyMode == ReplyMode.forward) {
       return 'someone';
     }
     return name;
+  }
+
+  void _focusEditor() {
+    void attempt(int remaining) {
+      if (!mounted) {
+        return;
+      }
+      FocusScope.of(context).requestFocus(_editorFocusNode);
+      if (_editorFocusNode.hasFocus || remaining <= 0) {
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        attempt(remaining - 1);
+      });
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      attempt(2);
+    });
   }
 
   @override
@@ -143,34 +263,48 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
             : 'Subject: ${_subjectController.text.trim()}';
     final collapsedHeight = context.space(44);
     final expandedMinHeight = context.space(140);
-    return GlassPanel(
-      borderRadius: BorderRadius.circular(context.radius(20)),
-      padding: EdgeInsets.all(context.space(12)),
-      variant: GlassVariant.sheet,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return Shortcuts(
+      shortcuts: {_escapeKey: const _EscapeIntent()},
+      child: Actions(
+        actions: {
+          _EscapeIntent: CallbackAction<_EscapeIntent>(
+            onInvoke: (intent) {
+              if (_editorFocusNode.hasFocus) {
+                _editorFocusNode.unfocus();
+              } else {
+                FocusManager.instance.primaryFocus?.unfocus();
+              }
+              widget.parentFocusNode?.requestFocus();
+              return null;
+            },
+          ),
+        },
+        child: GlassPanel(
+          borderRadius: BorderRadius.circular(context.radius(20)),
+          padding: EdgeInsets.all(context.space(12)),
+          variant: GlassVariant.sheet,
+          flat: true,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           Row(
             children: [
-              PopupMenuButton<_ReplyMode>(
+              PopupMenuButton<ReplyMode>(
                 tooltip: 'Reply options',
                 onSelected: (mode) {
-                  setState(() {
-                    _replyMode = mode;
-                    _applyMode(mode);
-                  });
+                  _setReplyMode(mode);
                 },
                 itemBuilder: (context) => const [
                   PopupMenuItem(
-                    value: _ReplyMode.reply,
+                    value: ReplyMode.reply,
                     child: Text('Reply'),
                   ),
                   PopupMenuItem(
-                    value: _ReplyMode.replyAll,
+                    value: ReplyMode.replyAll,
                     child: Text('Reply all'),
                   ),
                   PopupMenuItem(
-                    value: _ReplyMode.forward,
+                    value: ReplyMode.forward,
                     child: Text('Forward'),
                   ),
                 ],
@@ -218,6 +352,10 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
                 _showDetails ? expandedMinHeight : collapsedHeight,
             maxEditorHeight:
                 _showDetails ? context.space(260) : collapsedHeight,
+            editorFocusNode: _editorFocusNode,
+            onEscape: () {
+              widget.parentFocusNode?.requestFocus();
+            },
           ),
           SizedBox(height: context.space(12)),
           Row(
@@ -262,26 +400,32 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
                   ),
             ),
           ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-enum _ReplyMode {
+class _EscapeIntent extends Intent {
+  const _EscapeIntent();
+}
+
+enum ReplyMode {
   reply,
   replyAll,
   forward,
 }
 
-extension on _ReplyMode {
+extension ReplyModeMeta on ReplyMode {
   String get label {
     switch (this) {
-      case _ReplyMode.reply:
+      case ReplyMode.reply:
         return 'Reply';
-      case _ReplyMode.replyAll:
+      case ReplyMode.replyAll:
         return 'Reply all';
-      case _ReplyMode.forward:
+      case ReplyMode.forward:
         return 'Forward';
     }
   }

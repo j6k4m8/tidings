@@ -31,6 +31,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
   String _currentMailboxPath = 'INBOX';
   String? _sentMailboxPath;
   String? _draftsMailboxPath;
+  String? _archiveMailboxPath;
+  final Map<int, String> _archiveYearPaths = {};
+  String? _pathSeparator;
   bool _crossFolderThreadingEnabled = false;
   Duration _inboxRefreshInterval = const Duration(minutes: 5);
   Timer? _inboxRefreshTimer;
@@ -316,6 +319,42 @@ class ImapSmtpEmailProvider extends EmailProvider {
     } catch (_) {}
   }
 
+  @override
+  Future<String?> archiveThread(EmailThread thread) async {
+    final targetPath = _resolveArchivePath(thread);
+    if (targetPath == null || targetPath.isEmpty) {
+      return 'Archive folder not found.';
+    }
+    final ids = messagesForThread(thread.id)
+        .map((message) => int.tryParse(message.id))
+        .whereType<int>()
+        .toList();
+    if (ids.isEmpty) {
+      return 'No messages to archive.';
+    }
+    await _ensureConnected();
+    final client = _client;
+    if (client == null) {
+      return 'IMAP client not connected.';
+    }
+    await client.selectMailboxByPath(_currentMailboxPath);
+    final sequence = MessageSequence.fromIds(ids, isUid: true);
+    if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
+      await client.uidMove(sequence, targetMailboxPath: targetPath);
+    } else {
+      await client.uidCopy(sequence, targetMailboxPath: targetPath);
+      await client.uidStore(
+        sequence,
+        [MessageFlags.deleted],
+        action: StoreAction.add,
+      );
+      await client.expunge();
+    }
+    _removeThreadFromCache(thread.id);
+    notifyListeners();
+    return null;
+  }
+
   Future<T> _withTimeout<T>(
     Future<T> future,
     Duration timeout,
@@ -326,6 +365,36 @@ class ImapSmtpEmailProvider extends EmailProvider {
       onTimeout: () {
         throw StateError(message);
       },
+    );
+  }
+
+  String? _resolveArchivePath(EmailThread thread) {
+    final latest = latestMessageForThread(thread.id);
+    final year = latest?.receivedAt?.year;
+    if (year != null) {
+      final byYear = _archiveYearPaths[year];
+      if (byYear != null && byYear.isNotEmpty) {
+        return byYear;
+      }
+    }
+    return _archiveMailboxPath;
+  }
+
+  void _removeThreadFromCache(String threadId) {
+    _threads.removeWhere((thread) => thread.id == threadId);
+    _messages.remove(threadId);
+    final entry = _folderCache[_currentMailboxPath];
+    if (entry == null) {
+      return;
+    }
+    final nextThreads =
+        entry.data.threads.where((thread) => thread.id != threadId).toList();
+    final nextMessages = Map<String, List<EmailMessage>>.from(
+      entry.data.messages,
+    )..remove(threadId);
+    _folderCache[_currentMailboxPath] = _FolderCacheEntry(
+      data: _MailboxData(threads: nextThreads, messages: nextMessages),
+      fetchedAt: entry.fetchedAt,
     );
   }
 
@@ -350,11 +419,6 @@ class ImapSmtpEmailProvider extends EmailProvider {
     return headers;
   }
 
-  Future<void> _loadMailbox(String path) async {
-    final data = await _fetchMailboxData(path);
-    _applyMailboxData(data);
-  }
-
   Future<void> _loadFolders() async {
     final client = _client;
     if (client == null) {
@@ -364,6 +428,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
     _folderSections.clear();
     _sentMailboxPath = null;
     _draftsMailboxPath = null;
+    _archiveMailboxPath = null;
+    _archiveYearPaths.clear();
+    _pathSeparator = null;
     final mailboxItems = <FolderItem>[];
     final folderItems = <FolderItem>[];
     var index = 0;
@@ -372,11 +439,31 @@ class ImapSmtpEmailProvider extends EmailProvider {
       if (box.flags.contains(MailboxFlag.noSelect)) {
         continue;
       }
+      _pathSeparator ??= box.pathSeparator;
       if (box.flags.contains(MailboxFlag.sent)) {
         _sentMailboxPath ??= box.path;
       }
       if (box.flags.contains(MailboxFlag.drafts)) {
         _draftsMailboxPath ??= box.path;
+      }
+      if (box.flags.contains(MailboxFlag.archive)) {
+        _archiveMailboxPath ??= box.path;
+      }
+      final segments = box.pathSeparator.isEmpty
+          ? <String>[box.path]
+          : box.path.split(box.pathSeparator);
+      if (segments.isNotEmpty) {
+        final last = segments.last.toLowerCase();
+        if (_archiveMailboxPath == null && last == 'archive') {
+          _archiveMailboxPath = box.path;
+        }
+        if (segments.length >= 2) {
+          final parent = segments[segments.length - 2].toLowerCase();
+          final year = int.tryParse(segments.last);
+          if (parent == 'archives' && year != null) {
+            _archiveYearPaths[year] = box.path;
+          }
+        }
       }
       final status = await client.statusMailbox(box, [StatusFlags.unseen]);
       final unread = status.messagesUnseen;

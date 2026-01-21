@@ -96,6 +96,7 @@ class ComposeSheet extends StatefulWidget {
 
 class _ComposeSheetState extends State<ComposeSheet> {
   late final QuillController _controller;
+  final FocusNode _toFocusNode = FocusNode(debugLabel: 'ComposeTo');
   final TextEditingController _toController = TextEditingController();
   final TextEditingController _ccController = TextEditingController();
   final TextEditingController _bccController = TextEditingController();
@@ -116,11 +117,17 @@ class _ComposeSheetState extends State<ComposeSheet> {
         widget.currentUserEmail,
       );
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _toFocusNode.requestFocus();
+      }
+    });
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _toFocusNode.dispose();
     _toController.dispose();
     _ccController.dispose();
     _bccController.dispose();
@@ -295,6 +302,7 @@ class _ComposeSheetState extends State<ComposeSheet> {
                 ccController: _ccController,
                 bccController: _bccController,
                 subjectController: _subjectController,
+                toFocusNode: _toFocusNode,
                 showFields: true,
                 placeholder: 'Write something beautiful...',
               ),

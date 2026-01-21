@@ -320,6 +320,8 @@ class _AccountEditSheet extends StatefulWidget {
 }
 
 class _AccountEditSheetState extends State<_AccountEditSheet> {
+  final FocusNode _displayNameFocusNode =
+      FocusNode(debugLabel: 'AccountEditDisplayName');
   late final TextEditingController _displayNameController;
   late final TextEditingController _emailController;
   late final TextEditingController _serverController;
@@ -357,6 +359,11 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
     _serverController.addListener(_handleImapServerChange);
     _passwordController.addListener(_handlePasswordChange);
     _smtpPasswordController.addListener(_handlePasswordChange);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _displayNameFocusNode.requestFocus();
+      }
+    });
   }
 
   @override
@@ -364,6 +371,7 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
     _serverController.removeListener(_handleImapServerChange);
     _passwordController.removeListener(_handlePasswordChange);
     _smtpPasswordController.removeListener(_handlePasswordChange);
+    _displayNameFocusNode.dispose();
     _displayNameController.dispose();
     _emailController.dispose();
     _serverController.dispose();
@@ -486,6 +494,7 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
                   label: 'Display name',
                   controller: _displayNameController,
                   hintText: 'Jordan',
+                  focusNode: _displayNameFocusNode,
                 ),
                 LabeledField(
                   label: 'Email',
@@ -648,6 +657,8 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
 }
 
 class _AccountSetupSheetState extends State<_AccountSetupSheet> {
+  final FocusNode _displayNameFocusNode =
+      FocusNode(debugLabel: 'AccountSetupDisplayName');
   final _displayNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _serverController = TextEditingController();
@@ -668,6 +679,7 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
   @override
   void dispose() {
     _serverController.removeListener(_handleImapServerChange);
+    _displayNameFocusNode.dispose();
     _displayNameController.dispose();
     _emailController.dispose();
     _serverController.dispose();
@@ -689,6 +701,11 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
       _smtpServerController.text = _smtpAutoHost!;
     }
     _serverController.addListener(_handleImapServerChange);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _displayNameFocusNode.requestFocus();
+      }
+    });
   }
 
   void _handleImapServerChange() {
@@ -789,6 +806,7 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
                   label: 'Display name',
                   controller: _displayNameController,
                   hintText: 'Jordan',
+                  focusNode: _displayNameFocusNode,
                 ),
                 LabeledField(
                   label: 'Email',

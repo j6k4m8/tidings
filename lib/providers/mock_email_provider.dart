@@ -530,6 +530,19 @@ class MockEmailProvider extends EmailProvider {
     notifyListeners();
   }
 
+  @override
+  Future<String?> archiveThread(EmailThread thread) async {
+    final index = _threads.indexWhere((item) => item.id == thread.id);
+    if (index == -1) {
+      return 'Thread not found.';
+    }
+    _threads.removeAt(index);
+    _messages.remove(thread.id);
+    _threadFolders.remove(thread.id);
+    notifyListeners();
+    return null;
+  }
+
   List<EmailAddress> _parseRecipients(String raw) {
     final parts = raw
         .split(RegExp(r'[;,]'))

@@ -39,6 +39,10 @@ class AppState extends ChangeNotifier {
     return _providers[account.id];
   }
 
+  EmailProvider? providerForAccount(String accountId) {
+    return _providers[accountId];
+  }
+
   Future<void> initialize() async {
     if (_hasInitialized) {
       return;

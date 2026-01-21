@@ -17,11 +17,11 @@ class TidingsBackground extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final base = ColorTokens.panelBackground(context);
     final topShade = Color.alphaBlend(
-      Colors.white.withValues(alpha: isDark ? 0.02 : 0.35),
+      Colors.white.withValues(alpha: isDark ? 0.015 : 0.06),
       base,
     );
     final bottomShade = Color.alphaBlend(
-      Colors.black.withValues(alpha: isDark ? 0.08 : 0.02),
+      Colors.black.withValues(alpha: isDark ? 0.03 : 0.02),
       base,
     );
 

@@ -9,6 +9,8 @@ class LabeledField extends StatelessWidget {
     this.keyboardType,
     this.obscureText = false,
     this.bottomPadding = 12,
+    this.focusNode,
+    this.autofocus = false,
   });
 
   final String label;
@@ -17,6 +19,8 @@ class LabeledField extends StatelessWidget {
   final TextInputType? keyboardType;
   final bool obscureText;
   final double bottomPadding;
+  final FocusNode? focusNode;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +35,8 @@ class LabeledField extends StatelessWidget {
             controller: controller,
             keyboardType: keyboardType,
             obscureText: obscureText,
+            focusNode: focusNode,
+            autofocus: autofocus,
             decoration: InputDecoration(hintText: hintText),
           ),
         ],

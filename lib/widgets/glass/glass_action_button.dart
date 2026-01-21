@@ -11,17 +11,19 @@ class GlassActionButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onTap,
+    this.tooltip,
   });
 
   final Color accent;
   final String label;
   final IconData icon;
   final VoidCallback onTap;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
     final tokens = accentTokensFor(context, accent);
-    return GestureDetector(
+    final content = GestureDetector(
       onTap: onTap,
       child: GlassPanel(
         borderRadius: BorderRadius.circular(context.radius(24)),
@@ -46,6 +48,13 @@ class GlassActionButton extends StatelessWidget {
           ],
         ),
       ),
+    );
+    if (tooltip == null) {
+      return content;
+    }
+    return Tooltip(
+      message: tooltip!,
+      child: content,
     );
   }
 }

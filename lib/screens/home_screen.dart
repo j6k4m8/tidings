@@ -1,14 +1,16 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/account_models.dart';
+import '../models/email_models.dart';
 import '../models/folder_models.dart';
 import '../providers/email_provider.dart';
 import '../state/app_state.dart';
 import '../state/tidings_settings.dart';
+import '../state/shortcut_definitions.dart';
+import '../state/keyboard_shortcut.dart';
 import '../theme/color_tokens.dart';
 import '../theme/glass.dart';
 import '../theme/account_accent.dart';
@@ -22,11 +24,16 @@ import '../widgets/glass/glass_bottom_nav.dart';
 import '../widgets/settings/corner_radius_option.dart';
 import '../widgets/settings/settings_rows.dart';
 import '../widgets/settings/settings_tabs.dart';
+import '../widgets/settings/shortcut_recorder.dart';
 import '../widgets/animations/page_reveal.dart';
 import '../widgets/tidings_background.dart';
 import 'compose/compose_sheet.dart';
+import 'compose/inline_reply_composer.dart';
 import 'home/thread_detail.dart';
 import 'home/thread_list.dart';
+import 'keyboard/command_palette.dart';
+import 'keyboard/go_to_dialog.dart';
+import 'keyboard/shortcuts_sheet.dart';
 import 'onboarding_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -43,9 +50,26 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+class _ShortcutIntent extends Intent {
+  const _ShortcutIntent(this.action);
+
+  final ShortcutAction action;
+}
+
+class _BlurIntent extends Intent {
+  const _BlurIntent();
+}
+
+enum _HomeScope {
+  list,
+  detail,
+  editor,
+}
+
 class _HomeScreenState extends State<HomeScreen> {
   static const _threadPanelFractionKey = 'threadPanelFraction';
   static const _sidebarCollapsedKey = 'sidebarCollapsed';
+  static final _escapeKey = LogicalKeySet(LogicalKeyboardKey.escape);
   int _selectedThreadIndex = 0;
   int _selectedFolderIndex = 0;
   int _navIndex = 0;
@@ -55,6 +79,17 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _threadPanelOpen = true;
   SharedPreferences? _prefs;
   String? _lastAccountId;
+  final FocusNode _searchFocusNode =
+      FocusNode(debugLabel: 'ThreadSearchFocus');
+  final FocusNode _rootFocusNode =
+      FocusNode(debugLabel: 'RootShortcuts');
+  final FocusNode _threadListFocusNode =
+      FocusNode(debugLabel: 'ThreadListFocus');
+  final FocusNode _threadDetailFocusNode =
+      FocusNode(debugLabel: 'ThreadDetailFocus');
+  final InlineReplyController _inlineReplyController =
+      InlineReplyController();
+  final Map<String, int> _messageSelectionByThread = {};
 
   @override
   void initState() {
@@ -62,6 +97,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadThreadPanelPrefs();
     _lastAccountId = widget.appState.selectedAccount?.id;
     widget.appState.addListener(_handleAppStateChange);
+    FocusManager.instance.addListener(_handleGlobalFocusChange);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _rootFocusNode.requestFocus();
+      }
+    });
   }
 
   Future<void> _loadThreadPanelPrefs() async {
@@ -99,8 +140,23 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     widget.appState.removeListener(_handleAppStateChange);
+    FocusManager.instance.removeListener(_handleGlobalFocusChange);
+    _searchFocusNode.dispose();
+    _rootFocusNode.dispose();
+    _threadListFocusNode.dispose();
+    _threadDetailFocusNode.dispose();
     super.dispose();
   }
+
+  void _handleGlobalFocusChange() {
+    if (!mounted) {
+      return;
+    }
+    if (FocusManager.instance.primaryFocus == null) {
+      _rootFocusNode.requestFocus();
+    }
+  }
+
 
   void _handleAppStateChange() {
     final currentId = widget.appState.selectedAccount?.id;
@@ -153,6 +209,475 @@ class _HomeScreenState extends State<HomeScreen> {
     return null;
   }
 
+  bool _isTextInputFocused() {
+    final focus = FocusManager.instance.primaryFocus;
+    if (focus == null) {
+      return false;
+    }
+    final context = focus.context;
+    if (context == null) {
+      return false;
+    }
+    final widget = context.widget;
+    if (widget is EditableText || widget is QuillEditor) {
+      return true;
+    }
+    return context.findAncestorWidgetOfExactType<EditableText>() != null ||
+        context.findAncestorWidgetOfExactType<QuillEditor>() != null;
+  }
+
+  bool _isShortcutRecorderFocused() {
+    final focus = FocusManager.instance.primaryFocus;
+    if (focus == null) {
+      return false;
+    }
+    final context = focus.context;
+    if (context == null) {
+      return false;
+    }
+    return context.findAncestorWidgetOfExactType<ShortcutRecorder>() != null;
+  }
+
+  _HomeScope _resolveScope() {
+    final focus = FocusManager.instance.primaryFocus;
+    final context = focus?.context;
+    if (context != null &&
+        context.findAncestorWidgetOfExactType<InlineReplyComposer>() != null) {
+      return _HomeScope.editor;
+    }
+    if (_threadDetailFocusNode.hasFocus) {
+      return _HomeScope.detail;
+    }
+    if (_threadListFocusNode.hasFocus) {
+      return _HomeScope.list;
+    }
+    return _HomeScope.list;
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Map<LogicalKeySet, Intent> _shortcutMap(
+    TidingsSettings settings, {
+    required bool allowGlobal,
+  }) {
+    final shortcuts = <LogicalKeySet, Intent>{};
+
+    void addShortcut(ShortcutAction action, KeyboardShortcut shortcut) {
+      if (!allowGlobal &&
+          action != ShortcutAction.focusSearch &&
+          action != ShortcutAction.sendMessage &&
+          action != ShortcutAction.openSettings) {
+        return;
+      }
+      shortcuts[shortcut.toKeySet()] = _ShortcutIntent(action);
+    }
+
+    for (final definition in shortcutDefinitions) {
+      addShortcut(definition.action, settings.shortcutFor(definition.action));
+      final secondary = settings.secondaryShortcutFor(definition.action);
+      if (secondary != null) {
+        addShortcut(definition.action, secondary);
+      }
+    }
+    shortcuts[_escapeKey] = const _BlurIntent();
+
+    return shortcuts;
+  }
+
+  EmailThread? _currentThread(EmailProvider provider) {
+    final threads = provider.threads;
+    if (threads.isEmpty) {
+      return null;
+    }
+    final index = _selectedIndex(_selectedThreadIndex, threads.length);
+    return threads[index];
+  }
+
+  void _navigateSelection(EmailProvider provider, int delta) {
+    final threads = provider.threads;
+    if (threads.isEmpty) {
+      return;
+    }
+    setState(() {
+      _selectedThreadIndex =
+          (_selectedThreadIndex + delta).clamp(0, threads.length - 1);
+    });
+    _threadListFocusNode.requestFocus();
+  }
+
+  int _selectedMessageIndexForThread(
+    EmailThread thread,
+    int messageCount,
+  ) {
+    if (messageCount <= 0) {
+      return 0;
+    }
+    final stored = _messageSelectionByThread[thread.id];
+    if (stored == null) {
+      return messageCount - 1;
+    }
+    return stored.clamp(0, messageCount - 1);
+  }
+
+  void _setMessageSelection(String threadId, int index) {
+    setState(() {
+      _messageSelectionByThread[threadId] = index;
+    });
+    _threadDetailFocusNode.requestFocus();
+  }
+
+  void _navigateMessageSelection(EmailProvider provider, int delta) {
+    final thread = _currentThread(provider);
+    if (thread == null) {
+      return;
+    }
+    final messages = provider.messagesForThread(thread.id);
+    if (messages.isEmpty) {
+      return;
+    }
+    final current =
+        _selectedMessageIndexForThread(thread, messages.length);
+    final next = (current + delta).clamp(0, messages.length - 1);
+    setState(() {
+      _messageSelectionByThread[thread.id] = next;
+      _threadPanelOpen = true;
+      _showSettings = false;
+    });
+    _threadDetailFocusNode.requestFocus();
+  }
+
+  void _navigateByScope(EmailProvider provider, int delta) {
+    final scope = _resolveScope();
+    if (scope == _HomeScope.detail) {
+      _navigateMessageSelection(provider, delta);
+      return;
+    }
+    if (scope == _HomeScope.list) {
+      _navigateSelection(provider, delta);
+    }
+  }
+
+  Future<void> _openSelectedThread(
+    EmailProvider provider,
+    EmailAccount account,
+  ) async {
+    final thread = _currentThread(provider);
+    if (thread == null) {
+      _toast('No thread selected.');
+      return;
+    }
+    final isCompact = MediaQuery.of(context).size.width < 720;
+    if (isCompact) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ThreadScreen(
+            accent: widget.accent,
+            thread: thread,
+            provider: provider,
+            currentUserEmail: account.email,
+          ),
+        ),
+      );
+    } else {
+      setState(() {
+        _threadPanelOpen = true;
+        _showSettings = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _threadDetailFocusNode.requestFocus();
+        }
+      });
+    }
+  }
+
+  void _triggerReply(
+    EmailProvider provider,
+    EmailAccount account,
+    ReplyMode mode,
+  ) {
+    final thread = _currentThread(provider);
+    if (thread == null) {
+      _toast('No thread selected.');
+      return;
+    }
+    setState(() {
+      _threadPanelOpen = true;
+      _showSettings = false;
+    });
+    _inlineReplyController.setModeForThread(thread.id, mode);
+    _inlineReplyController.focusEditorForThread(thread.id);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _inlineReplyController.setModeForThread(thread.id, mode);
+      _inlineReplyController.focusEditorForThread(thread.id);
+    });
+  }
+
+  Future<void> _archiveSelectedThread(EmailProvider provider) async {
+    final thread = _currentThread(provider);
+    if (thread == null) {
+      _toast('No thread selected.');
+      return;
+    }
+    final error = await provider.archiveThread(thread);
+    if (error != null) {
+      _toast(error);
+      return;
+    }
+    _toast('Archived.');
+  }
+
+  Future<void> _showCommandPalette(
+    EmailProvider provider,
+    EmailAccount account,
+  ) async {
+    final settings = context.tidingsSettings;
+    final items = [
+      CommandPaletteItem(
+        id: 'compose',
+        title: 'Compose',
+        subtitle: 'Start a new message',
+        shortcutLabel: settings.shortcutLabel(ShortcutAction.compose),
+        onSelected: () => _handleShortcut(
+          ShortcutAction.compose,
+          provider,
+          account,
+        ),
+      ),
+      CommandPaletteItem(
+        id: 'reply',
+        title: 'Reply',
+        subtitle: 'Reply to the selected thread',
+        shortcutLabel: settings.shortcutLabel(ShortcutAction.reply),
+        onSelected: () => _handleShortcut(
+          ShortcutAction.reply,
+          provider,
+          account,
+        ),
+      ),
+      CommandPaletteItem(
+        id: 'reply-all',
+        title: 'Reply all',
+        subtitle: 'Reply to everyone in the thread',
+        shortcutLabel: settings.shortcutLabel(ShortcutAction.replyAll),
+        onSelected: () => _handleShortcut(
+          ShortcutAction.replyAll,
+          provider,
+          account,
+        ),
+      ),
+      CommandPaletteItem(
+        id: 'forward',
+        title: 'Forward',
+        subtitle: 'Forward the selected thread',
+        shortcutLabel: settings.shortcutLabel(ShortcutAction.forward),
+        onSelected: () => _handleShortcut(
+          ShortcutAction.forward,
+          provider,
+          account,
+        ),
+      ),
+      CommandPaletteItem(
+        id: 'archive',
+        title: 'Archive',
+        subtitle: 'Move to Archive',
+        shortcutLabel: settings.shortcutLabel(ShortcutAction.archive),
+        onSelected: () => _handleShortcut(
+          ShortcutAction.archive,
+          provider,
+          account,
+        ),
+      ),
+      CommandPaletteItem(
+        id: 'go-to',
+        title: 'Go to folder',
+        subtitle: 'Jump to any folder',
+        shortcutLabel: settings.shortcutLabel(ShortcutAction.goTo),
+        onSelected: () => _handleShortcut(
+          ShortcutAction.goTo,
+          provider,
+          account,
+        ),
+      ),
+      CommandPaletteItem(
+        id: 'go-to-account',
+        title: 'Go to folder (current account)',
+        subtitle: 'Jump within this account',
+        shortcutLabel: settings.shortcutLabel(ShortcutAction.goToAccount),
+        onSelected: () => _handleShortcut(
+          ShortcutAction.goToAccount,
+          provider,
+          account,
+        ),
+      ),
+      CommandPaletteItem(
+        id: 'search',
+        title: 'Focus search',
+        subtitle: 'Jump to the search field',
+        shortcutLabel: settings.shortcutLabel(ShortcutAction.focusSearch),
+        onSelected: () => _handleShortcut(
+          ShortcutAction.focusSearch,
+          provider,
+          account,
+        ),
+      ),
+      CommandPaletteItem(
+        id: 'shortcuts',
+        title: 'Show shortcuts',
+        subtitle: 'View all keyboard shortcuts',
+        shortcutLabel: settings.shortcutLabel(ShortcutAction.showShortcuts),
+        onSelected: () => _handleShortcut(
+          ShortcutAction.showShortcuts,
+          provider,
+          account,
+        ),
+      ),
+    ];
+    await showCommandPalette(
+      context,
+      accent: widget.accent,
+      items: items,
+    );
+  }
+
+  Future<void> _showGoToDialog({
+    required bool currentAccountOnly,
+  }) async {
+    final entries = await _buildGoToEntries(
+      currentAccountOnly: currentAccountOnly,
+    );
+    if (!mounted) {
+      return;
+    }
+    await showGoToDialog(
+      context,
+      accent: widget.accent,
+      entries: entries,
+      title: currentAccountOnly ? 'Go to (this account)' : 'Go to',
+    );
+  }
+
+  Future<List<GoToEntry>> _buildGoToEntries({
+    required bool currentAccountOnly,
+  }) async {
+    final entries = <GoToEntry>[];
+    final accounts = widget.appState.accounts;
+    final currentAccountId = widget.appState.selectedAccount?.id;
+    for (var index = 0; index < accounts.length; index++) {
+      final account = accounts[index];
+      if (currentAccountOnly && account.id != currentAccountId) {
+        continue;
+      }
+      final provider = widget.appState.providerForAccount(account.id);
+      if (provider == null) {
+        continue;
+      }
+      if (provider.status == ProviderStatus.idle) {
+        await provider.initialize();
+      }
+      for (final section in provider.folderSections) {
+        for (final item in section.items) {
+          entries.add(
+            GoToEntry(
+              title: item.name,
+              subtitle: '${account.displayName} · ${account.email}',
+              onSelected: () async {
+                await widget.appState.selectAccount(index);
+                final nextProvider = widget.appState.currentProvider;
+                if (nextProvider == null) {
+                  return;
+                }
+                _handleFolderSelected(nextProvider, item.index);
+                _toast('Opened ${item.name}.');
+              },
+            ),
+          );
+        }
+      }
+    }
+    return entries;
+  }
+
+  Future<void> _handleShortcut(
+    ShortcutAction action,
+    EmailProvider provider,
+    EmailAccount account,
+  ) async {
+    switch (action) {
+      case ShortcutAction.compose:
+        await showComposeSheet(
+          context,
+          provider: provider,
+          accent: widget.accent,
+          currentUserEmail: account.email,
+        );
+        _toast('Compose opened.');
+        break;
+      case ShortcutAction.reply:
+        _triggerReply(provider, account, ReplyMode.reply);
+        break;
+      case ShortcutAction.replyAll:
+        _triggerReply(provider, account, ReplyMode.replyAll);
+        break;
+      case ShortcutAction.forward:
+        _triggerReply(provider, account, ReplyMode.forward);
+        break;
+      case ShortcutAction.archive:
+        await _archiveSelectedThread(provider);
+        break;
+      case ShortcutAction.commandPalette:
+        await _showCommandPalette(provider, account);
+        break;
+      case ShortcutAction.goTo:
+        await _showGoToDialog(currentAccountOnly: false);
+        break;
+      case ShortcutAction.goToAccount:
+        await _showGoToDialog(currentAccountOnly: true);
+        break;
+      case ShortcutAction.focusSearch:
+        _searchFocusNode.requestFocus();
+        break;
+      case ShortcutAction.openSettings:
+        setState(() {
+          _showSettings = true;
+          _navIndex = 3;
+        });
+        break;
+      case ShortcutAction.sendMessage:
+        await _inlineReplyController.send();
+        break;
+      case ShortcutAction.toggleSidebar:
+        if (MediaQuery.of(context).size.width < 1024) {
+          return;
+        }
+        setState(() {
+          _sidebarCollapsed = !_sidebarCollapsed;
+          _persistSidebarCollapsed(_sidebarCollapsed);
+        });
+        _toast(_sidebarCollapsed ? 'Sidebar collapsed.' : 'Sidebar expanded.');
+        break;
+      case ShortcutAction.openThread:
+        await _openSelectedThread(provider, account);
+        break;
+      case ShortcutAction.navigateNext:
+        _navigateByScope(provider, 1);
+        break;
+      case ShortcutAction.navigatePrev:
+        _navigateByScope(provider, -1);
+        break;
+      case ShortcutAction.showShortcuts:
+        await showShortcutsSheet(context);
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final account = widget.appState.selectedAccount;
@@ -160,123 +685,240 @@ class _HomeScreenState extends State<HomeScreen> {
     if (account == null || provider == null) {
       return const SizedBox.shrink();
     }
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isWide = constraints.maxWidth >= 1024;
-        final showSettings = _showSettings;
-        final effectiveFolderIndex = _folderIndexForPath(
-              provider.folderSections,
-              provider.selectedFolderPath,
-            ) ??
-            _selectedFolderIndex;
+    return AnimatedBuilder(
+      animation: FocusManager.instance,
+      builder: (context, _) {
+        final settings = context.tidingsSettings;
+        final isRecordingShortcut = _isShortcutRecorderFocused();
+        final allowGlobal = !_isTextInputFocused();
+        final scope = _resolveScope();
+        final threadFocused = scope != _HomeScope.list;
+        return Shortcuts(
+          shortcuts: isRecordingShortcut
+              ? const <LogicalKeySet, Intent>{}
+              : _shortcutMap(settings, allowGlobal: allowGlobal),
+          child: Actions(
+            actions: {
+              _ShortcutIntent: CallbackAction<_ShortcutIntent>(
+                onInvoke: (intent) {
+                  final currentProvider = widget.appState.currentProvider;
+                  final currentAccount = widget.appState.selectedAccount;
+                  if (currentProvider == null || currentAccount == null) {
+                    return null;
+                  }
+                  _handleShortcut(
+                    intent.action,
+                    currentProvider,
+                    currentAccount,
+                  );
+                  return null;
+                },
+              ),
+              _BlurIntent: CallbackAction<_BlurIntent>(
+                onInvoke: (intent) {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  _rootFocusNode.requestFocus();
+                  return null;
+                },
+              ),
+            },
+            child: Focus(
+              focusNode: _rootFocusNode,
+              autofocus: true,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                      final isWide = constraints.maxWidth >= 1024;
+                      final showSettings = _showSettings;
+                      final effectiveFolderIndex = _folderIndexForPath(
+                            provider.folderSections,
+                            provider.selectedFolderPath,
+                          ) ??
+                          _selectedFolderIndex;
+                      final threads = provider.threads;
+                      final safeThreadIndex = threads.isEmpty
+                          ? 0
+                          : _selectedIndex(_selectedThreadIndex, threads.length);
+                      final selectedThread =
+                          threads.isEmpty ? null : threads[safeThreadIndex];
+                      final selectedMessageIndex = selectedThread == null
+                          ? 0
+                          : _selectedMessageIndexForThread(
+                              selectedThread,
+                              provider
+                                  .messagesForThread(selectedThread.id)
+                                  .length,
+                            );
 
-        return Scaffold(
-          extendBody: true,
-          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-          floatingActionButton: isWide
-              ? null
-              : GlassActionButton(
-                  accent: widget.accent,
-                  label: 'Compose',
-                  icon: Icons.edit_rounded,
-                  onTap: () => showComposeSheet(
-                    context,
-                    provider: provider,
-                    accent: widget.accent,
-                    currentUserEmail: account.email,
-                  ),
-                ),
-          bottomNavigationBar: isWide
-              ? null
-              : GlassBottomNav(
-                  accent: widget.accent,
-                  currentIndex: _navIndex,
-                  onTap: (index) => setState(() {
-                    _navIndex = index;
-                    _showSettings = index == 3;
-                  }),
-                ),
-          body: TidingsBackground(
-            accent: widget.accent,
-            child: SafeArea(
-              bottom: false,
-              child: isWide
-                  ? _WideLayout(
-                      appState: widget.appState,
-                      account: account,
+                  return Scaffold(
+                    extendBody: true,
+                    floatingActionButtonLocation:
+                        FloatingActionButtonLocation.endFloat,
+                    floatingActionButton: isWide
+                        ? null
+                        : GlassActionButton(
+                            accent: widget.accent,
+                            label: 'Compose',
+                            icon: Icons.edit_rounded,
+                            onTap: () => showComposeSheet(
+                              context,
+                              provider: provider,
+                              accent: widget.accent,
+                              currentUserEmail: account.email,
+                            ),
+                            tooltip:
+                                'Compose (${context.tidingsSettings.shortcutLabel(ShortcutAction.compose, includeSecondary: false)})',
+                          ),
+                    bottomNavigationBar: isWide
+                        ? null
+                        : GlassBottomNav(
+                            accent: widget.accent,
+                            currentIndex: _navIndex,
+                            onTap: (index) => setState(() {
+                              _navIndex = index;
+                              _showSettings = index == 3;
+                            }),
+                          ),
+                    body: TidingsBackground(
                       accent: widget.accent,
-                      provider: provider,
-                      selectedThreadIndex: _selectedThreadIndex,
-                      onThreadSelected: (index) => setState(() {
-                        _selectedThreadIndex = index;
-                        _threadPanelOpen = true;
-                      }),
-                      selectedFolderIndex: effectiveFolderIndex,
-                      onFolderSelected: (index) =>
-                          _handleFolderSelected(provider, index),
-                      sidebarCollapsed: _sidebarCollapsed,
-                      onSidebarToggle: () => setState(() {
-                        _sidebarCollapsed = !_sidebarCollapsed;
-                        _persistSidebarCollapsed(_sidebarCollapsed);
-                      }),
-                      onAccountTap: () => showAccountPickerSheet(
-                        context,
-                        appState: widget.appState,
-                        accent: widget.accent,
-                      ),
-                      navIndex: _navIndex,
-                      onNavSelected: (index) => setState(() {
-                        _navIndex = index;
-                        _showSettings = false;
-                      }),
-                      onSettingsTap: () => setState(() => _showSettings = true),
-                      onSettingsClose: () =>
-                          setState(() => _showSettings = false),
-                      showSettings: showSettings,
-                      threadPanelFraction: _threadPanelFraction,
-                      threadPanelOpen: _threadPanelOpen,
-                      onThreadPanelResize: (fraction) {
-                        setState(() => _threadPanelFraction = fraction);
-                        _persistThreadPanelFraction(fraction);
-                      },
-                      onThreadPanelOpen: () =>
-                          setState(() => _threadPanelOpen = true),
-                      onThreadPanelClose: () =>
-                          setState(() => _threadPanelOpen = false),
-                      onCompose: () => showComposeSheet(
-                        context,
-                        provider: provider,
-                        accent: widget.accent,
-                        currentUserEmail: account.email,
-                      ),
-                    )
-                  : showSettings
-                  ? SettingsScreen(
-                      accent: widget.accent,
-                      appState: widget.appState,
-                      onClose: () => setState(() {
-                        _showSettings = false;
-                        _navIndex = 0;
-                      }),
-                    )
-                  : _CompactLayout(
-                      account: account,
-                      accent: widget.accent,
-                      provider: provider,
-                      selectedThreadIndex: _selectedThreadIndex,
-                      onThreadSelected: (index) => setState(() {
-                        _selectedThreadIndex = index;
-                        _threadPanelOpen = true;
-                      }),
-                      selectedFolderIndex: effectiveFolderIndex,
-                      onFolderSelected: (index) =>
-                          _handleFolderSelected(provider, index),
-                      onAccountTap: () => showAccountPickerSheet(
-                        context,
-                        appState: widget.appState,
-                        accent: widget.accent,
+                      child: SafeArea(
+                        bottom: false,
+                        child: isWide
+                            ? _WideLayout(
+                                appState: widget.appState,
+                                account: account,
+                                accent: widget.accent,
+                                provider: provider,
+                                selectedThreadIndex: _selectedThreadIndex,
+                                onThreadSelected: (index) {
+                                  final threads = provider.threads;
+                                  final safeIndex = threads.isEmpty
+                                      ? 0
+                                      : index.clamp(0, threads.length - 1);
+                                  final thread =
+                                      threads.isEmpty ? null : threads[safeIndex];
+                                  setState(() {
+                                    _selectedThreadIndex = index;
+                                    _threadPanelOpen = true;
+                                    _showSettings = false;
+                                    if (thread != null) {
+                                      final messages = provider
+                                          .messagesForThread(thread.id);
+                                      if (messages.isNotEmpty) {
+                                        _messageSelectionByThread[thread.id] =
+                                            messages.length - 1;
+                                      }
+                                    }
+                                  });
+                                  _threadListFocusNode.requestFocus();
+                                },
+                                selectedFolderIndex: effectiveFolderIndex,
+                                onFolderSelected: (index) =>
+                                    _handleFolderSelected(provider, index),
+                                sidebarCollapsed: _sidebarCollapsed,
+                                onSidebarToggle: () => setState(() {
+                                  _sidebarCollapsed = !_sidebarCollapsed;
+                                  _persistSidebarCollapsed(_sidebarCollapsed);
+                                }),
+                                onAccountTap: () => showAccountPickerSheet(
+                                  context,
+                                  appState: widget.appState,
+                                  accent: widget.accent,
+                                ),
+                                navIndex: _navIndex,
+                                onNavSelected: (index) => setState(() {
+                                  _navIndex = index;
+                                  _showSettings = false;
+                                }),
+                                onSettingsTap: () =>
+                                    setState(() => _showSettings = true),
+                                onSettingsClose: () =>
+                                    setState(() => _showSettings = false),
+                                showSettings: showSettings,
+                                threadFocused: threadFocused,
+                                threadListFocusNode: _threadListFocusNode,
+                                threadDetailFocusNode: _threadDetailFocusNode,
+                                threadPanelFraction: _threadPanelFraction,
+                                threadPanelOpen: _threadPanelOpen,
+                                onThreadPanelResize: (fraction) {
+                                  setState(
+                                    () => _threadPanelFraction = fraction,
+                                  );
+                                  _persistThreadPanelFraction(fraction);
+                                },
+                                onThreadPanelOpen: () =>
+                                    setState(() => _threadPanelOpen = true),
+                                onThreadPanelClose: () =>
+                                    setState(() => _threadPanelOpen = false),
+                                onCompose: () => showComposeSheet(
+                                  context,
+                                  provider: provider,
+                                  accent: widget.accent,
+                                  currentUserEmail: account.email,
+                                ),
+                                searchFocusNode: _searchFocusNode,
+                                replyController: _inlineReplyController,
+                                selectedMessageIndex: selectedMessageIndex,
+                                onMessageSelected: (index) {
+                                  if (selectedThread == null) {
+                                    return;
+                                  }
+                                  _setMessageSelection(
+                                    selectedThread.id,
+                                    index,
+                                  );
+                                },
+                              )
+                            : showSettings
+                            ? SettingsScreen(
+                                accent: widget.accent,
+                                appState: widget.appState,
+                                onClose: () => setState(() {
+                                  _showSettings = false;
+                                  _navIndex = 0;
+                                }),
+                              )
+                            : _CompactLayout(
+                                account: account,
+                                accent: widget.accent,
+                                provider: provider,
+                                selectedThreadIndex: _selectedThreadIndex,
+                                onThreadSelected: (index) {
+                                  final threads = provider.threads;
+                                  final safeIndex = threads.isEmpty
+                                      ? 0
+                                      : index.clamp(0, threads.length - 1);
+                                  final thread =
+                                      threads.isEmpty ? null : threads[safeIndex];
+                                  setState(() {
+                                    _selectedThreadIndex = index;
+                                    _threadPanelOpen = true;
+                                    _showSettings = false;
+                                    if (thread != null) {
+                                      final messages = provider
+                                          .messagesForThread(thread.id);
+                                      if (messages.isNotEmpty) {
+                                        _messageSelectionByThread[thread.id] =
+                                            messages.length - 1;
+                                      }
+                                    }
+                                  });
+                                  _threadListFocusNode.requestFocus();
+                                },
+                                selectedFolderIndex: effectiveFolderIndex,
+                                onFolderSelected: (index) =>
+                                    _handleFolderSelected(provider, index),
+                                onAccountTap: () => showAccountPickerSheet(
+                                  context,
+                                  appState: widget.appState,
+                                  accent: widget.accent,
+                                ),
+                                searchFocusNode: _searchFocusNode,
+                              ),
                       ),
                     ),
+                  );
+                },
+              ),
             ),
           ),
         );
@@ -303,12 +945,19 @@ class _WideLayout extends StatelessWidget {
     required this.onSettingsTap,
     required this.onSettingsClose,
     required this.showSettings,
+    required this.threadFocused,
+    required this.threadListFocusNode,
+    required this.threadDetailFocusNode,
     required this.threadPanelFraction,
     required this.threadPanelOpen,
     required this.onThreadPanelResize,
     required this.onThreadPanelOpen,
     required this.onThreadPanelClose,
     required this.onCompose,
+    required this.searchFocusNode,
+    required this.replyController,
+    required this.selectedMessageIndex,
+    required this.onMessageSelected,
   });
 
   final AppState appState;
@@ -327,12 +976,19 @@ class _WideLayout extends StatelessWidget {
   final VoidCallback onSettingsTap;
   final VoidCallback onSettingsClose;
   final bool showSettings;
+  final bool threadFocused;
+  final FocusNode threadListFocusNode;
+  final FocusNode threadDetailFocusNode;
   final double threadPanelFraction;
   final bool threadPanelOpen;
   final ValueChanged<double> onThreadPanelResize;
   final VoidCallback onThreadPanelOpen;
   final VoidCallback onThreadPanelClose;
   final VoidCallback onCompose;
+  final FocusNode searchFocusNode;
+  final InlineReplyController replyController;
+  final int selectedMessageIndex;
+  final ValueChanged<int> onMessageSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -347,6 +1003,7 @@ class _WideLayout extends StatelessWidget {
       context.tidingsSettings.pinnedFolderPaths,
     );
     final padding = EdgeInsets.all(context.gutter(16));
+    final listOpacity = threadFocused ? 0.6 : 1.0;
 
     return Padding(
       padding: padding,
@@ -354,37 +1011,41 @@ class _WideLayout extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            sidebarCollapsed
-                ? SizedBox(
-                    width: context.space(72),
-                    child: _SidebarRail(
-                      account: account,
-                      accent: accent,
-                      mailboxItems: _mailboxItems(folderSections),
-                      pinnedItems: pinnedItems,
-                      selectedIndex: selectedFolderIndex,
-                      onSelected: onFolderSelected,
-                      onExpand: onSidebarToggle,
-                      onAccountTap: onAccountTap,
-                      onSettingsTap: onSettingsTap,
-                      onCompose: onCompose,
+            AnimatedOpacity(
+              opacity: listOpacity,
+              duration: const Duration(milliseconds: 180),
+              child: sidebarCollapsed
+                  ? SizedBox(
+                      width: context.space(72),
+                      child: _SidebarRail(
+                        account: account,
+                        accent: accent,
+                        mailboxItems: _mailboxItems(folderSections),
+                        pinnedItems: pinnedItems,
+                        selectedIndex: selectedFolderIndex,
+                        onSelected: onFolderSelected,
+                        onExpand: onSidebarToggle,
+                        onAccountTap: onAccountTap,
+                        onSettingsTap: onSettingsTap,
+                        onCompose: onCompose,
+                      ),
+                    )
+                  : SizedBox(
+                      width: context.space(240),
+                      child: SidebarPanel(
+                        account: account,
+                        accent: accent,
+                        provider: provider,
+                        sections: folderSections,
+                        selectedIndex: selectedFolderIndex,
+                        onSelected: onFolderSelected,
+                        onSettingsTap: onSettingsTap,
+                        onCollapse: onSidebarToggle,
+                        onAccountTap: onAccountTap,
+                        onCompose: onCompose,
+                      ),
                     ),
-                  )
-                : SizedBox(
-                    width: context.space(240),
-                    child: SidebarPanel(
-                      account: account,
-                      accent: accent,
-                      provider: provider,
-                      sections: folderSections,
-                      selectedIndex: selectedFolderIndex,
-                      onSelected: onFolderSelected,
-                      onSettingsTap: onSettingsTap,
-                      onCollapse: onSidebarToggle,
-                      onAccountTap: onAccountTap,
-                      onCompose: onCompose,
-                    ),
-                  ),
+            ),
             SizedBox(width: context.space(16)),
             Expanded(
               child: LayoutBuilder(
@@ -396,13 +1057,25 @@ class _WideLayout extends StatelessWidget {
                     return Row(
                       children: [
                         Expanded(
-                          child: ThreadListPanel(
-                            accent: accent,
-                            provider: provider,
-                            selectedIndex: selectedThreadIndex,
-                            onSelected: onThreadSelected,
-                            isCompact: false,
-                            currentUserEmail: account.email,
+                          child: AnimatedOpacity(
+                            opacity: listOpacity,
+                            duration: const Duration(milliseconds: 180),
+                            child: Listener(
+                              onPointerDown: (_) =>
+                                  threadListFocusNode.requestFocus(),
+                              child: Focus(
+                                focusNode: threadListFocusNode,
+                                child: ThreadListPanel(
+                                  accent: accent,
+                                  provider: provider,
+                                  selectedIndex: selectedThreadIndex,
+                                  onSelected: onThreadSelected,
+                                  isCompact: false,
+                                  currentUserEmail: account.email,
+                                  searchFocusNode: searchFocusNode,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                         IgnorePointer(
@@ -458,13 +1131,25 @@ class _WideLayout extends StatelessWidget {
                     children: [
                       SizedBox(
                         width: listWidth,
-                        child: ThreadListPanel(
-                          accent: accent,
-                          provider: provider,
-                          selectedIndex: selectedThreadIndex,
-                          onSelected: onThreadSelected,
-                          isCompact: false,
-                          currentUserEmail: account.email,
+                        child: AnimatedOpacity(
+                          opacity: listOpacity,
+                          duration: const Duration(milliseconds: 180),
+                          child: Listener(
+                            onPointerDown: (_) =>
+                                threadListFocusNode.requestFocus(),
+                            child: Focus(
+                              focusNode: threadListFocusNode,
+                              child: ThreadListPanel(
+                                accent: accent,
+                                provider: provider,
+                                selectedIndex: selectedThreadIndex,
+                                onSelected: onThreadSelected,
+                                isCompact: false,
+                                currentUserEmail: account.email,
+                                searchFocusNode: searchFocusNode,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                       _ResizeHandle(onDragUpdate: handleResize),
@@ -491,13 +1176,27 @@ class _WideLayout extends StatelessWidget {
                                     ),
                                 child: selectedThread == null
                                     ? const SizedBox.shrink()
-                                    : CurrentThreadPanel(
-                                        key: ValueKey(selectedThread.id),
-                                        accent: accent,
-                                        thread: selectedThread,
-                                        provider: provider,
-                                        isCompact: false,
-                                        currentUserEmail: account.email,
+                                    : Listener(
+                                        onPointerDown: (_) =>
+                                            threadDetailFocusNode.requestFocus(),
+                                        child: Focus(
+                                          focusNode: threadDetailFocusNode,
+                                          child: CurrentThreadPanel(
+                                            key: ValueKey(selectedThread.id),
+                                            accent: accent,
+                                            thread: selectedThread,
+                                            provider: provider,
+                                            isCompact: false,
+                                            currentUserEmail: account.email,
+                                            replyController: replyController,
+                                            selectedMessageIndex:
+                                                selectedMessageIndex,
+                                            onMessageSelected: onMessageSelected,
+                                            isFocused: threadFocused,
+                                            parentFocusNode:
+                                                threadDetailFocusNode,
+                                          ),
+                                        ),
                                       ),
                               ),
                       ),
@@ -653,6 +1352,7 @@ class _CompactLayout extends StatelessWidget {
     required this.selectedFolderIndex,
     required this.onFolderSelected,
     required this.onAccountTap,
+    required this.searchFocusNode,
   });
 
   final EmailAccount account;
@@ -663,6 +1363,7 @@ class _CompactLayout extends StatelessWidget {
   final int selectedFolderIndex;
   final ValueChanged<int> onFolderSelected;
   final VoidCallback onAccountTap;
+  final FocusNode searchFocusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -689,8 +1390,10 @@ class _CompactLayout extends StatelessWidget {
                   onAccountTap: onAccountTap,
                 ),
                 SizedBox(height: context.space(16)),
-                ThreadSearchRow(accent: accent),
-                SizedBox(height: context.space(16)),
+                ThreadSearchRow(
+                  accent: accent,
+                  focusNode: searchFocusNode,
+                ),
                 SizedBox(height: context.space(8)),
                 Expanded(
                   child: ThreadListPanel(
@@ -712,6 +1415,7 @@ class _CompactLayout extends StatelessWidget {
                     },
                     isCompact: true,
                     currentUserEmail: account.email,
+                    searchFocusNode: searchFocusNode,
                   ),
                 ),
               ],
@@ -866,6 +1570,8 @@ class SidebarPanel extends StatelessWidget {
                 label: 'Compose',
                 icon: Icons.edit_rounded,
                 onTap: onCompose,
+                tooltip:
+                    'Compose (${context.tidingsSettings.shortcutLabel(ShortcutAction.compose, includeSecondary: false)})',
               ),
             ],
           ),
@@ -1240,7 +1946,8 @@ class _SidebarRail extends StatelessWidget {
             child: IconButton(
               onPressed: onCompose,
               icon: const Icon(Icons.edit_rounded),
-              tooltip: 'Compose',
+              tooltip:
+                  'Compose (${context.tidingsSettings.shortcutLabel(ShortcutAction.compose, includeSecondary: false)})',
             ),
           ),
           SizedBox(height: context.space(8)),
@@ -1425,7 +2132,7 @@ class SettingsPanel extends StatelessWidget {
       padding: EdgeInsets.all(context.space(14)),
       variant: GlassVariant.sheet,
       child: DefaultTabController(
-        length: 5,
+        length: 6,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1447,7 +2154,14 @@ class SettingsPanel extends StatelessWidget {
             ),
             SizedBox(height: context.space(12)),
             const SettingsTabBar(
-              tabs: ['Appearance', 'Layout', 'Threads', 'Folders', 'Accounts'],
+              tabs: [
+                'Appearance',
+                'Layout',
+                'Threads',
+                'Folders',
+                'Accounts',
+                'Keyboard',
+              ],
             ),
             SizedBox(height: context.space(12)),
             Expanded(
@@ -1472,6 +2186,7 @@ class SettingsPanel extends StatelessWidget {
                       accent: accent,
                     ),
                   ),
+                  const SettingsTab(child: _KeyboardSettings()),
                 ],
               ),
             ),
@@ -1766,6 +2481,156 @@ class _AccountsSettings extends StatelessWidget {
           ),
           SizedBox(height: context.space(16)),
         ],
+      ],
+    );
+  }
+}
+
+class _KeyboardSettings extends StatelessWidget {
+  const _KeyboardSettings();
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.tidingsSettings;
+    final navigation = <ShortcutAction>[
+      ShortcutAction.navigateNext,
+      ShortcutAction.navigatePrev,
+      ShortcutAction.openThread,
+      ShortcutAction.toggleSidebar,
+      ShortcutAction.goTo,
+      ShortcutAction.goToAccount,
+      ShortcutAction.focusSearch,
+      ShortcutAction.openSettings,
+    ];
+    final compose = <ShortcutAction>[
+      ShortcutAction.compose,
+      ShortcutAction.reply,
+      ShortcutAction.replyAll,
+      ShortcutAction.forward,
+      ShortcutAction.sendMessage,
+    ];
+    final mailbox = <ShortcutAction>[
+      ShortcutAction.archive,
+      ShortcutAction.commandPalette,
+      ShortcutAction.showShortcuts,
+    ];
+
+    Widget buildSection(String title, List<ShortcutAction> actions) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SettingsSubheader(title: title),
+          SizedBox(height: context.space(10)),
+          for (final action in actions) ...[
+            _ShortcutRow(
+              definition: definitionFor(action),
+              primary: settings.shortcutFor(action),
+              secondary: settings.secondaryShortcutFor(action),
+              onPrimaryChanged: (value) =>
+                  settings.setShortcut(action, value),
+              onSecondaryChanged: (value) =>
+                  settings.setShortcut(action, value, secondary: true),
+            ),
+            SizedBox(height: context.space(14)),
+          ],
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Keyboard', style: Theme.of(context).textTheme.titleLarge),
+        SizedBox(height: context.space(12)),
+        Text(
+          'Edit keyboard shortcuts for power navigation.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: ColorTokens.textSecondary(context),
+              ),
+        ),
+        SizedBox(height: context.space(16)),
+        buildSection('Navigation', navigation),
+        SizedBox(height: context.space(10)),
+        buildSection('Compose', compose),
+        SizedBox(height: context.space(10)),
+        buildSection('Mailbox', mailbox),
+      ],
+    );
+  }
+}
+
+class _ShortcutRow extends StatelessWidget {
+  const _ShortcutRow({
+    required this.definition,
+    required this.primary,
+    required this.secondary,
+    required this.onPrimaryChanged,
+    required this.onSecondaryChanged,
+  });
+
+  final ShortcutDefinition definition;
+  final KeyboardShortcut primary;
+  final KeyboardShortcut? secondary;
+  final ValueChanged<KeyboardShortcut> onPrimaryChanged;
+  final ValueChanged<KeyboardShortcut> onSecondaryChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final secondaryShortcut = secondary ?? definition.secondaryDefault;
+    return SettingRow(
+      title: definition.label,
+      subtitle: definition.description,
+      trailing: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          _ShortcutSlot(
+            label: definition.secondaryDefault != null ? 'Primary' : null,
+            child: ShortcutRecorder(
+              shortcut: primary,
+              onChanged: onPrimaryChanged,
+            ),
+          ),
+          if (secondaryShortcut != null) ...[
+            SizedBox(height: context.space(8)),
+            _ShortcutSlot(
+              label: 'Alternate',
+              child: ShortcutRecorder(
+                shortcut: secondaryShortcut,
+                onChanged: onSecondaryChanged,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ShortcutSlot extends StatelessWidget {
+  const _ShortcutSlot({
+    required this.child,
+    this.label,
+  });
+
+  final Widget child;
+  final String? label;
+
+  @override
+  Widget build(BuildContext context) {
+    if (label == null) {
+      return child;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(
+          label!,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: ColorTokens.textSecondary(context),
+              ),
+        ),
+        SizedBox(height: context.space(4)),
+        child,
       ],
     );
   }

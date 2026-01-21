@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../state/tidings_settings.dart';
 import '../../theme/color_tokens.dart';
 import '../../widgets/glass/glass_text_field.dart';
+
+class _QuillEscapeIntent extends Intent {
+  const _QuillEscapeIntent();
+}
 
 class ComposeEditor extends StatefulWidget {
   const ComposeEditor({
@@ -15,11 +20,15 @@ class ComposeEditor extends StatefulWidget {
     required this.subjectController,
     required this.showFields,
     required this.placeholder,
+    this.toFocusNode,
     this.recipientSummary,
     this.subjectSummary,
     this.minEditorHeight = 160,
     this.maxEditorHeight = 320,
     this.showFormattingToggle = true,
+    this.editorFocusNode,
+    this.subjectFocusNode,
+    this.onEscape,
   });
 
   final QuillController controller;
@@ -29,19 +38,27 @@ class ComposeEditor extends StatefulWidget {
   final TextEditingController subjectController;
   final bool showFields;
   final String placeholder;
+  final FocusNode? toFocusNode;
   final String? recipientSummary;
   final String? subjectSummary;
   final double minEditorHeight;
   final double maxEditorHeight;
   final bool showFormattingToggle;
+  final FocusNode? editorFocusNode;
+  final FocusNode? subjectFocusNode;
+  final VoidCallback? onEscape;
 
   @override
   State<ComposeEditor> createState() => _ComposeEditorState();
 }
 
 class _ComposeEditorState extends State<ComposeEditor> {
-  final FocusNode _subjectFocusNode = FocusNode();
-  final FocusNode _editorFocusNode = FocusNode();
+  late FocusNode _subjectFocusNode;
+  late FocusNode _editorFocusNode;
+  late FocusNode _toFocusNode;
+  late bool _ownsSubjectFocusNode;
+  late bool _ownsEditorFocusNode;
+  late bool _ownsToFocusNode;
   bool _showToolbar = false;
 
   DefaultStyles _editorStyles(BuildContext context) {
@@ -96,9 +113,53 @@ class _ComposeEditorState extends State<ComposeEditor> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _toFocusNode = widget.toFocusNode ?? FocusNode();
+    _subjectFocusNode = widget.subjectFocusNode ?? FocusNode();
+    _editorFocusNode = widget.editorFocusNode ?? FocusNode();
+    _ownsToFocusNode = widget.toFocusNode == null;
+    _ownsSubjectFocusNode = widget.subjectFocusNode == null;
+    _ownsEditorFocusNode = widget.editorFocusNode == null;
+  }
+
+  @override
+  void didUpdateWidget(covariant ComposeEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.toFocusNode != widget.toFocusNode) {
+      if (_ownsToFocusNode) {
+        _toFocusNode.dispose();
+      }
+      _toFocusNode = widget.toFocusNode ?? FocusNode();
+      _ownsToFocusNode = widget.toFocusNode == null;
+    }
+    if (oldWidget.subjectFocusNode != widget.subjectFocusNode) {
+      if (_ownsSubjectFocusNode) {
+        _subjectFocusNode.dispose();
+      }
+      _subjectFocusNode = widget.subjectFocusNode ?? FocusNode();
+      _ownsSubjectFocusNode = widget.subjectFocusNode == null;
+    }
+    if (oldWidget.editorFocusNode != widget.editorFocusNode) {
+      if (_ownsEditorFocusNode) {
+        _editorFocusNode.dispose();
+      }
+      _editorFocusNode = widget.editorFocusNode ?? FocusNode();
+      _ownsEditorFocusNode = widget.editorFocusNode == null;
+    }
+  }
+
+  @override
   void dispose() {
-    _subjectFocusNode.dispose();
-    _editorFocusNode.dispose();
+    if (_ownsToFocusNode) {
+      _toFocusNode.dispose();
+    }
+    if (_ownsSubjectFocusNode) {
+      _subjectFocusNode.dispose();
+    }
+    if (_ownsEditorFocusNode) {
+      _editorFocusNode.dispose();
+    }
     super.dispose();
   }
 
@@ -141,6 +202,7 @@ class _ComposeEditorState extends State<ComposeEditor> {
               child: GlassTextField(
                 controller: widget.toController,
                 hintText: 'To',
+                focusNode: _toFocusNode,
                 textInputAction: TextInputAction.next,
                 textStyle: textStyle,
               ),
@@ -264,6 +326,36 @@ class _ComposeEditorState extends State<ComposeEditor> {
                 config: QuillEditorConfig(
                   placeholder: widget.placeholder,
                   customStyles: _editorStyles(context),
+                  customShortcuts: {
+                    const SingleActivator(LogicalKeyboardKey.escape):
+                        const _QuillEscapeIntent(),
+                  },
+                  customActions: {
+                    _QuillEscapeIntent: CallbackAction<_QuillEscapeIntent>(
+                      onInvoke: (intent) {
+                        if (_editorFocusNode.hasFocus) {
+                          _editorFocusNode.unfocus();
+                        } else {
+                          FocusManager.instance.primaryFocus?.unfocus();
+                        }
+                        widget.onEscape?.call();
+                        return null;
+                      },
+                    ),
+                  },
+                  onKeyPressed: (event, _) {
+                    if (event is KeyDownEvent &&
+                        event.logicalKey == LogicalKeyboardKey.escape) {
+                      if (_editorFocusNode.hasFocus) {
+                        _editorFocusNode.unfocus();
+                      } else {
+                        FocusManager.instance.primaryFocus?.unfocus();
+                      }
+                      widget.onEscape?.call();
+                      return KeyEventResult.handled;
+                    }
+                    return null;
+                  },
                 ),
               ),
             ),
