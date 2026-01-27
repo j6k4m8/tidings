@@ -84,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
       FocusNode(debugLabel: 'ThreadListFocus');
   final FocusNode _threadDetailFocusNode =
       FocusNode(debugLabel: 'ThreadDetailFocus');
+    final ScrollController _threadDetailScrollController = ScrollController();
   final InlineReplyController _inlineReplyController =
       InlineReplyController();
   final Map<String, int> _messageSelectionByThread = {};
@@ -122,7 +123,40 @@ class _HomeScreenState extends State<HomeScreen> {
     _rootFocusNode.dispose();
     _threadListFocusNode.dispose();
     _threadDetailFocusNode.dispose();
+    _threadDetailScrollController.dispose();
     super.dispose();
+  }
+
+  KeyEventResult _handleThreadDetailKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (!_threadDetailScrollController.hasClients) {
+      return KeyEventResult.ignored;
+    }
+    final position = _threadDetailScrollController.position;
+    final viewport = position.viewportDimension;
+    double? delta;
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      delta = 48;
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      delta = -48;
+    } else if (event.logicalKey == LogicalKeyboardKey.pageDown) {
+      delta = viewport * 0.9;
+    } else if (event.logicalKey == LogicalKeyboardKey.pageUp) {
+      delta = -viewport * 0.9;
+    }
+    if (delta == null || delta == 0) {
+      return KeyEventResult.ignored;
+    }
+    final nextOffset =
+        (position.pixels + delta).clamp(0.0, position.maxScrollExtent);
+    _threadDetailScrollController.animateTo(
+      nextOffset,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOutCubic,
+    );
+    return KeyEventResult.handled;
   }
 
   void _handleGlobalFocusChange() {
@@ -834,6 +868,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                 threadFocused: threadFocused,
                                 threadListFocusNode: _threadListFocusNode,
                                 threadDetailFocusNode: _threadDetailFocusNode,
+                                threadDetailScrollController:
+                                  _threadDetailScrollController,
+                                onThreadDetailKeyEvent:
+                                  _handleThreadDetailKeyEvent,
                                 threadPanelFraction: _threadPanelFraction,
                                 threadPanelOpen: _threadPanelOpen,
                                 onThreadPanelResize: (fraction) {
@@ -950,6 +988,8 @@ class _WideLayout extends StatelessWidget {
     required this.threadFocused,
     required this.threadListFocusNode,
     required this.threadDetailFocusNode,
+    required this.threadDetailScrollController,
+    required this.onThreadDetailKeyEvent,
     required this.threadPanelFraction,
     required this.threadPanelOpen,
     required this.onThreadPanelResize,
@@ -982,6 +1022,8 @@ class _WideLayout extends StatelessWidget {
   final bool threadFocused;
   final FocusNode threadListFocusNode;
   final FocusNode threadDetailFocusNode;
+  final ScrollController threadDetailScrollController;
+  final KeyEventResult Function(KeyEvent event) onThreadDetailKeyEvent;
   final double threadPanelFraction;
   final bool threadPanelOpen;
   final ValueChanged<double> onThreadPanelResize;
@@ -1189,6 +1231,8 @@ class _WideLayout extends StatelessWidget {
                                             threadDetailFocusNode.requestFocus(),
                                         child: Focus(
                                           focusNode: threadDetailFocusNode,
+                                          onKeyEvent: (node, event) =>
+                                              onThreadDetailKeyEvent(event),
                                           child: CurrentThreadPanel(
                                             key: ValueKey(selectedThread.id),
                                             accent: accent,
@@ -1203,6 +1247,8 @@ class _WideLayout extends StatelessWidget {
                                             isFocused: threadFocused,
                                             parentFocusNode:
                                                 threadDetailFocusNode,
+                                            scrollController:
+                                                threadDetailScrollController,
                                           ),
                                         ),
                                       ),

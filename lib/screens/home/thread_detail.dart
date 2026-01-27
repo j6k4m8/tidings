@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -23,6 +24,7 @@ class CurrentThreadPanel extends StatefulWidget {
     required this.selectedMessageIndex,
     required this.onMessageSelected,
     required this.isFocused,
+    this.scrollController,
     this.parentFocusNode,
     this.replyController,
   });
@@ -35,6 +37,7 @@ class CurrentThreadPanel extends StatefulWidget {
   final int selectedMessageIndex;
   final ValueChanged<int> onMessageSelected;
   final bool isFocused;
+  final ScrollController? scrollController;
   final FocusNode? parentFocusNode;
   final InlineReplyController? replyController;
 
@@ -44,19 +47,45 @@ class CurrentThreadPanel extends StatefulWidget {
 
 class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
   final Map<String, bool> _expandedState = {};
-  final ScrollController _scrollController = ScrollController();
+  late ScrollController _scrollController;
+  bool _ownsScrollController = false;
   bool _showEscHint = false;
   bool _wasFocused = false;
 
+  void _configureScrollController() {
+    final external = widget.scrollController;
+    if (external != null) {
+      _scrollController = external;
+      _ownsScrollController = false;
+    } else {
+      _scrollController = ScrollController();
+      _ownsScrollController = true;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _configureScrollController();
+  }
+
   @override
   void dispose() {
-    _scrollController.dispose();
+    if (_ownsScrollController) {
+      _scrollController.dispose();
+    }
     super.dispose();
   }
 
   @override
   void didUpdateWidget(covariant CurrentThreadPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.scrollController != widget.scrollController) {
+      if (_ownsScrollController) {
+        _scrollController.dispose();
+      }
+      _configureScrollController();
+    }
     // Show hint when focus is gained (desktop only)
     if (widget.isFocused && !_wasFocused && !widget.isCompact) {
       _showEscHintBriefly();
@@ -222,6 +251,7 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                             _toggleExpanded(message.id, defaultExpanded),
                         isSelected: index == widget.selectedMessageIndex,
                         onSelected: () => widget.onMessageSelected(index),
+                        parentScrollController: _scrollController,
                       );
                     },
                   ),
@@ -276,6 +306,7 @@ class MessageCard extends StatelessWidget {
     required this.onToggleExpanded,
     required this.isSelected,
     this.onSelected,
+    this.parentScrollController,
   });
 
   final EmailMessage message;
@@ -284,6 +315,7 @@ class MessageCard extends StatelessWidget {
   final VoidCallback onToggleExpanded;
   final bool isSelected;
   final VoidCallback? onSelected;
+  final ScrollController? parentScrollController;
 
   static const int _collapsedCharLimit = 420;
 
@@ -620,6 +652,7 @@ class MessageCard extends StatelessWidget {
                     contentWidget = _HtmlWebView(
                       html: bodyHtml,
                       messageId: message.id,
+                      parentScrollController: parentScrollController,
                     );
                   } else if (hasTextContent) {
                     contentWidget = Text(
@@ -792,10 +825,12 @@ class _HtmlWebView extends StatefulWidget {
   const _HtmlWebView({
     required this.html,
     required this.messageId,
+    this.parentScrollController,
   });
 
   final String html;
   final String messageId;
+  final ScrollController? parentScrollController;
 
   @override
   State<_HtmlWebView> createState() => _HtmlWebViewState();
@@ -847,9 +882,11 @@ class _HtmlWebViewState extends State<_HtmlWebView> {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 html, body { margin: 0; padding: 0; overflow: hidden; }
-body { padding: 4px; font-family: -apple-system, system-ui, sans-serif; font-size: 14px; line-height: 1.4; }
-img { max-width: 100%; height: auto; }
+body { padding: 4px; font-family: -apple-system, system-ui, sans-serif; font-size: 14px; line-height: 1.4; width: 100%; box-sizing: border-box; overflow-wrap: anywhere; }
+* { max-width: 100%; box-sizing: border-box; }
+img, video, iframe { max-width: 100%; height: auto; }
 table { max-width: 100%; border-collapse: collapse; }
+pre { white-space: pre-wrap; word-break: break-word; }
 a { color: #1a73e8; }
 </style>
 </head>
@@ -890,8 +927,33 @@ setTimeout(reportHeight, 500);
   @override
   Widget build(BuildContext context) {
     return SizedBox(
+      width: double.infinity,
       height: _contentHeight,
-      child: WebViewWidget(controller: _controller),
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerSignal: (signal) {
+          if (signal is PointerScrollEvent) {
+            final controller = widget.parentScrollController;
+            if (controller == null || !controller.hasClients) {
+              return;
+            }
+            final position = controller.position;
+            final nextOffset =
+                (position.pixels + signal.scrollDelta.dy).clamp(
+              0.0,
+              position.maxScrollExtent,
+            );
+            controller.jumpTo(nextOffset);
+          }
+        },
+        child: IgnorePointer(
+          ignoring: true,
+          child: ExcludeFocus(
+            excluding: true,
+            child: WebViewWidget(controller: _controller),
+          ),
+        ),
+      ),
     );
   }
 }
