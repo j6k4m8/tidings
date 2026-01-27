@@ -1,6 +1,6 @@
 # Widgets
 
-This is the catalog of reusable UI widgets in Tidings.
+This is a (partial) catalog of reusable UI widgets in Tidings.
 
 ## Accent
 
