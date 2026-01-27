@@ -120,50 +120,50 @@ class MockEmailProvider extends EmailProvider {
     final now = DateTime.now();
     return [
       EmailThread(
-      id: 'thread-01',
-      subject: 'Launch playlist visuals for the beta build',
-      participants: [_ari, _sam, _you],
-      time: '8:42 AM',
-      unread: true,
-      starred: true,
-      receivedAt: now.subtract(const Duration(minutes: 18)),
-    ),
-    EmailThread(
-      id: 'thread-02',
-      subject: 'Roadmap sync with mobile team',
-      participants: [_priya, _you],
-      time: '7:18 AM',
-      unread: true,
-      starred: false,
-      receivedAt: now.subtract(const Duration(hours: 2)),
-    ),
-    EmailThread(
-      id: 'thread-03',
-      subject: 'Press kit update for Tidings',
-      participants: [_maya, _you],
-      time: 'Yesterday',
-      unread: false,
-      starred: false,
-      receivedAt: now.subtract(const Duration(days: 1, hours: 3)),
-    ),
-    EmailThread(
-      id: 'thread-04',
-      subject: 'Follow up on the onboarding flow copy',
-      participants: [_dev, _you],
-      time: 'Mon',
-      unread: false,
-      starred: false,
-      receivedAt: now.subtract(const Duration(days: 3, hours: 2)),
-    ),
-    EmailThread(
-      id: 'thread-05',
-      subject: 'Invite list for private alpha',
-      participants: [_sasha, _you],
-      time: 'Mon',
-      unread: false,
-      starred: false,
-      receivedAt: now.subtract(const Duration(days: 4, hours: 1)),
-    ),
+        id: 'thread-01',
+        subject: 'Kitchenette smell: first guess (spoiler: wrong)',
+        participants: [_ari, _sam, _you],
+        time: '8:42 AM',
+        unread: true,
+        starred: true,
+        receivedAt: now.subtract(const Duration(minutes: 18)),
+      ),
+      EmailThread(
+        id: 'thread-02',
+        subject: 'Smell triage plan (and our next false lead)',
+        participants: [_priya, _you],
+        time: '7:18 AM',
+        unread: true,
+        starred: false,
+        receivedAt: now.subtract(const Duration(hours: 2)),
+      ),
+      EmailThread(
+        id: 'thread-03',
+        subject: 'Kitchenette smell: status update + suspects',
+        participants: [_maya, _you],
+        time: 'Yesterday',
+        unread: false,
+        starred: false,
+        receivedAt: now.subtract(const Duration(days: 1, hours: 3)),
+      ),
+      EmailThread(
+        id: 'thread-04',
+        subject: 'We thought it was the fridge... it was not',
+        participants: [_dev, _you],
+        time: 'Mon',
+        unread: false,
+        starred: false,
+        receivedAt: now.subtract(const Duration(days: 3, hours: 2)),
+      ),
+      EmailThread(
+        id: 'thread-05',
+        subject: 'Final attempt: is it the sink trap?',
+        participants: [_sasha, _you],
+        time: 'Mon',
+        unread: false,
+        starred: false,
+        receivedAt: now.subtract(const Duration(days: 4, hours: 1)),
+      ),
     ];
   }
 
@@ -180,24 +180,24 @@ class MockEmailProvider extends EmailProvider {
       EmailMessage(
         id: 'msg-01-1',
         threadId: 'thread-01',
-        subject: 'Launch playlist visuals for the beta build',
+        subject: 'Kitchenette smell: first guess (spoiler: wrong)',
         from: _ari,
         to: [_you],
         time: '8:32 AM',
         bodyText:
-            'We need the new playlist visuals before the beta build goes out.',
+            'I think the smell is coming from the compost bin. I wrapped it and moved it outside. If the odor’s gone by 10, we found it.',
         isMe: false,
         isUnread: true,
       ),
       EmailMessage(
         id: 'msg-01-2',
         threadId: 'thread-01',
-        subject: 'Launch playlist visuals for the beta build',
+        subject: 'Kitchenette smell: first guess (spoiler: wrong)',
         from: _sam,
         to: [_you],
         time: '8:42 AM',
         bodyText:
-            'I can ship the new renders this afternoon if we approve the palette.',
+            'Update: compost is innocent. Smell is still aggressively present. I’m opening windows and blaming the vents now.',
         isMe: false,
         isUnread: true,
       ),
@@ -206,24 +206,24 @@ class MockEmailProvider extends EmailProvider {
       EmailMessage(
         id: 'msg-02-1',
         threadId: 'thread-02',
-        subject: 'Roadmap sync with mobile team',
+        subject: 'Smell triage plan (and our next false lead)',
         from: _priya,
         to: [_you],
         time: '7:18 AM',
         bodyText:
-            'Can we align on the roadmap for the mobile rollout? I have the deck ready.',
+            'Proposed plan: 1) fridge purge, 2) run disposal with citrus, 3) check sink trap. If smell persists, we escalate to facilities.',
         isMe: false,
         isUnread: true,
       ),
       EmailMessage(
         id: 'msg-02-2',
         threadId: 'thread-02',
-        subject: 'Roadmap sync with mobile team',
+        subject: 'Smell triage plan (and our next false lead)',
         from: _you,
         to: [_priya],
         time: '7:22 AM',
         bodyText:
-            'Yes, let’s do it. I can join after the 9 AM standup.',
+            'Agree on the plan. I’ll handle the disposal (again). If we “fix” it and the smell returns, we’ll log it as a false lead.',
         isMe: true,
         isUnread: false,
       ),
@@ -232,19 +232,25 @@ class MockEmailProvider extends EmailProvider {
       EmailMessage(
         id: 'msg-03-1',
         threadId: 'thread-03',
-        subject: 'Press kit update for Tidings',
+        subject: 'Kitchenette smell: status update + suspects',
         from: _maya,
         to: [_you],
         time: 'Yesterday',
         bodyHtml: '''
-<p>New press assets are ready to review.</p>
-<p><b>Highlights</b></p>
+<p>Smell report, day 2:</p>
+<p><b>Suspects we cleared</b></p>
 <ul>
-  <li>Updated brand mark set</li>
-  <li>Fresh UI mockups</li>
-  <li>Founder quotes approved</li>
+  <li>Compost bin (empty, sanitized)</li>
+  <li>Fridge shelves (wiped, no leaks)</li>
+  <li>Microwave (surprisingly innocent)</li>
 </ul>
-<p><a href="https://tidings.dev/press">Review the kit</a> and let me know any edits.</p>
+<p><b>New suspects</b></p>
+<ul>
+  <li>Sink trap</li>
+  <li>Dishwasher filter</li>
+  <li>The mysterious “drawer of sauces”</li>
+</ul>
+<p>We thought it was the fridge door seal, but the smell came back an hour later.</p>
 ''',
         isMe: false,
         isUnread: false,
@@ -254,24 +260,24 @@ class MockEmailProvider extends EmailProvider {
       EmailMessage(
         id: 'msg-04-1',
         threadId: 'thread-04',
-        subject: 'Follow up on the onboarding flow copy',
+        subject: 'We thought it was the fridge... it was not',
         from: _dev,
         to: [_you],
         time: 'Mon',
         bodyText:
-            'Did you want the onboarding flow to be more playful, or keep it tight?',
+            'We pulled everything out of the fridge. Smell vanished for 15 minutes, then returned even stronger. False lead #3?',
         isMe: false,
         isUnread: false,
       ),
       EmailMessage(
         id: 'msg-04-2',
         threadId: 'thread-04',
-        subject: 'Follow up on the onboarding flow copy',
+        subject: 'We thought it was the fridge... it was not',
         from: _you,
         to: [_dev],
         time: 'Mon',
         bodyText:
-            'Let’s keep it crisp. Two sentences max, and emphasize focus.',
+            'Yep, that was a decoy. Let’s try the sink trap next and document the timeline so we stop gaslighting ourselves.',
         isMe: true,
         isUnread: false,
       ),
@@ -280,11 +286,12 @@ class MockEmailProvider extends EmailProvider {
       EmailMessage(
         id: 'msg-05-1',
         threadId: 'thread-05',
-        subject: 'Invite list for private alpha',
+        subject: 'Final attempt: is it the sink trap?',
         from: _sasha,
         to: [_you],
         time: 'Mon',
-        bodyText: 'Added 12 new invites. We can onboard them Friday.',
+        bodyText:
+            'I poured hot water + baking soda down the trap. Smell dipped for ~20 minutes, then came back. Either the trap isn’t it, or it’s trolling us.',
         isMe: false,
         isUnread: false,
       ),
@@ -330,12 +337,7 @@ class MockEmailProvider extends EmailProvider {
       title: 'Folders',
       kind: FolderSectionKind.folders,
       items: [
-        FolderItem(
-          index: 4,
-          name: 'Product',
-          path: 'Product',
-          unreadCount: 6,
-        ),
+        FolderItem(index: 4, name: 'Product', path: 'Product', unreadCount: 6),
         FolderItem(
           index: 5,
           name: 'Launch notes',
@@ -343,18 +345,8 @@ class MockEmailProvider extends EmailProvider {
           depth: 1,
           unreadCount: 2,
         ),
-        FolderItem(
-          index: 6,
-          name: 'Hiring',
-          path: 'Hiring',
-          unreadCount: 1,
-        ),
-        FolderItem(
-          index: 7,
-          name: 'Press',
-          path: 'Press',
-          unreadCount: 0,
-        ),
+        FolderItem(index: 6, name: 'Hiring', path: 'Hiring', unreadCount: 1),
+        FolderItem(index: 7, name: 'Press', path: 'Press', unreadCount: 0),
         FolderItem(
           index: 8,
           name: 'Receipts',
@@ -367,12 +359,7 @@ class MockEmailProvider extends EmailProvider {
       title: 'Labels',
       kind: FolderSectionKind.labels,
       items: [
-        FolderItem(
-          index: 9,
-          name: 'VIP',
-          path: 'Label/VIP',
-          unreadCount: 4,
-        ),
+        FolderItem(index: 9, name: 'VIP', path: 'Label/VIP', unreadCount: 4),
         FolderItem(
           index: 10,
           name: 'Later',

@@ -812,6 +812,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   context,
                                   appState: widget.appState,
                                   accent: widget.accent,
+                                  showMockOption: true,
                                 ),
                                 navIndex: _navIndex,
                                 onNavSelected: (index) => setState(() {
@@ -909,6 +910,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   context,
                                   appState: widget.appState,
                                   accent: widget.accent,
+                                  showMockOption: true,
                                 ),
                                 searchFocusNode: _searchFocusNode,
                                 threadListFocusNode: _threadListFocusNode,

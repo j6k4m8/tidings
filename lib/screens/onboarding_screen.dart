@@ -43,8 +43,8 @@ class OnboardingScreen extends StatelessWidget {
                   Text(
                     'Connect your email or start with a mock inbox.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: ColorTokens.textSecondary(context),
-                        ),
+                      color: ColorTokens.textSecondary(context),
+                    ),
                   ),
                   const SizedBox(height: 24),
                   _OnboardingCard(
@@ -117,16 +117,13 @@ class _OnboardingCard extends StatelessWidget {
           Text(
             subtitle,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: ColorTokens.textSecondary(context),
-                ),
+              color: ColorTokens.textSecondary(context),
+            ),
           ),
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerRight,
-            child: FilledButton(
-              onPressed: onTap,
-              child: Text(cta),
-            ),
+            child: FilledButton(onPressed: onTap, child: Text(cta)),
           ),
         ],
       ),
@@ -145,11 +142,8 @@ void showAccountSetupSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _AccountSetupSheet(
-        appState: appState,
-        accent: accent,
-        isSheet: true,
-      ),
+      builder: (_) =>
+          _AccountSetupSheet(appState: appState, accent: accent, isSheet: true),
     );
     return;
   }
@@ -175,6 +169,7 @@ void showAccountPickerSheet(
   BuildContext context, {
   required AppState appState,
   required Color accent,
+  bool showMockOption = false,
 }) {
   showModalBottomSheet<void>(
     context: context,
@@ -183,6 +178,7 @@ void showAccountPickerSheet(
     builder: (_) => _AccountPickerSheet(
       appState: appState,
       accent: accent,
+      showMockOption: showMockOption,
     ),
   );
 }
@@ -231,10 +227,12 @@ class _AccountPickerSheet extends StatelessWidget {
   const _AccountPickerSheet({
     required this.appState,
     required this.accent,
+    required this.showMockOption,
   });
 
   final AppState appState;
   final Color accent;
+  final bool showMockOption;
 
   @override
   Widget build(BuildContext context) {
@@ -279,6 +277,17 @@ class _AccountPickerSheet extends StatelessWidget {
                 icon: const Icon(Icons.add),
                 label: const Text('Add account'),
               ),
+              if (showMockOption) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    Navigator.of(context).pop();
+                    await appState.addMockAccount();
+                  },
+                  icon: const Icon(Icons.bolt_rounded),
+                  label: const Text('Mock Email'),
+                ),
+              ],
             ],
           ),
         ),
@@ -320,8 +329,9 @@ class _AccountEditSheet extends StatefulWidget {
 }
 
 class _AccountEditSheetState extends State<_AccountEditSheet> {
-  final FocusNode _displayNameFocusNode =
-      FocusNode(debugLabel: 'AccountEditDisplayName');
+  final FocusNode _displayNameFocusNode = FocusNode(
+    debugLabel: 'AccountEditDisplayName',
+  );
   late final TextEditingController _displayNameController;
   late final TextEditingController _emailController;
   late final TextEditingController _serverController;
@@ -343,14 +353,17 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
   void initState() {
     super.initState();
     final config = widget.account.imapConfig!;
-    _displayNameController =
-        TextEditingController(text: widget.account.displayName);
+    _displayNameController = TextEditingController(
+      text: widget.account.displayName,
+    );
     _emailController = TextEditingController(text: widget.account.email);
     _serverController = TextEditingController(text: config.server);
     _portController = TextEditingController(text: config.port.toString());
     _usernameController = TextEditingController(text: config.username);
     _smtpServerController = TextEditingController(text: config.smtpServer);
-    _smtpPortController = TextEditingController(text: config.smtpPort.toString());
+    _smtpPortController = TextEditingController(
+      text: config.smtpPort.toString(),
+    );
     _smtpUsernameController = TextEditingController(text: config.smtpUsername);
     _useTls = config.useTls;
     _smtpUseTls = config.smtpUseTls;
@@ -435,8 +448,7 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
 
     final port = int.tryParse(_portController.text.trim()) ?? 993;
     final smtpPort = int.tryParse(_smtpPortController.text.trim()) ?? 587;
-    final effectiveSmtpUsername =
-        _smtpUseImapAuth ? username : smtpUsername;
+    final effectiveSmtpUsername = _smtpUseImapAuth ? username : smtpUsername;
     final effectiveSmtpPassword = _smtpUseImapAuth ? password : smtpPassword;
     final config = ImapAccountConfig(
       server: server,
@@ -487,8 +499,10 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Edit IMAP account',
-                    style: Theme.of(context).textTheme.titleLarge),
+                Text(
+                  'Edit IMAP account',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
                 const SizedBox(height: 12),
                 LabeledField(
                   label: 'Display name',
@@ -537,9 +551,9 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Text(
                       'Password required to save.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.redAccent,
-                          ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: Colors.redAccent),
                     ),
                   ),
                 ToggleRow(
@@ -607,10 +621,8 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Text(
                             'SMTP password required to save.',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Colors.redAccent,
-                                    ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: Colors.redAccent),
                           ),
                         ),
                     ],
@@ -620,9 +632,9 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
                   const SizedBox(height: 8),
                   Text(
                     _errorMessage!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.redAccent,
-                        ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.redAccent),
                   ),
                 ],
                 const SizedBox(height: 12),
@@ -657,8 +669,9 @@ class _AccountEditSheetState extends State<_AccountEditSheet> {
 }
 
 class _AccountSetupSheetState extends State<_AccountSetupSheet> {
-  final FocusNode _displayNameFocusNode =
-      FocusNode(debugLabel: 'AccountSetupDisplayName');
+  final FocusNode _displayNameFocusNode = FocusNode(
+    debugLabel: 'AccountSetupDisplayName',
+  );
   final _displayNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _serverController = TextEditingController();
@@ -748,8 +761,7 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
     });
     final port = int.tryParse(_portController.text.trim()) ?? 993;
     final smtpPort = int.tryParse(_smtpPortController.text.trim()) ?? 587;
-    final effectiveSmtpUsername =
-        _smtpUseImapAuth ? username : smtpUsername;
+    final effectiveSmtpUsername = _smtpUseImapAuth ? username : smtpUsername;
     final effectiveSmtpPassword = _smtpUseImapAuth ? password : smtpPassword;
     final config = ImapAccountConfig(
       server: server,
@@ -799,8 +811,10 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Add IMAP account',
-                    style: Theme.of(context).textTheme.titleLarge),
+                Text(
+                  'Add IMAP account',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
                 const SizedBox(height: 12),
                 LabeledField(
                   label: 'Display name',
@@ -910,9 +924,9 @@ class _AccountSetupSheetState extends State<_AccountSetupSheet> {
                   const SizedBox(height: 8),
                   Text(
                     _errorMessage!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.redAccent,
-                        ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.redAccent),
                   ),
                 ],
                 const SizedBox(height: 12),
