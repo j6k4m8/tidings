@@ -581,8 +581,59 @@ class ImapSmtpEmailProvider extends EmailProvider {
         messageId: messageId,
         inReplyTo: inReplyTo,
       );
-      final bodyText = message.decodeTextPlainPart();
-      final bodyHtml = message.decodeTextHtmlPart();
+      var bodyText = message.decodeTextPlainPart();
+      var bodyHtml = message.decodeTextHtmlPart();
+
+      // Helper to check if text looks like HTML
+      bool looksLikeHtml(String? text) {
+        if (text == null || text.isEmpty) return false;
+        return text.contains('<html') ||
+            text.contains('<body') ||
+            text.contains('<div') ||
+            text.contains('<table') ||
+            text.contains('<p>') ||
+            text.contains('<br') ||
+            text.contains('<!DOCTYPE') ||
+            text.contains('<span') ||
+            text.contains('<td');
+      }
+
+      // Fix: If bodyText contains HTML, move it to bodyHtml
+      if (bodyText != null && bodyText.isNotEmpty && looksLikeHtml(bodyText)) {
+        if (bodyHtml == null || bodyHtml.isEmpty) {
+          bodyHtml = bodyText;
+        }
+        bodyText = null; // Clear it since it's actually HTML
+      }
+
+      // Fallback: if no HTML part found, try alternative methods
+      if (bodyHtml == null || bodyHtml.isEmpty) {
+        // Try decoding content directly
+        final contentText = message.decodeContentText();
+        if (contentText != null && contentText.isNotEmpty) {
+          // Check if it looks like HTML
+          if (looksLikeHtml(contentText)) {
+            bodyHtml = contentText;
+          } else if (bodyText == null || bodyText.isEmpty) {
+            // Use as plain text fallback
+            bodyText = contentText;
+          }
+        }
+
+        // Try finding HTML in body parts
+        if (bodyHtml == null || bodyHtml.isEmpty) {
+          for (final part in message.allPartsFlat) {
+            final mediaType = part.mediaType;
+            if (mediaType.sub == MediaSubtype.textHtml) {
+              final decoded = part.decodeContentText();
+              if (decoded != null && decoded.isNotEmpty) {
+                bodyHtml = decoded;
+                break;
+              }
+            }
+          }
+        }
+      }
       final messageModel = EmailMessage(
         id: message.uid?.toString() ?? '${message.sequenceId}',
         threadId: threadId,

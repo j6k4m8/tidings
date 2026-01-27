@@ -423,6 +423,7 @@ class _ThreadTileState extends State<ThreadTile> {
                                               ?.copyWith(
                                                 color: scheme.onSurface
                                                     .withValues(alpha: 0.55),
+                                                letterSpacing: -0.3,
                                               ),
                                         ),
                                       ),

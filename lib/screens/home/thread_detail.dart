@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_html/flutter_html.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
@@ -44,8 +44,15 @@ class CurrentThreadPanel extends StatefulWidget {
 
 class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
   final Map<String, bool> _expandedState = {};
+  final ScrollController _scrollController = ScrollController();
   bool _showEscHint = false;
   bool _wasFocused = false;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(covariant CurrentThreadPanel oldWidget) {
@@ -192,6 +199,8 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                   isEmpty: messages.isEmpty,
                   emptyMessage: 'No messages in this thread.',
                   child: ListView.separated(
+                    controller: _scrollController,
+                    padding: EdgeInsets.only(bottom: context.space(16)),
                     itemCount: messages.length,
                     separatorBuilder: (context, index) => Divider(
                       height: context.space(16),
@@ -291,17 +300,6 @@ class MessageCard extends StatelessWidget {
     // Gmail style "---------- Forwarded message ---------"
     RegExp(r'^-{2,}\s*Forwarded message\s*-{2,}', multiLine: true, caseSensitive: false),
   ];
-
-  Future<void> _handleLinkTap(String? url) async {
-    if (url == null || url.isEmpty) {
-      return;
-    }
-    final uri = Uri.tryParse(url);
-    if (uri == null) {
-      return;
-    }
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
 
   /// Finds the index where quoted content begins, or -1 if not found.
   int _findQuoteBoundary(String text) {
@@ -404,34 +402,112 @@ class MessageCard extends StatelessWidget {
     );
   }
 
+  void _showMetadataDialog(BuildContext context) {
+    final bodyHtml = message.bodyHtml;
+    final bodyText = message.bodyText;
+    final bodyPlainText = message.bodyPlainText;
+    final sanitized = bodyHtml != null ? _sanitizeHtml(bodyHtml) : null;
+
+    final metadata = StringBuffer()
+      ..writeln('=== MESSAGE METADATA ===')
+      ..writeln()
+      ..writeln('ID: ${message.id}')
+      ..writeln('Thread ID: ${message.threadId}')
+      ..writeln('Subject: ${message.subject}')
+      ..writeln('From: ${message.from.email}')
+      ..writeln('Time: ${message.time}')
+      ..writeln('Message-ID: ${message.messageId}')
+      ..writeln('In-Reply-To: ${message.inReplyTo}')
+      ..writeln()
+      ..writeln('=== BODY TEXT (raw field) ===')
+      ..writeln('Length: ${bodyText?.length ?? 0}')
+      ..writeln('Is null: ${bodyText == null}')
+      ..writeln('Is empty: ${bodyText?.isEmpty ?? true}')
+      ..writeln()
+      ..writeln('--- Content (first 500 chars) ---')
+      ..writeln(bodyText?.substring(0, bodyText.length.clamp(0, 500)) ?? '(null)')
+      ..writeln()
+      ..writeln('=== BODY PLAIN TEXT (computed) ===')
+      ..writeln('Length: ${bodyPlainText.length}')
+      ..writeln('Is empty: ${bodyPlainText.isEmpty}')
+      ..writeln()
+      ..writeln('--- Content (first 500 chars) ---')
+      ..writeln(bodyPlainText.substring(0, bodyPlainText.length.clamp(0, 500)))
+      ..writeln()
+      ..writeln('=== BODY HTML (raw field) ===')
+      ..writeln('Length: ${bodyHtml?.length ?? 0}')
+      ..writeln('Is null: ${bodyHtml == null}')
+      ..writeln('Is empty: ${bodyHtml?.isEmpty ?? true}')
+      ..writeln()
+      ..writeln('--- Content (first 1000 chars) ---')
+      ..writeln(bodyHtml?.substring(0, bodyHtml.length.clamp(0, 1000)) ?? '(null)')
+      ..writeln()
+      ..writeln('=== SANITIZED HTML ===')
+      ..writeln('Length: ${sanitized?.length ?? 0}')
+      ..writeln('Is null: ${sanitized == null}')
+      ..writeln('Is empty: ${sanitized?.isEmpty ?? true}')
+      ..writeln('Has HTML tags: ${sanitized?.contains(RegExp(r"<[a-zA-Z]")) ?? false}')
+      ..writeln()
+      ..writeln('--- Content (first 1000 chars) ---')
+      ..writeln(sanitized?.substring(0, sanitized.length.clamp(0, 1000)) ?? '(null)');
+
+    final content = metadata.toString();
+
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Message Metadata'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              content,
+              style: const TextStyle(
+                fontFamily: 'SF Mono',
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: content));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Copied to clipboard')),
+              );
+            },
+            child: const Text('Copy All'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _sanitizeHtml(String html) {
     var value = html;
+
+    // Remove scripts (security)
     value = value.replaceAll(
-      RegExp(r'<!doctype[^>]*>', caseSensitive: false),
+      RegExp(r'<script[^>]*>[\s\S]*?</script>', caseSensitive: false),
+      '',
+    );
+
+    // Remove event handlers (security)
+    value = value.replaceAll(
+      RegExp(r'\s+on\w+\s*=\s*"[^"]*"', caseSensitive: false),
       '',
     );
     value = value.replaceAll(
-      RegExp(
-        "\\sstyle\\s*=\\s*(\"[^\"]*\"|'[^']*')",
-        caseSensitive: false,
-      ),
+      RegExp(r"\s+on\w+\s*=\s*'[^']*'", caseSensitive: false),
       '',
     );
-    value = value.replaceAll(
-      RegExp(r'<(script|style)[^>]*>[\s\S]*?</\1>', caseSensitive: false),
-      '',
-    );
-    value = value.replaceAll(
-      RegExp(r'<head[^>]*>[\s\S]*?</head>', caseSensitive: false),
-      '',
-    );
-    final bodyMatch = RegExp(
-      r'<body[^>]*>([\s\S]*?)</body>',
-      caseSensitive: false,
-    ).firstMatch(value);
-    if (bodyMatch != null) {
-      value = bodyMatch.group(1) ?? value;
-    }
+
     return value.trim();
   }
 
@@ -445,12 +521,6 @@ class MessageCard extends StatelessWidget {
     final cardRadius = context.radius(12);
     final bodyText = message.bodyPlainText;
     final bodyHtml = message.bodyHtml;
-    String? sanitizedHtml;
-    if (bodyHtml != null && bodyHtml.trim().isNotEmpty) {
-      sanitizedHtml = _sanitizeHtml(bodyHtml);
-    }
-    final useHtml =
-        sanitizedHtml != null && sanitizedHtml.trim().isNotEmpty;
     final shouldClamp = !expanded && _isLongBody(bodyText, collapseMode, maxLines);
 
     return GestureDetector(
@@ -501,12 +571,18 @@ class MessageCard extends StatelessWidget {
                   onSelected: (value) {
                     if (value == 'toggle') {
                       onToggleExpanded();
+                    } else if (value == 'metadata') {
+                      _showMetadataDialog(context);
                     }
                   },
                   itemBuilder: (context) => [
                     PopupMenuItem(
                       value: 'toggle',
                       child: Text(expanded ? 'Collapse' : 'Expand'),
+                    ),
+                    const PopupMenuItem(
+                      value: 'metadata',
+                      child: Text('View metadata'),
                     ),
                   ],
                 ),
@@ -534,150 +610,38 @@ class MessageCard extends StatelessWidget {
                 builder: (context, constraints) {
                   final boundedWidth = constraints.maxWidth.isFinite;
 
-                  Map<String, Style> htmlStyles() => {
-                    'html': Style(
-                      margin: Margins.zero,
-                      padding: HtmlPaddings.zero,
-                      backgroundColor: Colors.transparent,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                    'body': Style(
-                      margin: Margins.zero,
-                      padding: HtmlPaddings.zero,
-                      fontSize: FontSize(
-                        Theme.of(context)
-                                .textTheme
-                                .bodyLarge
-                                ?.fontSize ??
-                            14,
-                      ),
-                      fontWeight: Theme.of(context)
-                          .textTheme
-                          .bodyLarge
-                          ?.fontWeight,
-                      color: Theme.of(context).colorScheme.onSurface,
-                      backgroundColor: Colors.transparent,
-                    ),
-                    'p': Style(
-                      margin: Margins.only(bottom: 8),
-                      color:
-                          Theme.of(context).colorScheme.onSurface,
-                    ),
-                    'img': Style(
-                      width: Width.auto(),
-                      display: Display.block,
-                      margin: Margins.only(bottom: 8),
-                    ),
-                    'table': Style(
-                      width: Width.auto(),
-                      margin: Margins.only(bottom: 8),
-                      border: Border.all(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.12),
-                      ),
-                    ),
-                    'th': Style(
-                      padding: HtmlPaddings.all(6),
-                      backgroundColor: Theme.of(context)
-                          .colorScheme
-                          .surface
-                          .withValues(alpha: 0.5),
-                    ),
-                    'td': Style(
-                      padding: HtmlPaddings.all(6),
-                      border: Border.all(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.08),
-                      ),
-                    ),
-                    'div': Style(
-                      color:
-                          Theme.of(context).colorScheme.onSurface,
-                    ),
-                    'span': Style(
-                      color:
-                          Theme.of(context).colorScheme.onSurface,
-                    ),
-                    'ul': Style(
-                      margin: Margins.only(bottom: 8),
-                      padding: HtmlPaddings.only(left: 16),
-                    ),
-                    'ol': Style(
-                      margin: Margins.only(bottom: 8),
-                      padding: HtmlPaddings.only(left: 16),
-                    ),
-                    'li': Style(
-                      margin: Margins.only(bottom: 4),
-                      color:
-                          Theme.of(context).colorScheme.onSurface,
-                    ),
-                    'pre': Style(
-                      padding: HtmlPaddings.all(8),
-                      margin: Margins.only(bottom: 8),
-                      backgroundColor: Theme.of(context)
-                          .colorScheme
-                          .surface
-                          .withValues(alpha: 0.5),
-                    ),
-                    'code': Style(
-                      fontFamily: 'SF Mono',
-                      backgroundColor: Theme.of(context)
-                          .colorScheme
-                          .surface
-                          .withValues(alpha: 0.5),
-                    ),
-                    'hr': Style(
-                      margin: Margins.symmetric(vertical: 12),
-                      border: Border(
-                        top: BorderSide(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.12),
-                        ),
-                      ),
-                    ),
-                    'blockquote': Style(
-                      margin: Margins.symmetric(vertical: 8),
-                      padding: HtmlPaddings.only(left: 12),
-                      border: Border(
-                        left: BorderSide(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.18),
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                    'a': Style(
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  };
+                  final hasTextContent = bodyText.isNotEmpty;
 
-                  final htmlWidget = useHtml
-                      ? Html(
-                          data: sanitizedHtml,
-                          shrinkWrap: true,
-                          onLinkTap: (url, attributes, element) =>
-                              _handleLinkTap(url),
-                          style: htmlStyles(),
-                        )
-                      : Text(
-                          bodyText,
-                          style: Theme.of(context).textTheme.bodyLarge,
-                        );
+                  Widget contentWidget;
+
+                  if (bodyHtml != null && bodyHtml.trim().isNotEmpty) {
+                    // Render HTML in WebView - preserves original styling
+                    // Parent ScrollView handles scrolling, not the WebView
+                    contentWidget = _HtmlWebView(
+                      html: bodyHtml,
+                      messageId: message.id,
+                    );
+                  } else if (hasTextContent) {
+                    contentWidget = Text(
+                      bodyText,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    );
+                  } else {
+                    contentWidget = Text(
+                      '[No content]',
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        fontStyle: FontStyle.italic,
+                        color: scheme.onSurface.withValues(alpha: 0.5),
+                      ),
+                    );
+                  }
                   final content = ConstrainedBox(
                     constraints: BoxConstraints(
                       minWidth: boundedWidth ? constraints.maxWidth : 0,
                       maxWidth:
                           boundedWidth ? constraints.maxWidth : double.infinity,
                     ),
-                    child: htmlWidget,
+                    child: contentWidget,
                   );
 
                   if (!shouldClamp) {
@@ -695,8 +659,9 @@ class MessageCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(context.radius(4)),
                         child: SizedBox(
                           height: collapsedHeight,
-                          child: Align(
-                            alignment: Alignment.topLeft,
+                          width: boundedWidth ? constraints.maxWidth : null,
+                          child: SingleChildScrollView(
+                            physics: const NeverScrollableScrollPhysics(),
                             child: content,
                           ),
                         ),
@@ -820,4 +785,113 @@ class ThreadScreen extends StatelessWidget {
 
 class _PopIntent extends Intent {
   const _PopIntent();
+}
+
+/// WebView that renders HTML and auto-sizes to content height.
+class _HtmlWebView extends StatefulWidget {
+  const _HtmlWebView({
+    required this.html,
+    required this.messageId,
+  });
+
+  final String html;
+  final String messageId;
+
+  @override
+  State<_HtmlWebView> createState() => _HtmlWebViewState();
+}
+
+class _HtmlWebViewState extends State<_HtmlWebView> {
+  late final WebViewController _controller;
+  double _contentHeight = 100;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (request) {
+            // Open external links in browser
+            if (request.url != 'about:blank' &&
+                !request.url.startsWith('data:')) {
+              final uri = Uri.tryParse(request.url);
+              if (uri != null) {
+                launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.navigate;
+          },
+          onPageFinished: (_) => _measureHeight(),
+        ),
+      )
+      ..addJavaScriptChannel(
+        'FlutterHeight',
+        onMessageReceived: (message) {
+          final height = double.tryParse(message.message);
+          if (height != null && height > 0 && mounted) {
+            setState(() => _contentHeight = height);
+          }
+        },
+      );
+    _loadContent();
+  }
+
+  void _loadContent() {
+    final html = '''
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+html, body { margin: 0; padding: 0; overflow: hidden; }
+body { padding: 4px; font-family: -apple-system, system-ui, sans-serif; font-size: 14px; line-height: 1.4; }
+img { max-width: 100%; height: auto; }
+table { max-width: 100%; border-collapse: collapse; }
+a { color: #1a73e8; }
+</style>
+</head>
+<body>
+${widget.html}
+<script>
+function reportHeight() {
+  var h = document.body.scrollHeight;
+  if (window.FlutterHeight) FlutterHeight.postMessage(String(h));
+}
+reportHeight();
+window.onload = reportHeight;
+document.querySelectorAll('img').forEach(function(img) {
+  img.onload = reportHeight;
+  img.onerror = reportHeight;
+});
+setTimeout(reportHeight, 100);
+setTimeout(reportHeight, 500);
+</script>
+</body>
+</html>
+''';
+    _controller.loadHtmlString(html);
+  }
+
+  Future<void> _measureHeight() async {
+    try {
+      final result = await _controller.runJavaScriptReturningResult(
+        'document.body.scrollHeight',
+      );
+      final height = double.tryParse(result.toString());
+      if (height != null && height > 0 && mounted) {
+        setState(() => _contentHeight = height);
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: _contentHeight,
+      child: WebViewWidget(controller: _controller),
+    );
+  }
 }

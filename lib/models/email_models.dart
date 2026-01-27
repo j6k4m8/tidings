@@ -107,11 +107,48 @@ class EmailMessage {
 }
 
 String _stripHtml(String html) {
-  var text = _unescapeHtml(html);
+  var text = html;
+
+  // Remove doctype
   text = text.replaceAll(RegExp(r'<!doctype[^>]*>', caseSensitive: false), '');
+
+  // Remove HTML comments (including conditional comments like <!-- [if gte mso 9]> -->)
+  text = text.replaceAll(RegExp(r'<!--[\s\S]*?-->'), '');
+
+  // Remove style blocks entirely
+  text = text.replaceAll(
+    RegExp(r'<style[^>]*>[\s\S]*?</style>', caseSensitive: false),
+    '',
+  );
+
+  // Remove script blocks entirely
+  text = text.replaceAll(
+    RegExp(r'<script[^>]*>[\s\S]*?</script>', caseSensitive: false),
+    '',
+  );
+
+  // Remove head section entirely
+  text = text.replaceAll(
+    RegExp(r'<head[^>]*>[\s\S]*?</head>', caseSensitive: false),
+    '',
+  );
+
+  // Convert line breaks
   text = text.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
   text = text.replaceAll(RegExp(r'</p>', caseSensitive: false), '\n');
+  text = text.replaceAll(RegExp(r'</div>', caseSensitive: false), '\n');
+  text = text.replaceAll(RegExp(r'</tr>', caseSensitive: false), '\n');
+
+  // Strip remaining tags
   text = text.replaceAll(RegExp(r'<[^>]+>'), '');
+
+  // Unescape HTML entities after stripping tags
+  text = _unescapeHtml(text);
+
+  // Collapse multiple newlines/spaces
+  text = text.replaceAll(RegExp(r'\n\s*\n'), '\n');
+  text = text.replaceAll(RegExp(r'[ \t]+'), ' ');
+
   return text.trim();
 }
 

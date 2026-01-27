@@ -614,7 +614,6 @@ class _HomeScreenState extends State<HomeScreen> {
           accent: widget.accent,
           currentUserEmail: account.email,
         );
-        _toast('Compose opened.');
         break;
       case ShortcutAction.reply:
         _triggerReply(provider, account, ReplyMode.reply);
