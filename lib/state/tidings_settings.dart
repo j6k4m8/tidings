@@ -15,6 +15,8 @@ class TidingsSettings extends ChangeNotifier {
   bool _autoExpandLatest = true;
   bool _hideThreadSubjects = false;
   bool _hideSelfInThreadList = false;
+  MessageCollapseMode _messageCollapseMode = MessageCollapseMode.beforeQuotes;
+  int _collapsedMaxLines = 6;
   bool _showFolderLabels = true;
   bool _showFolderUnreadCounts = true;
   bool _sidebarCollapsed = false;
@@ -31,6 +33,8 @@ class TidingsSettings extends ChangeNotifier {
   bool get autoExpandLatest => _autoExpandLatest;
   bool get hideThreadSubjects => _hideThreadSubjects;
   bool get hideSelfInThreadList => _hideSelfInThreadList;
+  MessageCollapseMode get messageCollapseMode => _messageCollapseMode;
+  int get collapsedMaxLines => _collapsedMaxLines;
   bool get showFolderLabels => _showFolderLabels;
   bool get showFolderUnreadCounts => _showFolderUnreadCounts;
   bool get sidebarCollapsed => _sidebarCollapsed;
@@ -99,6 +103,11 @@ class TidingsSettings extends ChangeNotifier {
         _boolFromStorage(settings['hideThreadSubjects'], _hideThreadSubjects);
     _hideSelfInThreadList =
         _boolFromStorage(settings['hideSelfInThreadList'], _hideSelfInThreadList);
+    _messageCollapseMode =
+        _collapseModeFromStorage(settings['messageCollapseMode']);
+    _collapsedMaxLines =
+        _intFromStorage(settings['collapsedMaxLines'], _collapsedMaxLines)
+            .clamp(2, 20);
     _showFolderLabels =
         _boolFromStorage(settings['showFolderLabels'], _showFolderLabels);
     _showFolderUnreadCounts =
@@ -181,6 +190,8 @@ class TidingsSettings extends ChangeNotifier {
       'autoExpandLatest': _autoExpandLatest,
       'hideThreadSubjects': _hideThreadSubjects,
       'hideSelfInThreadList': _hideSelfInThreadList,
+      'messageCollapseMode': _messageCollapseMode.name,
+      'collapsedMaxLines': _collapsedMaxLines,
       'showFolderLabels': _showFolderLabels,
       'showFolderUnreadCounts': _showFolderUnreadCounts,
       'sidebarCollapsed': _sidebarCollapsed,
@@ -230,6 +241,30 @@ class TidingsSettings extends ChangeNotifier {
 
   bool _boolFromStorage(Object? raw, bool fallback) {
     return raw is bool ? raw : fallback;
+  }
+
+  int _intFromStorage(Object? raw, int fallback) {
+    if (raw is int) {
+      return raw;
+    }
+    if (raw is String) {
+      final parsed = int.tryParse(raw);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+    return fallback;
+  }
+
+  MessageCollapseMode _collapseModeFromStorage(Object? raw) {
+    if (raw is String) {
+      for (final mode in MessageCollapseMode.values) {
+        if (mode.name == raw) {
+          return mode;
+        }
+      }
+    }
+    return _messageCollapseMode;
   }
 
   double _doubleFromStorage(Object? raw, double fallback) {
@@ -334,6 +369,25 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _hideSelfInThreadList = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setMessageCollapseMode(MessageCollapseMode mode) {
+    if (_messageCollapseMode == mode) {
+      return;
+    }
+    _messageCollapseMode = mode;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setCollapsedMaxLines(int lines) {
+    final clamped = lines.clamp(2, 20);
+    if (_collapsedMaxLines == clamped) {
+      return;
+    }
+    _collapsedMaxLines = clamped;
     unawaited(_persist());
     notifyListeners();
   }
@@ -477,4 +531,29 @@ extension TidingsSettingsContext on BuildContext {
   double gutter(double value) => value * tidingsSettings.densityScale;
 
   double radius(double value) => value * tidingsSettings.cornerRadiusScale;
+}
+
+enum MessageCollapseMode {
+  maxLines,
+  beforeQuotes,
+}
+
+extension MessageCollapseModeMeta on MessageCollapseMode {
+  String get label {
+    switch (this) {
+      case MessageCollapseMode.maxLines:
+        return 'Max lines';
+      case MessageCollapseMode.beforeQuotes:
+        return 'Before quotes';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case MessageCollapseMode.maxLines:
+        return 'Clip at a fixed number of lines';
+      case MessageCollapseMode.beforeQuotes:
+        return 'Clip before quoted replies';
+    }
+  }
 }

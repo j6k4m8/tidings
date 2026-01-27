@@ -376,6 +376,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       );
+      if (mounted) {
+        _threadListFocusNode.requestFocus();
+      }
     } else {
       setState(() {
         _threadPanelOpen = true;
@@ -912,6 +915,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   accent: widget.accent,
                                 ),
                                 searchFocusNode: _searchFocusNode,
+                                threadListFocusNode: _threadListFocusNode,
                               ),
                       ),
                     ),
@@ -1366,6 +1370,7 @@ class _CompactLayout extends StatelessWidget {
     required this.onFolderSelected,
     required this.onAccountTap,
     required this.searchFocusNode,
+    required this.threadListFocusNode,
   });
 
   final EmailAccount account;
@@ -1377,6 +1382,7 @@ class _CompactLayout extends StatelessWidget {
   final ValueChanged<int> onFolderSelected;
   final VoidCallback onAccountTap;
   final FocusNode searchFocusNode;
+  final FocusNode threadListFocusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -1409,26 +1415,32 @@ class _CompactLayout extends StatelessWidget {
                 ),
                 SizedBox(height: context.space(8)),
                 Expanded(
-                  child: ThreadListPanel(
-                    accent: accent,
-                    provider: provider,
-                    selectedIndex: selectedThreadIndex,
-                    onSelected: (index) {
-                      onThreadSelected(index);
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => ThreadScreen(
-                            accent: accent,
-                            thread: provider.threads[index],
-                            provider: provider,
-                            currentUserEmail: account.email,
-                          ),
-                        ),
-                      );
-                    },
-                    isCompact: true,
-                    currentUserEmail: account.email,
-                    searchFocusNode: searchFocusNode,
+                  child: Listener(
+                    onPointerDown: (_) => threadListFocusNode.requestFocus(),
+                    child: Focus(
+                      focusNode: threadListFocusNode,
+                      child: ThreadListPanel(
+                        accent: accent,
+                        provider: provider,
+                        selectedIndex: selectedThreadIndex,
+                        onSelected: (index) {
+                          onThreadSelected(index);
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => ThreadScreen(
+                                accent: accent,
+                                thread: provider.threads[index],
+                                provider: provider,
+                                currentUserEmail: account.email,
+                              ),
+                            ),
+                          );
+                        },
+                        isCompact: true,
+                        currentUserEmail: account.email,
+                        searchFocusNode: searchFocusNode,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -2189,7 +2201,9 @@ class SettingsPanel extends StatelessWidget {
                   SettingsTab(
                     child: _LayoutSettings(segmentedStyle: segmentedStyle),
                   ),
-                  const SettingsTab(child: _ThreadsSettings()),
+                  SettingsTab(
+                    child: _ThreadsSettings(segmentedStyle: segmentedStyle),
+                  ),
                   SettingsTab(
                     child: _FoldersSettings(accent: accent),
                   ),
@@ -2336,11 +2350,14 @@ class _LayoutSettings extends StatelessWidget {
 }
 
 class _ThreadsSettings extends StatelessWidget {
-  const _ThreadsSettings();
+  const _ThreadsSettings({required this.segmentedStyle});
+
+  final ButtonStyle segmentedStyle;
 
   @override
   Widget build(BuildContext context) {
     final settings = context.tidingsSettings;
+    final accent = Theme.of(context).colorScheme.primary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2350,7 +2367,7 @@ class _ThreadsSettings extends StatelessWidget {
           title: 'Auto-expand unread',
           subtitle: 'Open unread threads to show the latest message.',
           trailing: AccentSwitch(
-            accent: Theme.of(context).colorScheme.primary,
+            accent: accent,
             value: settings.autoExpandUnread,
             onChanged: settings.setAutoExpandUnread,
           ),
@@ -2360,7 +2377,7 @@ class _ThreadsSettings extends StatelessWidget {
           title: 'Auto-expand latest',
           subtitle: 'Keep the newest thread expanded in the list.',
           trailing: AccentSwitch(
-            accent: Theme.of(context).colorScheme.primary,
+            accent: accent,
             value: settings.autoExpandLatest,
             onChanged: settings.setAutoExpandLatest,
           ),
@@ -2370,7 +2387,7 @@ class _ThreadsSettings extends StatelessWidget {
           title: 'Hide subject lines',
           subtitle: 'Show only the message body in thread view.',
           trailing: AccentSwitch(
-            accent: Theme.of(context).colorScheme.primary,
+            accent: accent,
             value: settings.hideThreadSubjects,
             onChanged: settings.setHideThreadSubjects,
           ),
@@ -2380,11 +2397,57 @@ class _ThreadsSettings extends StatelessWidget {
           title: 'Hide yourself in thread list',
           subtitle: 'Remove your address from sender rows.',
           trailing: AccentSwitch(
-            accent: Theme.of(context).colorScheme.primary,
+            accent: accent,
             value: settings.hideSelfInThreadList,
             onChanged: settings.setHideSelfInThreadList,
           ),
         ),
+        SizedBox(height: context.space(24)),
+        SettingsSubheader(title: 'MESSAGE PREVIEW'),
+        SizedBox(height: context.space(12)),
+        SettingRow(
+          title: 'Collapse mode',
+          subtitle: 'How to shorten long messages in collapsed view.',
+          trailing: SegmentedButton<MessageCollapseMode>(
+            style: segmentedStyle,
+            segments: MessageCollapseMode.values
+                .map(
+                  (mode) => ButtonSegment(
+                    value: mode,
+                    label: Text(mode.label),
+                  ),
+                )
+                .toList(),
+            selected: {settings.messageCollapseMode},
+            onSelectionChanged: (selected) =>
+                settings.setMessageCollapseMode(selected.first),
+          ),
+        ),
+        if (settings.messageCollapseMode == MessageCollapseMode.maxLines) ...[
+          SizedBox(height: context.space(16)),
+          SettingRow(
+            title: 'Max lines',
+            subtitle: 'Number of lines to show before truncating.',
+            trailing: DropdownButtonHideUnderline(
+              child: DropdownButton<int>(
+                value: settings.collapsedMaxLines,
+                onChanged: (value) {
+                  if (value != null) {
+                    settings.setCollapsedMaxLines(value);
+                  }
+                },
+                items: [4, 6, 8, 10, 12, 15, 20]
+                    .map(
+                      (n) => DropdownMenuItem(
+                        value: n,
+                        child: Text('$n lines'),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

@@ -192,7 +192,7 @@ class ThreadListPanel extends StatelessWidget {
                             participants: participants,
                             latestMessage: latestMessage,
                             accent: accent,
-                            selected: selected && !isCompact,
+                            selected: selected,
                             onTap: () => onSelected(entry.index ?? 0),
                           ),
                         ),

@@ -7,12 +7,12 @@ import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
 import '../../state/tidings_settings.dart';
 import '../../theme/color_tokens.dart';
-import '../../theme/glass.dart';
+import '../../widgets/key_hint.dart';
 import '../../widgets/tidings_background.dart';
 import '../compose/inline_reply_composer.dart';
 import 'provider_body.dart';
 
-class CurrentThreadPanel extends StatelessWidget {
+class CurrentThreadPanel extends StatefulWidget {
   const CurrentThreadPanel({
     super.key,
     required this.accent,
@@ -39,34 +39,108 @@ class CurrentThreadPanel extends StatelessWidget {
   final InlineReplyController? replyController;
 
   @override
+  State<CurrentThreadPanel> createState() => _CurrentThreadPanelState();
+}
+
+class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
+  final Map<String, bool> _expandedState = {};
+  bool _showEscHint = false;
+  bool _wasFocused = false;
+
+  @override
+  void didUpdateWidget(covariant CurrentThreadPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Show hint when focus is gained (desktop only)
+    if (widget.isFocused && !_wasFocused && !widget.isCompact) {
+      _showEscHintBriefly();
+    }
+    _wasFocused = widget.isFocused;
+  }
+
+  void _showEscHintBriefly() {
+    setState(() => _showEscHint = true);
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() => _showEscHint = false);
+      }
+    });
+  }
+
+  bool _isExpanded(String messageId, bool defaultExpanded) {
+    return _expandedState[messageId] ?? defaultExpanded;
+  }
+
+  void _setExpanded(String messageId, bool expanded) {
+    setState(() {
+      _expandedState[messageId] = expanded;
+    });
+  }
+
+  void _toggleExpanded(String messageId, bool defaultExpanded) {
+    final current = _isExpanded(messageId, defaultExpanded);
+    _setExpanded(messageId, !current);
+  }
+
+  void _expandAll(List<EmailMessage> messages) {
+    setState(() {
+      for (final message in messages) {
+        _expandedState[message.id] = true;
+      }
+    });
+  }
+
+  void _collapseAll(List<EmailMessage> messages) {
+    setState(() {
+      for (final message in messages) {
+        _expandedState[message.id] = false;
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final settings = context.tidingsSettings;
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final panelRadius = context.radius(30);
     return AnimatedBuilder(
-      animation: provider,
+      animation: widget.provider,
       builder: (context, _) {
-        final messages = provider.messagesForThread(thread.id);
-        return GlassPanel(
-          borderRadius: BorderRadius.circular(context.radius(30)),
-          padding: EdgeInsets.all(
-            isCompact ? context.space(16) : context.space(18),
-          ),
-          variant: GlassVariant.sheet,
-          accent: accent,
-          selected: isFocused,
-          flat: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        final messages = widget.provider.messagesForThread(widget.thread.id);
+        return Stack(
+          children: [
+            // Outline border when focused
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              decoration: BoxDecoration(
+                color: isDark ? scheme.surface : Colors.white,
+                borderRadius: BorderRadius.circular(panelRadius),
+                border: Border.all(
+                  color: widget.isFocused
+                      ? widget.accent.withValues(alpha: 0.4)
+                      : scheme.outline.withValues(alpha: 0.1),
+                  width: widget.isFocused ? 1.5 : 1,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(panelRadius - 1),
+                child: Padding(
+                  padding: EdgeInsets.all(
+                    widget.isCompact ? context.space(16) : context.space(18),
+                  ),
+                  child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (isCompact)
-                    IconButton(
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      icon: const Icon(Icons.arrow_back_rounded),
-                    ),
+                  Row(
+                    children: [
+                      if (widget.isCompact)
+                        IconButton(
+                          onPressed: () => Navigator.of(context).maybePop(),
+                          icon: const Icon(Icons.arrow_back_rounded),
+                        ),
                   Expanded(
                     child: Text(
-                      thread.subject,
+                      widget.thread.subject,
                       style: Theme.of(context).textTheme.titleMedium,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -76,15 +150,32 @@ class CurrentThreadPanel extends StatelessWidget {
                     onPressed: () {},
                     icon: const Icon(Icons.star_border_rounded),
                   ),
-                  IconButton(
-                    onPressed: () {},
+                  PopupMenuButton<String>(
                     icon: const Icon(Icons.more_horiz_rounded),
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'expand_all':
+                          _expandAll(messages);
+                        case 'collapse_all':
+                          _collapseAll(messages);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'expand_all',
+                        child: Text('Expand all'),
+                      ),
+                      const PopupMenuItem(
+                        value: 'collapse_all',
+                        child: Text('Collapse all'),
+                      ),
+                    ],
                   ),
                 ],
               ),
               SizedBox(height: context.space(4)),
               Text(
-                thread.participantSummary,
+                widget.thread.participantSummary,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color:
                           Theme.of(context).colorScheme.onSurface.withValues(
@@ -95,9 +186,9 @@ class CurrentThreadPanel extends StatelessWidget {
               SizedBox(height: context.space(12)),
               Expanded(
                 child: ProviderBody(
-                  status: provider.status,
-                  errorMessage: provider.errorMessage,
-                  onRetry: provider.refresh,
+                  status: widget.provider.status,
+                  errorMessage: widget.provider.errorMessage,
+                  onRetry: widget.provider.refresh,
                   isEmpty: messages.isEmpty,
                   emptyMessage: 'No messages in this thread.',
                   child: ListView.separated(
@@ -110,16 +201,18 @@ class CurrentThreadPanel extends StatelessWidget {
                     itemBuilder: (context, index) {
                       final message = messages[index];
                       final isLatest = index == messages.length - 1;
-                      final shouldExpand =
+                      final defaultExpanded =
                           (settings.autoExpandLatest && isLatest) ||
                           (settings.autoExpandUnread && message.isUnread);
                       return MessageCard(
                         key: ValueKey(message.id),
                         message: message,
-                        accent: accent,
-                        shouldAutoExpand: shouldExpand,
-                        isSelected: index == selectedMessageIndex,
-                        onSelected: () => onMessageSelected(index),
+                        accent: widget.accent,
+                        expanded: _isExpanded(message.id, defaultExpanded),
+                        onToggleExpanded: () =>
+                            _toggleExpanded(message.id, defaultExpanded),
+                        isSelected: index == widget.selectedMessageIndex,
+                        onSelected: () => widget.onMessageSelected(index),
                       );
                     },
                   ),
@@ -127,74 +220,77 @@ class CurrentThreadPanel extends StatelessWidget {
               ),
               SizedBox(height: context.space(12)),
               ComposeBar(
-                accent: accent,
-                provider: provider,
-                thread: thread,
-                currentUserEmail: currentUserEmail,
-                parentFocusNode: parentFocusNode,
-                controller: replyController,
+                accent: widget.accent,
+                provider: widget.provider,
+                thread: widget.thread,
+                currentUserEmail: widget.currentUserEmail,
+                parentFocusNode: widget.parentFocusNode,
+                controller: widget.replyController,
               ),
             ],
           ),
+        ),
+      ),
+    ),
+    // Esc hint overlay (desktop only)
+    if (!widget.isCompact)
+      Positioned(
+        top: context.space(12),
+        left: 0,
+        right: 0,
+        child: Center(
+          child: AnimatedOpacity(
+            opacity: _showEscHint ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            child: IgnorePointer(
+              child: KeyHintMessage(
+                keyLabel: 'esc',
+                message: 'to return to inbox',
+              ),
+            ),
+          ),
+        ),
+      ),
+          ],
         );
       },
     );
   }
 }
 
-class MessageCard extends StatefulWidget {
+class MessageCard extends StatelessWidget {
   const MessageCard({
     super.key,
     required this.message,
     required this.accent,
-    required this.shouldAutoExpand,
+    required this.expanded,
+    required this.onToggleExpanded,
     required this.isSelected,
     this.onSelected,
   });
 
   final EmailMessage message;
   final Color accent;
-  final bool shouldAutoExpand;
+  final bool expanded;
+  final VoidCallback onToggleExpanded;
   final bool isSelected;
   final VoidCallback? onSelected;
 
-  @override
-  State<MessageCard> createState() => _MessageCardState();
-}
-
-class _MessageCardState extends State<MessageCard> {
-  late bool _expanded;
-  late bool _lastAutoExpand;
-  static const int _collapsedLineLimit = 6;
   static const int _collapsedCharLimit = 420;
-  static const int _collapsedNewlineLimit = 6;
 
-  @override
-  void initState() {
-    super.initState();
-    _expanded = widget.shouldAutoExpand;
-    _lastAutoExpand = widget.shouldAutoExpand;
-  }
-
-  @override
-  void didUpdateWidget(covariant MessageCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.message.id != widget.message.id) {
-      _expanded = widget.shouldAutoExpand;
-      _lastAutoExpand = widget.shouldAutoExpand;
-      return;
-    }
-    if (widget.shouldAutoExpand != _lastAutoExpand) {
-      _expanded = widget.shouldAutoExpand;
-      _lastAutoExpand = widget.shouldAutoExpand;
-    }
-  }
-
-  void _toggle() {
-    setState(() {
-      _expanded = !_expanded;
-    });
-  }
+  // Patterns that indicate the start of a quoted reply
+  static final _quotePatterns = [
+    // "On <date>, <person> wrote:" style
+    RegExp(r'^On .+ wrote:\s*$', multiLine: true),
+    // "From: <person>" forwarded header
+    RegExp(r'^From:\s+.+$', multiLine: true),
+    // "> " quoted lines (3+ consecutive)
+    RegExp(r'(?:^>\s?.*\n){3,}', multiLine: true),
+    // "---- Original Message ----" divider
+    RegExp(r'^-{2,}\s*Original Message\s*-{2,}', multiLine: true, caseSensitive: false),
+    // Gmail style "---------- Forwarded message ---------"
+    RegExp(r'^-{2,}\s*Forwarded message\s*-{2,}', multiLine: true, caseSensitive: false),
+  ];
 
   Future<void> _handleLinkTap(String? url) async {
     if (url == null || url.isEmpty) {
@@ -207,18 +303,105 @@ class _MessageCardState extends State<MessageCard> {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  bool _isLongBody(String text) {
+  /// Finds the index where quoted content begins, or -1 if not found.
+  int _findQuoteBoundary(String text) {
+    int earliest = -1;
+    for (final pattern in _quotePatterns) {
+      final match = pattern.firstMatch(text);
+      if (match != null) {
+        final idx = match.start;
+        if (earliest == -1 || idx < earliest) {
+          earliest = idx;
+        }
+      }
+    }
+    return earliest;
+  }
+
+  /// Returns the portion of text before any quoted replies.
+  String _textBeforeQuotes(String text) {
+    final boundary = _findQuoteBoundary(text);
+    if (boundary <= 0) {
+      return text;
+    }
+    return text.substring(0, boundary).trimRight();
+  }
+
+  bool _isLongBody(String text, MessageCollapseMode mode, int maxLines) {
+    if (mode == MessageCollapseMode.beforeQuotes) {
+      // Long if there are quotes to truncate, or if body before quotes is still long
+      final boundary = _findQuoteBoundary(text);
+      if (boundary > 0) {
+        return true;
+      }
+      // Fall back to line-based check if no quotes found
+      final newlines = '\n'.allMatches(text).length;
+      return newlines > maxLines || text.length > _collapsedCharLimit;
+    }
+    // maxLines mode
     if (text.length > _collapsedCharLimit) {
       return true;
     }
     final newlines = '\n'.allMatches(text).length;
-    return newlines > _collapsedNewlineLimit;
+    return newlines > maxLines;
   }
 
-  double _collapsedHeight(BuildContext context) {
+  double _collapsedHeight(BuildContext context, int maxLines) {
     final fontSize =
         Theme.of(context).textTheme.bodyLarge?.fontSize ?? 14;
-    return _collapsedLineLimit * fontSize * 1.45;
+    return maxLines * fontSize * 1.45;
+  }
+
+  double _collapsedHeightForQuotes(BuildContext context, String bodyText) {
+    final textBeforeQuote = _textBeforeQuotes(bodyText);
+    final lineCount = '\n'.allMatches(textBeforeQuote).length + 1;
+    // Clamp to reasonable bounds (min 2 lines, max 12 lines)
+    final clampedLines = lineCount.clamp(2, 12);
+    final fontSize =
+        Theme.of(context).textTheme.bodyLarge?.fontSize ?? 14;
+    return clampedLines * fontSize * 1.45;
+  }
+
+  Widget _buildShowMoreButton(BuildContext context) {
+    return Positioned(
+      right: 0,
+      bottom: 0,
+      child: GestureDetector(
+        onTap: onToggleExpanded,
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: context.space(8),
+            vertical: context.space(4),
+          ),
+          decoration: BoxDecoration(
+            color: ColorTokens.cardFill(context, 0.12),
+            borderRadius: BorderRadius.circular(context.radius(999)),
+            border: Border.all(
+              color: ColorTokens.border(context, 0.12),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.expand_more_rounded,
+                size: 14,
+                color: accent.withValues(alpha: 0.9),
+              ),
+              SizedBox(width: context.space(4)),
+              Text(
+                'Show more',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: accent.withValues(alpha: 0.9),
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   String _sanitizeHtml(String html) {
@@ -255,45 +438,42 @@ class _MessageCardState extends State<MessageCard> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final showSubject = !context.tidingsSettings.hideThreadSubjects;
-    final baseColor = widget.message.isMe
-        ? widget.accent.withValues(alpha: 0.08)
-        : Colors.transparent;
-    final cardColor = widget.isSelected
-        ? Color.alphaBlend(
-            widget.accent.withValues(alpha: 0.12),
-            baseColor,
-          )
-        : baseColor;
-    final bodyText = widget.message.bodyPlainText;
-    final bodyHtml = widget.message.bodyHtml;
+    final settings = context.tidingsSettings;
+    final showSubject = !settings.hideThreadSubjects;
+    final collapseMode = settings.messageCollapseMode;
+    final maxLines = settings.collapsedMaxLines;
+    final cardRadius = context.radius(12);
+    final bodyText = message.bodyPlainText;
+    final bodyHtml = message.bodyHtml;
     String? sanitizedHtml;
     if (bodyHtml != null && bodyHtml.trim().isNotEmpty) {
       sanitizedHtml = _sanitizeHtml(bodyHtml);
     }
     final useHtml =
         sanitizedHtml != null && sanitizedHtml.trim().isNotEmpty;
-    final shouldClamp = !_expanded && _isLongBody(bodyText);
+    final shouldClamp = !expanded && _isLongBody(bodyText, collapseMode, maxLines);
 
     return GestureDetector(
-      onTap: () {
-        widget.onSelected?.call();
-        _toggle();
-      },
+      onTap: onSelected,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
         padding: EdgeInsets.all(context.space(10)),
         decoration: BoxDecoration(
-          color: cardColor,
-          border: widget.isSelected
-              ? Border(
-                  left: BorderSide(
-                    color: widget.accent.withValues(alpha: 0.7),
-                    width: 2,
-                  ),
+          borderRadius: BorderRadius.circular(cardRadius),
+          border: isSelected
+              ? Border.all(
+                  color: accent.withValues(alpha: 0.5),
+                  width: 1.5,
                 )
-              : null,
+              : message.isMe
+                  ? Border(
+                      left: BorderSide(
+                        color: accent.withValues(alpha: 0.3),
+                        width: 2,
+                      ),
+                    )
+                  : null,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -301,27 +481,41 @@ class _MessageCardState extends State<MessageCard> {
             Row(
               children: [
                 Text(
-                  widget.message.from.displayName,
+                  message.from.displayName,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 SizedBox(width: context.space(8)),
                 Text(
-                  widget.message.time,
+                  message.time,
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: scheme.onSurface.withValues(alpha: 0.6),
                       ),
                 ),
                 const Spacer(),
-                Icon(
-                  Icons.more_horiz_rounded,
-                  color: scheme.onSurface.withValues(alpha: 0.5),
+                PopupMenuButton<String>(
+                  icon: Icon(
+                    Icons.more_horiz_rounded,
+                    color: scheme.onSurface.withValues(alpha: 0.5),
+                  ),
+                  padding: EdgeInsets.zero,
+                  onSelected: (value) {
+                    if (value == 'toggle') {
+                      onToggleExpanded();
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'toggle',
+                      child: Text(expanded ? 'Collapse' : 'Expand'),
+                    ),
+                  ],
                 ),
               ],
             ),
             SizedBox(height: context.space(6)),
             if (showSubject) ...[
               Text(
-                widget.message.subject,
+                message.subject,
                 style: Theme.of(context)
                     .textTheme
                     .bodyMedium
@@ -336,139 +530,142 @@ class _MessageCardState extends State<MessageCard> {
               transitionBuilder: (child, animation) =>
                   FadeTransition(opacity: animation, child: child),
               child: LayoutBuilder(
-                key: ValueKey('body-${_expanded ? 'expanded' : 'collapsed'}'),
+                key: ValueKey('body-${expanded ? 'expanded' : 'collapsed'}-$collapseMode'),
                 builder: (context, constraints) {
                   final boundedWidth = constraints.maxWidth.isFinite;
+
+                  Map<String, Style> htmlStyles() => {
+                    'html': Style(
+                      margin: Margins.zero,
+                      padding: HtmlPaddings.zero,
+                      backgroundColor: Colors.transparent,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                    'body': Style(
+                      margin: Margins.zero,
+                      padding: HtmlPaddings.zero,
+                      fontSize: FontSize(
+                        Theme.of(context)
+                                .textTheme
+                                .bodyLarge
+                                ?.fontSize ??
+                            14,
+                      ),
+                      fontWeight: Theme.of(context)
+                          .textTheme
+                          .bodyLarge
+                          ?.fontWeight,
+                      color: Theme.of(context).colorScheme.onSurface,
+                      backgroundColor: Colors.transparent,
+                    ),
+                    'p': Style(
+                      margin: Margins.only(bottom: 8),
+                      color:
+                          Theme.of(context).colorScheme.onSurface,
+                    ),
+                    'img': Style(
+                      width: Width.auto(),
+                      display: Display.block,
+                      margin: Margins.only(bottom: 8),
+                    ),
+                    'table': Style(
+                      width: Width.auto(),
+                      margin: Margins.only(bottom: 8),
+                      border: Border.all(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.12),
+                      ),
+                    ),
+                    'th': Style(
+                      padding: HtmlPaddings.all(6),
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .surface
+                          .withValues(alpha: 0.5),
+                    ),
+                    'td': Style(
+                      padding: HtmlPaddings.all(6),
+                      border: Border.all(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.08),
+                      ),
+                    ),
+                    'div': Style(
+                      color:
+                          Theme.of(context).colorScheme.onSurface,
+                    ),
+                    'span': Style(
+                      color:
+                          Theme.of(context).colorScheme.onSurface,
+                    ),
+                    'ul': Style(
+                      margin: Margins.only(bottom: 8),
+                      padding: HtmlPaddings.only(left: 16),
+                    ),
+                    'ol': Style(
+                      margin: Margins.only(bottom: 8),
+                      padding: HtmlPaddings.only(left: 16),
+                    ),
+                    'li': Style(
+                      margin: Margins.only(bottom: 4),
+                      color:
+                          Theme.of(context).colorScheme.onSurface,
+                    ),
+                    'pre': Style(
+                      padding: HtmlPaddings.all(8),
+                      margin: Margins.only(bottom: 8),
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .surface
+                          .withValues(alpha: 0.5),
+                    ),
+                    'code': Style(
+                      fontFamily: 'SF Mono',
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .surface
+                          .withValues(alpha: 0.5),
+                    ),
+                    'hr': Style(
+                      margin: Margins.symmetric(vertical: 12),
+                      border: Border(
+                        top: BorderSide(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.12),
+                        ),
+                      ),
+                    ),
+                    'blockquote': Style(
+                      margin: Margins.symmetric(vertical: 8),
+                      padding: HtmlPaddings.only(left: 12),
+                      border: Border(
+                        left: BorderSide(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.18),
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    'a': Style(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  };
+
                   final htmlWidget = useHtml
                       ? Html(
                           data: sanitizedHtml,
                           shrinkWrap: true,
                           onLinkTap: (url, attributes, element) =>
                               _handleLinkTap(url),
-                          style: {
-                            'html': Style(
-                              margin: Margins.zero,
-                              padding: HtmlPaddings.zero,
-                              backgroundColor: Colors.transparent,
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
-                            'body': Style(
-                              margin: Margins.zero,
-                              padding: HtmlPaddings.zero,
-                              fontSize: FontSize(
-                                Theme.of(context)
-                                        .textTheme
-                                        .bodyLarge
-                                        ?.fontSize ??
-                                    14,
-                              ),
-                              fontWeight: Theme.of(context)
-                                  .textTheme
-                                  .bodyLarge
-                                  ?.fontWeight,
-                              color: Theme.of(context).colorScheme.onSurface,
-                              backgroundColor: Colors.transparent,
-                            ),
-                            'p': Style(
-                              margin: Margins.only(bottom: 8),
-                              color:
-                                  Theme.of(context).colorScheme.onSurface,
-                            ),
-                            'img': Style(
-                              width: Width.auto(),
-                              display: Display.block,
-                              margin: Margins.only(bottom: 8),
-                            ),
-                            'table': Style(
-                              width: Width.auto(),
-                              margin: Margins.only(bottom: 8),
-                              border: Border.all(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: 0.12),
-                              ),
-                            ),
-                            'th': Style(
-                              padding: HtmlPaddings.all(6),
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .surface
-                                  .withValues(alpha: 0.5),
-                            ),
-                            'td': Style(
-                              padding: HtmlPaddings.all(6),
-                              border: Border.all(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: 0.08),
-                              ),
-                            ),
-                            'div': Style(
-                              color:
-                                  Theme.of(context).colorScheme.onSurface,
-                            ),
-                            'span': Style(
-                              color:
-                                  Theme.of(context).colorScheme.onSurface,
-                            ),
-                            'ul': Style(
-                              margin: Margins.only(bottom: 8),
-                              padding: HtmlPaddings.only(left: 16),
-                            ),
-                            'ol': Style(
-                              margin: Margins.only(bottom: 8),
-                              padding: HtmlPaddings.only(left: 16),
-                            ),
-                            'li': Style(
-                              margin: Margins.only(bottom: 4),
-                              color:
-                                  Theme.of(context).colorScheme.onSurface,
-                            ),
-                            'pre': Style(
-                              padding: HtmlPaddings.all(8),
-                              margin: Margins.only(bottom: 8),
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .surface
-                                  .withValues(alpha: 0.5),
-                            ),
-                            'code': Style(
-                              fontFamily: 'SF Mono',
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .surface
-                                  .withValues(alpha: 0.5),
-                            ),
-                            'hr': Style(
-                              margin: Margins.symmetric(vertical: 12),
-                              border: Border(
-                                top: BorderSide(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
-                                      .withValues(alpha: 0.12),
-                                ),
-                              ),
-                            ),
-                            'blockquote': Style(
-                              margin: Margins.symmetric(vertical: 8),
-                              padding: HtmlPaddings.only(left: 12),
-                              border: Border(
-                                left: BorderSide(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
-                                      .withValues(alpha: 0.18),
-                                  width: 2,
-                                ),
-                              ),
-                            ),
-                            'a': Style(
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          },
+                          style: htmlStyles(),
                         )
                       : Text(
                           bodyText,
@@ -487,58 +684,24 @@ class _MessageCardState extends State<MessageCard> {
                     return content;
                   }
 
+                  // Compute collapsed height based on mode
+                  final collapsedHeight = collapseMode == MessageCollapseMode.beforeQuotes
+                      ? _collapsedHeightForQuotes(context, bodyText)
+                      : _collapsedHeight(context, maxLines);
+
                   return Stack(
                     children: [
-                      ClipRect(
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(context.radius(4)),
                         child: SizedBox(
-                          height: _collapsedHeight(context),
+                          height: collapsedHeight,
                           child: Align(
                             alignment: Alignment.topLeft,
                             child: content,
                           ),
                         ),
                       ),
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: context.space(8),
-                            vertical: context.space(4),
-                          ),
-                          decoration: BoxDecoration(
-                            color: ColorTokens.cardFill(context, 0.12),
-                            borderRadius:
-                                BorderRadius.circular(context.radius(999)),
-                            border: Border.all(
-                              color: ColorTokens.border(context, 0.12),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.expand_more_rounded,
-                                size: 14,
-                                color: widget.accent.withValues(alpha: 0.9),
-                              ),
-                              SizedBox(width: context.space(4)),
-                              Text(
-                                'Show more',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color:
-                                          widget.accent.withValues(alpha: 0.9),
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 0,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                      _buildShowMoreButton(context),
                     ],
                   );
                 },
@@ -602,33 +765,50 @@ class ThreadScreen extends StatelessWidget {
     final messages = provider.messagesForThread(thread.id);
     final selectedMessageIndex =
         messages.isEmpty ? 0 : messages.length - 1;
-    return Scaffold(
-      body: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-          statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
-        ),
-        child: TidingsBackground(
-          accent: accent,
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                context.gutter(16),
-                MediaQuery.of(context).padding.top + context.space(12),
-                context.gutter(16),
-                context.gutter(16),
-              ),
-              child: CurrentThreadPanel(
-                accent: accent,
-                thread: thread,
-                provider: provider,
-                isCompact: true,
-                currentUserEmail: currentUserEmail,
-                selectedMessageIndex: selectedMessageIndex,
-                onMessageSelected: (_) {},
-                isFocused: true,
+    return Shortcuts(
+      shortcuts: {
+        LogicalKeySet(LogicalKeyboardKey.escape): const _PopIntent(),
+      },
+      child: Actions(
+        actions: {
+          _PopIntent: CallbackAction<_PopIntent>(
+            onInvoke: (intent) {
+              Navigator.of(context).maybePop();
+              return null;
+            },
+          ),
+        },
+        child: Scaffold(
+          body: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness:
+                  isDark ? Brightness.light : Brightness.dark,
+              statusBarBrightness:
+                  isDark ? Brightness.dark : Brightness.light,
+            ),
+            child: TidingsBackground(
+              accent: accent,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    context.gutter(16),
+                    MediaQuery.of(context).padding.top + context.space(12),
+                    context.gutter(16),
+                    context.gutter(16),
+                  ),
+                  child: CurrentThreadPanel(
+                    accent: accent,
+                    thread: thread,
+                    provider: provider,
+                    isCompact: true,
+                    currentUserEmail: currentUserEmail,
+                    selectedMessageIndex: selectedMessageIndex,
+                    onMessageSelected: (_) {},
+                    isFocused: true,
+                  ),
+                ),
               ),
             ),
           ),
@@ -636,4 +816,8 @@ class ThreadScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PopIntent extends Intent {
+  const _PopIntent();
 }
