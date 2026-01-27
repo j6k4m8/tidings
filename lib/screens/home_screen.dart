@@ -36,11 +36,7 @@ import 'keyboard/shortcuts_sheet.dart';
 import 'onboarding_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({
-    super.key,
-    required this.appState,
-    required this.accent,
-  });
+  const HomeScreen({super.key, required this.appState, required this.accent});
 
   final AppState appState;
   final Color accent;
@@ -59,11 +55,7 @@ class _BlurIntent extends Intent {
   const _BlurIntent();
 }
 
-enum _HomeScope {
-  list,
-  detail,
-  editor,
-}
+enum _HomeScope { list, detail, editor }
 
 class _HomeScreenState extends State<HomeScreen> {
   static final _escapeKey = LogicalKeySet(LogicalKeyboardKey.escape);
@@ -76,17 +68,16 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _threadPanelOpen = true;
   TidingsSettings? _settings;
   String? _lastAccountId;
-  final FocusNode _searchFocusNode =
-      FocusNode(debugLabel: 'ThreadSearchFocus');
-  final FocusNode _rootFocusNode =
-      FocusNode(debugLabel: 'RootShortcuts');
-  final FocusNode _threadListFocusNode =
-      FocusNode(debugLabel: 'ThreadListFocus');
-  final FocusNode _threadDetailFocusNode =
-      FocusNode(debugLabel: 'ThreadDetailFocus');
-    final ScrollController _threadDetailScrollController = ScrollController();
-  final InlineReplyController _inlineReplyController =
-      InlineReplyController();
+  final FocusNode _searchFocusNode = FocusNode(debugLabel: 'ThreadSearchFocus');
+  final FocusNode _rootFocusNode = FocusNode(debugLabel: 'RootShortcuts');
+  final FocusNode _threadListFocusNode = FocusNode(
+    debugLabel: 'ThreadListFocus',
+  );
+  final FocusNode _threadDetailFocusNode = FocusNode(
+    debugLabel: 'ThreadDetailFocus',
+  );
+  final ScrollController _threadDetailScrollController = ScrollController();
+  final InlineReplyController _inlineReplyController = InlineReplyController();
   final Map<String, int> _messageSelectionByThread = {};
 
   @override
@@ -149,8 +140,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (delta == null || delta == 0) {
       return KeyEventResult.ignored;
     }
-    final nextOffset =
-        (position.pixels + delta).clamp(0.0, position.maxScrollExtent);
+    final nextOffset = (position.pixels + delta).clamp(
+      0.0,
+      position.maxScrollExtent,
+    );
     _threadDetailScrollController.animateTo(
       nextOffset,
       duration: const Duration(milliseconds: 120),
@@ -184,7 +177,6 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
   }
-
 
   void _handleAppStateChange() {
     final currentId = widget.appState.selectedAccount?.id;
@@ -283,9 +275,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Map<LogicalKeySet, Intent> _shortcutMap(
@@ -331,16 +323,15 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     setState(() {
-      _selectedThreadIndex =
-          (_selectedThreadIndex + delta).clamp(0, threads.length - 1);
+      _selectedThreadIndex = (_selectedThreadIndex + delta).clamp(
+        0,
+        threads.length - 1,
+      );
     });
     _threadListFocusNode.requestFocus();
   }
 
-  int _selectedMessageIndexForThread(
-    EmailThread thread,
-    int messageCount,
-  ) {
+  int _selectedMessageIndexForThread(EmailThread thread, int messageCount) {
     if (messageCount <= 0) {
       return 0;
     }
@@ -367,8 +358,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (messages.isEmpty) {
       return;
     }
-    final current =
-        _selectedMessageIndexForThread(thread, messages.length);
+    final current = _selectedMessageIndexForThread(thread, messages.length);
     final next = (current + delta).clamp(0, messages.length - 1);
     setState(() {
       _messageSelectionByThread[thread.id] = next;
@@ -476,111 +466,78 @@ class _HomeScreenState extends State<HomeScreen> {
         title: 'Compose',
         subtitle: 'Start a new message',
         shortcutLabel: settings.shortcutLabel(ShortcutAction.compose),
-        onSelected: () => _handleShortcut(
-          ShortcutAction.compose,
-          provider,
-          account,
-        ),
+        onSelected: () =>
+            _handleShortcut(ShortcutAction.compose, provider, account),
       ),
       CommandPaletteItem(
         id: 'reply',
         title: 'Reply',
         subtitle: 'Reply to the selected thread',
         shortcutLabel: settings.shortcutLabel(ShortcutAction.reply),
-        onSelected: () => _handleShortcut(
-          ShortcutAction.reply,
-          provider,
-          account,
-        ),
+        onSelected: () =>
+            _handleShortcut(ShortcutAction.reply, provider, account),
       ),
       CommandPaletteItem(
         id: 'reply-all',
         title: 'Reply all',
         subtitle: 'Reply to everyone in the thread',
         shortcutLabel: settings.shortcutLabel(ShortcutAction.replyAll),
-        onSelected: () => _handleShortcut(
-          ShortcutAction.replyAll,
-          provider,
-          account,
-        ),
+        onSelected: () =>
+            _handleShortcut(ShortcutAction.replyAll, provider, account),
       ),
       CommandPaletteItem(
         id: 'forward',
         title: 'Forward',
         subtitle: 'Forward the selected thread',
         shortcutLabel: settings.shortcutLabel(ShortcutAction.forward),
-        onSelected: () => _handleShortcut(
-          ShortcutAction.forward,
-          provider,
-          account,
-        ),
+        onSelected: () =>
+            _handleShortcut(ShortcutAction.forward, provider, account),
       ),
       CommandPaletteItem(
         id: 'archive',
         title: 'Archive',
         subtitle: 'Move to Archive',
         shortcutLabel: settings.shortcutLabel(ShortcutAction.archive),
-        onSelected: () => _handleShortcut(
-          ShortcutAction.archive,
-          provider,
-          account,
-        ),
+        onSelected: () =>
+            _handleShortcut(ShortcutAction.archive, provider, account),
       ),
       CommandPaletteItem(
         id: 'go-to',
         title: 'Go to folder',
         subtitle: 'Jump to any folder',
         shortcutLabel: settings.shortcutLabel(ShortcutAction.goTo),
-        onSelected: () => _handleShortcut(
-          ShortcutAction.goTo,
-          provider,
-          account,
-        ),
+        onSelected: () =>
+            _handleShortcut(ShortcutAction.goTo, provider, account),
       ),
       CommandPaletteItem(
         id: 'go-to-account',
         title: 'Go to folder (current account)',
         subtitle: 'Jump within this account',
         shortcutLabel: settings.shortcutLabel(ShortcutAction.goToAccount),
-        onSelected: () => _handleShortcut(
-          ShortcutAction.goToAccount,
-          provider,
-          account,
-        ),
+        onSelected: () =>
+            _handleShortcut(ShortcutAction.goToAccount, provider, account),
       ),
       CommandPaletteItem(
         id: 'search',
         title: 'Focus search',
         subtitle: 'Jump to the search field',
         shortcutLabel: settings.shortcutLabel(ShortcutAction.focusSearch),
-        onSelected: () => _handleShortcut(
-          ShortcutAction.focusSearch,
-          provider,
-          account,
-        ),
+        onSelected: () =>
+            _handleShortcut(ShortcutAction.focusSearch, provider, account),
       ),
       CommandPaletteItem(
         id: 'shortcuts',
         title: 'Show shortcuts',
         subtitle: 'View all keyboard shortcuts',
         shortcutLabel: settings.shortcutLabel(ShortcutAction.showShortcuts),
-        onSelected: () => _handleShortcut(
-          ShortcutAction.showShortcuts,
-          provider,
-          account,
-        ),
+        onSelected: () =>
+            _handleShortcut(ShortcutAction.showShortcuts, provider, account),
       ),
     ];
-    await showCommandPalette(
-      context,
-      accent: widget.accent,
-      items: items,
-    );
+    await showCommandPalette(context, accent: widget.accent, items: items);
   }
 
-  Future<void> _showGoToDialog({
-    required bool currentAccountOnly,
-  }) async {
+  Future<void> _showGoToDialog({required bool currentAccountOnly}) async {
     final entries = await _buildGoToEntries(
       currentAccountOnly: currentAccountOnly,
     );
@@ -755,27 +712,27 @@ class _HomeScreenState extends State<HomeScreen> {
               autofocus: true,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                      final isWide = constraints.maxWidth >= 1024;
-                      final showSettings = _showSettings;
-                      final effectiveFolderIndex = _folderIndexForPath(
-                            provider.folderSections,
-                            provider.selectedFolderPath,
-                          ) ??
-                          _selectedFolderIndex;
-                      final threads = provider.threads;
-                      final safeThreadIndex = threads.isEmpty
-                          ? 0
-                          : _selectedIndex(_selectedThreadIndex, threads.length);
-                      final selectedThread =
-                          threads.isEmpty ? null : threads[safeThreadIndex];
-                      final selectedMessageIndex = selectedThread == null
-                          ? 0
-                          : _selectedMessageIndexForThread(
-                              selectedThread,
-                              provider
-                                  .messagesForThread(selectedThread.id)
-                                  .length,
-                            );
+                  final isWide = constraints.maxWidth >= 1024;
+                  final showSettings = _showSettings;
+                  final effectiveFolderIndex =
+                      _folderIndexForPath(
+                        provider.folderSections,
+                        provider.selectedFolderPath,
+                      ) ??
+                      _selectedFolderIndex;
+                  final threads = provider.threads;
+                  final safeThreadIndex = threads.isEmpty
+                      ? 0
+                      : _selectedIndex(_selectedThreadIndex, threads.length);
+                  final selectedThread = threads.isEmpty
+                      ? null
+                      : threads[safeThreadIndex];
+                  final selectedMessageIndex = selectedThread == null
+                      ? 0
+                      : _selectedMessageIndexForThread(
+                          selectedThread,
+                          provider.messagesForThread(selectedThread.id).length,
+                        );
 
                   return Scaffold(
                     extendBody: true,
@@ -822,8 +779,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                   final safeIndex = threads.isEmpty
                                       ? 0
                                       : index.clamp(0, threads.length - 1);
-                                  final thread =
-                                      threads.isEmpty ? null : threads[safeIndex];
+                                  final thread = threads.isEmpty
+                                      ? null
+                                      : threads[safeIndex];
                                   setState(() {
                                     _selectedThreadIndex = index;
                                     _threadPanelOpen = true;
@@ -869,9 +827,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 threadListFocusNode: _threadListFocusNode,
                                 threadDetailFocusNode: _threadDetailFocusNode,
                                 threadDetailScrollController:
-                                  _threadDetailScrollController,
+                                    _threadDetailScrollController,
                                 onThreadDetailKeyEvent:
-                                  _handleThreadDetailKeyEvent,
+                                    _handleThreadDetailKeyEvent,
                                 threadPanelFraction: _threadPanelFraction,
                                 threadPanelOpen: _threadPanelOpen,
                                 onThreadPanelResize: (fraction) {
@@ -926,8 +884,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                   final safeIndex = threads.isEmpty
                                       ? 0
                                       : index.clamp(0, threads.length - 1);
-                                  final thread =
-                                      threads.isEmpty ? null : threads[safeIndex];
+                                  final thread = threads.isEmpty
+                                      ? null
+                                      : threads[safeIndex];
                                   setState(() {
                                     _selectedThreadIndex = index;
                                     _threadPanelOpen = true;
@@ -1228,7 +1187,8 @@ class _WideLayout extends StatelessWidget {
                                     ? const SizedBox.shrink()
                                     : Listener(
                                         onPointerDown: (_) =>
-                                            threadDetailFocusNode.requestFocus(),
+                                            threadDetailFocusNode
+                                                .requestFocus(),
                                         child: Focus(
                                           focusNode: threadDetailFocusNode,
                                           onKeyEvent: (node, event) =>
@@ -1243,7 +1203,8 @@ class _WideLayout extends StatelessWidget {
                                             replyController: replyController,
                                             selectedMessageIndex:
                                                 selectedMessageIndex,
-                                            onMessageSelected: onMessageSelected,
+                                            onMessageSelected:
+                                                onMessageSelected,
                                             isFocused: threadFocused,
                                             parentFocusNode:
                                                 threadDetailFocusNode,
@@ -1301,12 +1262,7 @@ List<FolderItem> _pinnedItems(
 }
 
 const List<FolderItem> _fallbackRailItems = [
-  FolderItem(
-    index: 0,
-    name: 'Inbox',
-    path: 'INBOX',
-    icon: Icons.inbox_rounded,
-  ),
+  FolderItem(index: 0, name: 'Inbox', path: 'INBOX', icon: Icons.inbox_rounded),
   FolderItem(
     index: 1,
     name: 'Archive',
@@ -1319,19 +1275,11 @@ const List<FolderItem> _fallbackRailItems = [
     path: 'Drafts',
     icon: Icons.drafts_rounded,
   ),
-  FolderItem(
-    index: 3,
-    name: 'Sent',
-    path: 'Sent',
-    icon: Icons.send_rounded,
-  ),
+  FolderItem(index: 3, name: 'Sent', path: 'Sent', icon: Icons.send_rounded),
 ];
 
 class _ResizeHandle extends StatelessWidget {
-  const _ResizeHandle({
-    required this.onDragUpdate,
-    this.onDragEnd,
-  });
+  const _ResizeHandle({required this.onDragUpdate, this.onDragEnd});
 
   final ValueChanged<double> onDragUpdate;
   final VoidCallback? onDragEnd;
@@ -1454,10 +1402,7 @@ class _CompactLayout extends StatelessWidget {
                   onAccountTap: onAccountTap,
                 ),
                 SizedBox(height: context.space(16)),
-                ThreadSearchRow(
-                  accent: accent,
-                  focusNode: searchFocusNode,
-                ),
+                ThreadSearchRow(accent: accent, focusNode: searchFocusNode),
                 SizedBox(height: context.space(8)),
                 Expanded(
                   child: Listener(
@@ -1593,9 +1538,7 @@ class SidebarPanel extends StatelessWidget {
                             ),
                             Text(
                               account.email,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
+                              style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(
                                     color: ColorTokens.textSecondary(context),
                                   ),
@@ -1673,8 +1616,8 @@ class FolderList extends StatelessWidget {
     final visibleSections = settings.showFolderLabels
         ? sections
         : sections
-            .where((section) => section.kind != FolderSectionKind.labels)
-            .toList();
+              .where((section) => section.kind != FolderSectionKind.labels)
+              .toList();
 
     return ListView.builder(
       itemCount: visibleSections.length,
@@ -1766,9 +1709,9 @@ class _FolderSection extends StatelessWidget {
           Text(
             section.title,
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: ColorTokens.textSecondary(context, 0.6),
-                  letterSpacing: 0.6,
-                ),
+              color: ColorTokens.textSecondary(context, 0.6),
+              letterSpacing: 0.6,
+            ),
           ),
           SizedBox(height: context.space(8)),
           ...section.items.map((item) {
@@ -1824,9 +1767,9 @@ class _FolderRowState extends State<_FolderRow> {
     final showPin = _hovered || isPinned;
     final baseColor = Theme.of(context).colorScheme.onSurface;
     final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: unread ? baseColor : baseColor.withValues(alpha: 0.65),
-          fontWeight: unread ? FontWeight.w600 : FontWeight.w500,
-        );
+      color: unread ? baseColor : baseColor.withValues(alpha: 0.65),
+      fontWeight: unread ? FontWeight.w600 : FontWeight.w500,
+    );
 
     return MouseRegion(
       onEnter: (_) => _setHovered(true),
@@ -1835,110 +1778,112 @@ class _FolderRowState extends State<_FolderRow> {
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
         child: Container(
-        margin: EdgeInsets.only(bottom: context.space(4)),
-        padding: EdgeInsets.fromLTRB(
-          context.space(6) + widget.item.depth * context.space(12),
-          context.space(4),
-          context.space(6),
-          context.space(4),
-        ),
-        decoration: BoxDecoration(
-          color: widget.selected
-              ? widget.accent.withValues(alpha: 0.14)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(context.radius(12)),
-        ),
-        child: Row(
-          children: [
-            if (widget.selected)
-              Container(
-                width: 2,
-                height: context.space(12),
-                margin: EdgeInsets.only(right: context.space(8)),
-                decoration: BoxDecoration(
-                  color: widget.accent,
-                  borderRadius: BorderRadius.circular(context.radius(8)),
-                ),
-              )
-            else
-              SizedBox(width: context.space(8)),
-            if (widget.item.icon != null) ...[
-              Icon(
-                widget.item.icon,
-                size: 15,
-                color: unread
-                    ? baseColor.withValues(alpha: 0.8)
-                    : baseColor.withValues(alpha: 0.55),
-              ),
-              SizedBox(width: context.space(6)),
-            ],
-            Expanded(
-              child: Text(
-                widget.item.name,
-                style: textStyle,
-                maxLines: 2,
-                overflow: TextOverflow.visible,
-                softWrap: true,
-              ),
-            ),
-            if (widget.isLoading)
-              Padding(
-                padding: EdgeInsets.only(right: context.space(6)),
-                child: SizedBox(
-                  width: context.space(12),
+          margin: EdgeInsets.only(bottom: context.space(4)),
+          padding: EdgeInsets.fromLTRB(
+            context.space(6) + widget.item.depth * context.space(12),
+            context.space(4),
+            context.space(6),
+            context.space(4),
+          ),
+          decoration: BoxDecoration(
+            color: widget.selected
+                ? widget.accent.withValues(alpha: 0.14)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(context.radius(12)),
+          ),
+          child: Row(
+            children: [
+              if (widget.selected)
+                Container(
+                  width: 2,
                   height: context.space(12),
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      widget.accent.withValues(alpha: 0.7),
+                  margin: EdgeInsets.only(right: context.space(8)),
+                  decoration: BoxDecoration(
+                    color: widget.accent,
+                    borderRadius: BorderRadius.circular(context.radius(8)),
+                  ),
+                )
+              else
+                SizedBox(width: context.space(8)),
+              if (widget.item.icon != null) ...[
+                Icon(
+                  widget.item.icon,
+                  size: 15,
+                  color: unread
+                      ? baseColor.withValues(alpha: 0.8)
+                      : baseColor.withValues(alpha: 0.55),
+                ),
+                SizedBox(width: context.space(6)),
+              ],
+              Expanded(
+                child: Text(
+                  widget.item.name,
+                  style: textStyle,
+                  maxLines: 2,
+                  overflow: TextOverflow.visible,
+                  softWrap: true,
+                ),
+              ),
+              if (widget.isLoading)
+                Padding(
+                  padding: EdgeInsets.only(right: context.space(6)),
+                  child: SizedBox(
+                    width: context.space(12),
+                    height: context.space(12),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        widget.accent.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ),
+                ),
+              IgnorePointer(
+                ignoring: !showPin,
+                child: AnimatedOpacity(
+                  opacity: showPin ? 1 : 0,
+                  duration: const Duration(milliseconds: 150),
+                  child: IconButton(
+                    onPressed: () =>
+                        settings.toggleFolderPinned(widget.item.path),
+                    icon: Icon(
+                      isPinned
+                          ? Icons.push_pin_rounded
+                          : Icons.push_pin_outlined,
+                      size: 14,
+                    ),
+                    color: isPinned
+                        ? widget.accent
+                        : ColorTokens.textSecondary(context, 0.7),
+                    tooltip: isPinned ? 'Unpin from rail' : 'Pin to rail',
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints.tightFor(
+                      width: context.space(24),
+                      height: context.space(24),
                     ),
                   ),
                 ),
               ),
-            IgnorePointer(
-              ignoring: !showPin,
-              child: AnimatedOpacity(
-                opacity: showPin ? 1 : 0,
-                duration: const Duration(milliseconds: 150),
-                child: IconButton(
-                  onPressed: () =>
-                      settings.toggleFolderPinned(widget.item.path),
-                  icon: Icon(
-                    isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-                    size: 14,
+              if (unread && showUnreadCounts)
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: context.space(6),
+                    vertical: context.space(1),
                   ),
-                  color: isPinned
-                      ? widget.accent
-                      : ColorTokens.textSecondary(context, 0.7),
-                  tooltip: isPinned ? 'Unpin from rail' : 'Pin to rail',
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints.tightFor(
-                    width: context.space(24),
-                    height: context.space(24),
+                  decoration: BoxDecoration(
+                    color: widget.accent.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(context.radius(999)),
+                  ),
+                  child: Text(
+                    widget.item.unreadCount.toString(),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: widget.accent,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-            ),
-            if (unread && showUnreadCounts)
-              Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: context.space(6),
-                  vertical: context.space(1),
-                ),
-                decoration: BoxDecoration(
-                  color: widget.accent.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(context.radius(999)),
-                ),
-                child: Text(
-                  widget.item.unreadCount.toString(),
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: widget.accent,
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-              ),
-          ],
-        ),
+            ],
+          ),
         ),
       ),
     );
@@ -2090,10 +2035,7 @@ class _CompactHeader extends StatelessWidget {
           borderRadius: BorderRadius.circular(context.radius(18)),
           padding: EdgeInsets.all(context.space(6)),
           variant: GlassVariant.pill,
-          child: AccountAvatar(
-            name: account.displayName,
-            accent: accent,
-          ),
+          child: AccountAvatar(name: account.displayName, accent: accent),
         ),
         SizedBox(width: context.space(12)),
         Column(
@@ -2249,9 +2191,7 @@ class SettingsPanel extends StatelessWidget {
                   SettingsTab(
                     child: _ThreadsSettings(segmentedStyle: segmentedStyle),
                   ),
-                  SettingsTab(
-                    child: _FoldersSettings(accent: accent),
-                  ),
+                  SettingsTab(child: _FoldersSettings(accent: accent)),
                   SettingsTab(
                     child: _AccountsSettings(
                       appState: appState,
@@ -2457,10 +2397,7 @@ class _ThreadsSettings extends StatelessWidget {
             style: segmentedStyle,
             segments: MessageCollapseMode.values
                 .map(
-                  (mode) => ButtonSegment(
-                    value: mode,
-                    label: Text(mode.label),
-                  ),
+                  (mode) => ButtonSegment(value: mode, label: Text(mode.label)),
                 )
                 .toList(),
             selected: {settings.messageCollapseMode},
@@ -2483,10 +2420,8 @@ class _ThreadsSettings extends StatelessWidget {
                 },
                 items: [4, 6, 8, 10, 12, 15, 20]
                     .map(
-                      (n) => DropdownMenuItem(
-                        value: n,
-                        child: Text('$n lines'),
-                      ),
+                      (n) =>
+                          DropdownMenuItem(value: n, child: Text('$n lines')),
                     )
                     .toList(),
               ),
@@ -2536,10 +2471,7 @@ class _FoldersSettings extends StatelessWidget {
 }
 
 class _AccountsSettings extends StatelessWidget {
-  const _AccountsSettings({
-    required this.appState,
-    required this.accent,
-  });
+  const _AccountsSettings({required this.appState, required this.accent});
 
   final AppState appState;
   final Color accent;
@@ -2555,8 +2487,8 @@ class _AccountsSettings extends StatelessWidget {
           Text(
             'No account selected.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: ColorTokens.textSecondary(context),
-                ),
+              color: ColorTokens.textSecondary(context),
+            ),
           ),
         ],
       );
@@ -2569,8 +2501,8 @@ class _AccountsSettings extends StatelessWidget {
         Text(
           'Manage per-account settings and verify connections.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: ColorTokens.textSecondary(context),
-              ),
+            color: ColorTokens.textSecondary(context),
+          ),
         ),
         SizedBox(height: context.space(10)),
         OutlinedButton.icon(
@@ -2647,8 +2579,7 @@ class _KeyboardSettings extends StatelessWidget {
               definition: definitionFor(action),
               primary: settings.shortcutFor(action),
               secondary: settings.secondaryShortcutFor(action),
-              onPrimaryChanged: (value) =>
-                  settings.setShortcut(action, value),
+              onPrimaryChanged: (value) => settings.setShortcut(action, value),
               onSecondaryChanged: (value) =>
                   settings.setShortcut(action, value, secondary: true),
             ),
@@ -2666,8 +2597,8 @@ class _KeyboardSettings extends StatelessWidget {
         Text(
           'Edit keyboard shortcuts for power navigation.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: ColorTokens.textSecondary(context),
-              ),
+            color: ColorTokens.textSecondary(context),
+          ),
         ),
         SizedBox(height: context.space(16)),
         buildSection('Navigation', navigation),
@@ -2728,10 +2659,7 @@ class _ShortcutRow extends StatelessWidget {
 }
 
 class _ShortcutSlot extends StatelessWidget {
-  const _ShortcutSlot({
-    required this.child,
-    this.label,
-  });
+  const _ShortcutSlot({required this.child, this.label});
 
   final Widget child;
   final String? label;
@@ -2747,8 +2675,8 @@ class _ShortcutSlot extends StatelessWidget {
         Text(
           label!,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: ColorTokens.textSecondary(context),
-              ),
+            color: ColorTokens.textSecondary(context),
+          ),
         ),
         SizedBox(height: context.space(4)),
         child,
@@ -2814,8 +2742,8 @@ class _AccountSectionState extends State<_AccountSection> {
                   'This removes ${account.displayName} from Tidings. '
                   'Cached mail and settings for this account are deleted.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: ColorTokens.textSecondary(context),
-                      ),
+                    color: ColorTokens.textSecondary(context),
+                  ),
                 ),
                 SizedBox(height: context.space(16)),
                 Row(
@@ -2899,8 +2827,8 @@ class _AccountSectionState extends State<_AccountSection> {
                       Text(
                         account.email,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: ColorTokens.textSecondary(context),
-                            ),
+                          color: ColorTokens.textSecondary(context),
+                        ),
                       ),
                     ],
                   ),
@@ -2910,7 +2838,7 @@ class _AccountSectionState extends State<_AccountSection> {
           ),
           AnimatedCrossFade(
             duration: const Duration(milliseconds: 200),
-              crossFadeState: _expanded
+            crossFadeState: _expanded
                 ? CrossFadeState.showFirst
                 : CrossFadeState.showSecond,
             firstChild: Column(
@@ -2997,16 +2925,15 @@ class _AccountSectionState extends State<_AccountSection> {
                   SizedBox(height: context.space(16)),
                   SettingRow(
                     title: 'Include other folders in threads',
-                    subtitle:
-                        'Show messages from folders already fetched.',
+                    subtitle: 'Show messages from folders already fetched.',
                     trailing: AccentSwitch(
                       accent: accent,
                       value: crossFolderEnabled,
-                      onChanged: (value) => appState
-                          .setAccountCrossFolderThreading(
-                        accountId: account.id,
-                        enabled: value,
-                      ),
+                      onChanged: (value) =>
+                          appState.setAccountCrossFolderThreading(
+                            accountId: account.id,
+                            enabled: value,
+                          ),
                     ),
                   ),
                 ],
@@ -3038,11 +2965,14 @@ class _AccountSectionState extends State<_AccountSection> {
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.wifi_tethering_rounded),
-                        label:
-                            Text(_isTesting ? 'Testing...' : 'Test Connection'),
+                        label: Text(
+                          _isTesting ? 'Testing...' : 'Test Connection',
+                        ),
                       ),
                     if (account.providerType == EmailProviderType.imap)
                       OutlinedButton.icon(
@@ -3065,7 +2995,9 @@ class _AccountSectionState extends State<_AccountSection> {
                     decoration: BoxDecoration(
                       color: ColorTokens.cardFill(context, 0.06),
                       borderRadius: BorderRadius.circular(context.radius(12)),
-                      border: Border.all(color: ColorTokens.border(context, 0.12)),
+                      border: Border.all(
+                        color: ColorTokens.border(context, 0.12),
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3073,12 +3005,8 @@ class _AccountSectionState extends State<_AccountSection> {
                         Row(
                           children: [
                             Text(
-                              report.ok
-                                  ? 'Connection OK'
-                                  : 'Connection failed',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelLarge
+                              report.ok ? 'Connection OK' : 'Connection failed',
+                              style: Theme.of(context).textTheme.labelLarge
                                   ?.copyWith(color: reportColor),
                             ),
                             const Spacer(),
@@ -3099,10 +3027,11 @@ class _AccountSectionState extends State<_AccountSection> {
                         SizedBox(height: context.space(6)),
                         SelectableText(
                           report.log.trim(),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
                                 color: reportColor,
                                 fontFeatures: const [
-                                  FontFeature.tabularFigures()
+                                  FontFeature.tabularFigures(),
                                 ],
                               ),
                         ),
@@ -3117,8 +3046,10 @@ class _AccountSectionState extends State<_AccountSection> {
                   alignment: Alignment.centerLeft,
                   child: OutlinedButton.icon(
                     onPressed: () async {
-                      final confirmed =
-                          await _confirmDeleteAccount(context, account);
+                      final confirmed = await _confirmDeleteAccount(
+                        context,
+                        account,
+                      );
                       if (!confirmed) {
                         return;
                       }

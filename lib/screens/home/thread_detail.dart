@@ -1,8 +1,7 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
@@ -165,131 +164,137 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                     widget.isCompact ? context.space(16) : context.space(18),
                   ),
                   child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (widget.isCompact)
-                        IconButton(
-                          onPressed: () => Navigator.of(context).maybePop(),
-                          icon: const Icon(Icons.arrow_back_rounded),
-                        ),
-                  Expanded(
-                    child: Text(
-                      widget.thread.subject,
-                      style: Theme.of(context).textTheme.titleMedium,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () {},
-                    icon: const Icon(Icons.star_border_rounded),
-                  ),
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_horiz_rounded),
-                    onSelected: (value) {
-                      switch (value) {
-                        case 'expand_all':
-                          _expandAll(messages);
-                        case 'collapse_all':
-                          _collapseAll(messages);
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'expand_all',
-                        child: Text('Expand all'),
+                      Row(
+                        children: [
+                          if (widget.isCompact)
+                            IconButton(
+                              onPressed: () => Navigator.of(context).maybePop(),
+                              icon: const Icon(Icons.arrow_back_rounded),
+                            ),
+                          Expanded(
+                            child: Text(
+                              widget.thread.subject,
+                              style: Theme.of(context).textTheme.titleMedium,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () {},
+                            icon: const Icon(Icons.star_border_rounded),
+                          ),
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_horiz_rounded),
+                            onSelected: (value) {
+                              switch (value) {
+                                case 'expand_all':
+                                  _expandAll(messages);
+                                case 'collapse_all':
+                                  _collapseAll(messages);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'expand_all',
+                                child: Text('Expand all'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'collapse_all',
+                                child: Text('Collapse all'),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                      const PopupMenuItem(
-                        value: 'collapse_all',
-                        child: Text('Collapse all'),
+                      SizedBox(height: context.space(4)),
+                      Text(
+                        widget.thread.participantSummary,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                      SizedBox(height: context.space(12)),
+                      Expanded(
+                        child: ProviderBody(
+                          status: widget.provider.status,
+                          errorMessage: widget.provider.errorMessage,
+                          onRetry: widget.provider.refresh,
+                          isEmpty: messages.isEmpty,
+                          emptyMessage: 'No messages in this thread.',
+                          child: ListView.separated(
+                            controller: _scrollController,
+                            padding: EdgeInsets.only(bottom: context.space(16)),
+                            itemCount: messages.length,
+                            separatorBuilder: (context, index) => Divider(
+                              height: context.space(16),
+                              thickness: 1,
+                              color: ColorTokens.border(context, 0.1),
+                            ),
+                            itemBuilder: (context, index) {
+                              final message = messages[index];
+                              final isLatest = index == messages.length - 1;
+                              final defaultExpanded =
+                                  (settings.autoExpandLatest && isLatest) ||
+                                  (settings.autoExpandUnread &&
+                                      message.isUnread);
+                              return MessageCard(
+                                key: ValueKey(message.id),
+                                message: message,
+                                accent: widget.accent,
+                                expanded: _isExpanded(
+                                  message.id,
+                                  defaultExpanded,
+                                ),
+                                onToggleExpanded: () => _toggleExpanded(
+                                  message.id,
+                                  defaultExpanded,
+                                ),
+                                isSelected:
+                                    index == widget.selectedMessageIndex,
+                                onSelected: () =>
+                                    widget.onMessageSelected(index),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: context.space(12)),
+                      ComposeBar(
+                        accent: widget.accent,
+                        provider: widget.provider,
+                        thread: widget.thread,
+                        currentUserEmail: widget.currentUserEmail,
+                        parentFocusNode: widget.parentFocusNode,
+                        controller: widget.replyController,
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
-              SizedBox(height: context.space(4)),
-              Text(
-                widget.thread.participantSummary,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color:
-                          Theme.of(context).colorScheme.onSurface.withValues(
-                                alpha: 0.6,
-                              ),
+            ),
+            // Esc hint overlay (desktop only)
+            if (!widget.isCompact)
+              Positioned(
+                top: context.space(12),
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: AnimatedOpacity(
+                    opacity: _showEscHint ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: IgnorePointer(
+                      child: KeyHintMessage(
+                        keyLabel: 'esc',
+                        message: 'to return to inbox',
+                      ),
                     ),
-              ),
-              SizedBox(height: context.space(12)),
-              Expanded(
-                child: ProviderBody(
-                  status: widget.provider.status,
-                  errorMessage: widget.provider.errorMessage,
-                  onRetry: widget.provider.refresh,
-                  isEmpty: messages.isEmpty,
-                  emptyMessage: 'No messages in this thread.',
-                  child: ListView.separated(
-                    controller: _scrollController,
-                    padding: EdgeInsets.only(bottom: context.space(16)),
-                    itemCount: messages.length,
-                    separatorBuilder: (context, index) => Divider(
-                      height: context.space(16),
-                      thickness: 1,
-                      color: ColorTokens.border(context, 0.1),
-                    ),
-                    itemBuilder: (context, index) {
-                      final message = messages[index];
-                      final isLatest = index == messages.length - 1;
-                      final defaultExpanded =
-                          (settings.autoExpandLatest && isLatest) ||
-                          (settings.autoExpandUnread && message.isUnread);
-                      return MessageCard(
-                        key: ValueKey(message.id),
-                        message: message,
-                        accent: widget.accent,
-                        expanded: _isExpanded(message.id, defaultExpanded),
-                        onToggleExpanded: () =>
-                            _toggleExpanded(message.id, defaultExpanded),
-                        isSelected: index == widget.selectedMessageIndex,
-                        onSelected: () => widget.onMessageSelected(index),
-                        parentScrollController: _scrollController,
-                      );
-                    },
                   ),
                 ),
               ),
-              SizedBox(height: context.space(12)),
-              ComposeBar(
-                accent: widget.accent,
-                provider: widget.provider,
-                thread: widget.thread,
-                currentUserEmail: widget.currentUserEmail,
-                parentFocusNode: widget.parentFocusNode,
-                controller: widget.replyController,
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-    // Esc hint overlay (desktop only)
-    if (!widget.isCompact)
-      Positioned(
-        top: context.space(12),
-        left: 0,
-        right: 0,
-        child: Center(
-          child: AnimatedOpacity(
-            opacity: _showEscHint ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 200),
-            child: IgnorePointer(
-              child: KeyHintMessage(
-                keyLabel: 'esc',
-                message: 'to return to inbox',
-              ),
-            ),
-          ),
-        ),
-      ),
           ],
         );
       },
@@ -306,7 +311,6 @@ class MessageCard extends StatelessWidget {
     required this.onToggleExpanded,
     required this.isSelected,
     this.onSelected,
-    this.parentScrollController,
   });
 
   final EmailMessage message;
@@ -315,7 +319,6 @@ class MessageCard extends StatelessWidget {
   final VoidCallback onToggleExpanded;
   final bool isSelected;
   final VoidCallback? onSelected;
-  final ScrollController? parentScrollController;
 
   static const int _collapsedCharLimit = 420;
 
@@ -328,9 +331,17 @@ class MessageCard extends StatelessWidget {
     // "> " quoted lines (3+ consecutive)
     RegExp(r'(?:^>\s?.*\n){3,}', multiLine: true),
     // "---- Original Message ----" divider
-    RegExp(r'^-{2,}\s*Original Message\s*-{2,}', multiLine: true, caseSensitive: false),
+    RegExp(
+      r'^-{2,}\s*Original Message\s*-{2,}',
+      multiLine: true,
+      caseSensitive: false,
+    ),
     // Gmail style "---------- Forwarded message ---------"
-    RegExp(r'^-{2,}\s*Forwarded message\s*-{2,}', multiLine: true, caseSensitive: false),
+    RegExp(
+      r'^-{2,}\s*Forwarded message\s*-{2,}',
+      multiLine: true,
+      caseSensitive: false,
+    ),
   ];
 
   /// Finds the index where quoted content begins, or -1 if not found.
@@ -377,8 +388,7 @@ class MessageCard extends StatelessWidget {
   }
 
   double _collapsedHeight(BuildContext context, int maxLines) {
-    final fontSize =
-        Theme.of(context).textTheme.bodyLarge?.fontSize ?? 14;
+    final fontSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 14;
     return maxLines * fontSize * 1.45;
   }
 
@@ -387,8 +397,7 @@ class MessageCard extends StatelessWidget {
     final lineCount = '\n'.allMatches(textBeforeQuote).length + 1;
     // Clamp to reasonable bounds (min 2 lines, max 12 lines)
     final clampedLines = lineCount.clamp(2, 12);
-    final fontSize =
-        Theme.of(context).textTheme.bodyLarge?.fontSize ?? 14;
+    final fontSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 14;
     return clampedLines * fontSize * 1.45;
   }
 
@@ -406,9 +415,7 @@ class MessageCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: ColorTokens.cardFill(context, 0.12),
             borderRadius: BorderRadius.circular(context.radius(999)),
-            border: Border.all(
-              color: ColorTokens.border(context, 0.12),
-            ),
+            border: Border.all(color: ColorTokens.border(context, 0.12)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -422,10 +429,10 @@ class MessageCard extends StatelessWidget {
               Text(
                 'Show more',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: accent.withValues(alpha: 0.9),
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0,
-                    ),
+                  color: accent.withValues(alpha: 0.9),
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0,
+                ),
               ),
             ],
           ),
@@ -457,7 +464,9 @@ class MessageCard extends StatelessWidget {
       ..writeln('Is empty: ${bodyText?.isEmpty ?? true}')
       ..writeln()
       ..writeln('--- Content (first 500 chars) ---')
-      ..writeln(bodyText?.substring(0, bodyText.length.clamp(0, 500)) ?? '(null)')
+      ..writeln(
+        bodyText?.substring(0, bodyText.length.clamp(0, 500)) ?? '(null)',
+      )
       ..writeln()
       ..writeln('=== BODY PLAIN TEXT (computed) ===')
       ..writeln('Length: ${bodyPlainText.length}')
@@ -472,16 +481,22 @@ class MessageCard extends StatelessWidget {
       ..writeln('Is empty: ${bodyHtml?.isEmpty ?? true}')
       ..writeln()
       ..writeln('--- Content (first 1000 chars) ---')
-      ..writeln(bodyHtml?.substring(0, bodyHtml.length.clamp(0, 1000)) ?? '(null)')
+      ..writeln(
+        bodyHtml?.substring(0, bodyHtml.length.clamp(0, 1000)) ?? '(null)',
+      )
       ..writeln()
       ..writeln('=== SANITIZED HTML ===')
       ..writeln('Length: ${sanitized?.length ?? 0}')
       ..writeln('Is null: ${sanitized == null}')
       ..writeln('Is empty: ${sanitized?.isEmpty ?? true}')
-      ..writeln('Has HTML tags: ${sanitized?.contains(RegExp(r"<[a-zA-Z]")) ?? false}')
+      ..writeln(
+        'Has HTML tags: ${sanitized?.contains(RegExp(r"<[a-zA-Z]")) ?? false}',
+      )
       ..writeln()
       ..writeln('--- Content (first 1000 chars) ---')
-      ..writeln(sanitized?.substring(0, sanitized.length.clamp(0, 1000)) ?? '(null)');
+      ..writeln(
+        sanitized?.substring(0, sanitized.length.clamp(0, 1000)) ?? '(null)',
+      );
 
     final content = metadata.toString();
 
@@ -495,10 +510,7 @@ class MessageCard extends StatelessWidget {
           child: SingleChildScrollView(
             child: SelectableText(
               content,
-              style: const TextStyle(
-                fontFamily: 'SF Mono',
-                fontSize: 11,
-              ),
+              style: const TextStyle(fontFamily: 'SF Mono', fontSize: 11),
             ),
           ),
         ),
@@ -553,7 +565,8 @@ class MessageCard extends StatelessWidget {
     final cardRadius = context.radius(12);
     final bodyText = message.bodyPlainText;
     final bodyHtml = message.bodyHtml;
-    final shouldClamp = !expanded && _isLongBody(bodyText, collapseMode, maxLines);
+    final shouldClamp =
+        !expanded && _isLongBody(bodyText, collapseMode, maxLines);
 
     return GestureDetector(
       onTap: onSelected,
@@ -564,18 +577,15 @@ class MessageCard extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(cardRadius),
           border: isSelected
-              ? Border.all(
-                  color: accent.withValues(alpha: 0.5),
-                  width: 1.5,
-                )
+              ? Border.all(color: accent.withValues(alpha: 0.5), width: 1.5)
               : message.isMe
-                  ? Border(
-                      left: BorderSide(
-                        color: accent.withValues(alpha: 0.3),
-                        width: 2,
-                      ),
-                    )
-                  : null,
+              ? Border(
+                  left: BorderSide(
+                    color: accent.withValues(alpha: 0.3),
+                    width: 2,
+                  ),
+                )
+              : null,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -590,8 +600,8 @@ class MessageCard extends StatelessWidget {
                 Text(
                   message.time,
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: scheme.onSurface.withValues(alpha: 0.6),
-                      ),
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
                 const Spacer(),
                 PopupMenuButton<String>(
@@ -624,10 +634,9 @@ class MessageCard extends StatelessWidget {
             if (showSubject) ...[
               Text(
                 message.subject,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               SizedBox(height: context.space(6)),
             ],
@@ -638,7 +647,9 @@ class MessageCard extends StatelessWidget {
               transitionBuilder: (child, animation) =>
                   FadeTransition(opacity: animation, child: child),
               child: LayoutBuilder(
-                key: ValueKey('body-${expanded ? 'expanded' : 'collapsed'}-$collapseMode'),
+                key: ValueKey(
+                  'body-${expanded ? 'expanded' : 'collapsed'}-$collapseMode',
+                ),
                 builder: (context, constraints) {
                   final boundedWidth = constraints.maxWidth.isFinite;
 
@@ -647,13 +658,49 @@ class MessageCard extends StatelessWidget {
                   Widget contentWidget;
 
                   if (bodyHtml != null && bodyHtml.trim().isNotEmpty) {
-                    // Render HTML in WebView - preserves original styling
-                    // Parent ScrollView handles scrolling, not the WebView
-                    contentWidget = _HtmlWebView(
-                      html: bodyHtml,
-                      messageId: message.id,
-                      parentScrollController: parentScrollController,
-                    );
+                    final sanitized = _sanitizeHtml(bodyHtml);
+                    if (sanitized.isNotEmpty) {
+                      contentWidget = HtmlWidget(
+                        sanitized,
+                        textStyle: Theme.of(context).textTheme.bodyLarge,
+                        onTapUrl: (url) {
+                          final uri = Uri.tryParse(url);
+                          if (uri != null) {
+                            launchUrl(
+                              uri,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                          return true;
+                        },
+                        customStylesBuilder: (element) {
+                          switch (element.localName) {
+                            case 'a':
+                              return {'color': '#1a73e8'};
+                            case 'img':
+                            case 'video':
+                            case 'iframe':
+                            case 'table':
+                              return {'max-width': '100%'};
+                            case 'pre':
+                              return {
+                                'white-space': 'pre-wrap',
+                                'word-break': 'break-word',
+                              };
+                            case 'code':
+                              return {
+                                'font-family': 'SF Mono, Menlo, monospace',
+                              };
+                          }
+                          return null;
+                        },
+                      );
+                    } else {
+                      contentWidget = Text(
+                        bodyText,
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      );
+                    }
                   } else if (hasTextContent) {
                     contentWidget = Text(
                       bodyText,
@@ -671,8 +718,9 @@ class MessageCard extends StatelessWidget {
                   final content = ConstrainedBox(
                     constraints: BoxConstraints(
                       minWidth: boundedWidth ? constraints.maxWidth : 0,
-                      maxWidth:
-                          boundedWidth ? constraints.maxWidth : double.infinity,
+                      maxWidth: boundedWidth
+                          ? constraints.maxWidth
+                          : double.infinity,
                     ),
                     child: contentWidget,
                   );
@@ -682,7 +730,8 @@ class MessageCard extends StatelessWidget {
                   }
 
                   // Compute collapsed height based on mode
-                  final collapsedHeight = collapseMode == MessageCollapseMode.beforeQuotes
+                  final collapsedHeight =
+                      collapseMode == MessageCollapseMode.beforeQuotes
                       ? _collapsedHeightForQuotes(context, bodyText)
                       : _collapsedHeight(context, maxLines);
 
@@ -761,12 +810,9 @@ class ThreadScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final messages = provider.messagesForThread(thread.id);
-    final selectedMessageIndex =
-        messages.isEmpty ? 0 : messages.length - 1;
+    final selectedMessageIndex = messages.isEmpty ? 0 : messages.length - 1;
     return Shortcuts(
-      shortcuts: {
-        LogicalKeySet(LogicalKeyboardKey.escape): const _PopIntent(),
-      },
+      shortcuts: {LogicalKeySet(LogicalKeyboardKey.escape): const _PopIntent()},
       child: Actions(
         actions: {
           _PopIntent: CallbackAction<_PopIntent>(
@@ -780,10 +826,10 @@ class ThreadScreen extends StatelessWidget {
           body: AnnotatedRegion<SystemUiOverlayStyle>(
             value: SystemUiOverlayStyle(
               statusBarColor: Colors.transparent,
-              statusBarIconBrightness:
-                  isDark ? Brightness.light : Brightness.dark,
-              statusBarBrightness:
-                  isDark ? Brightness.dark : Brightness.light,
+              statusBarIconBrightness: isDark
+                  ? Brightness.light
+                  : Brightness.dark,
+              statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
             ),
             child: TidingsBackground(
               accent: accent,
@@ -818,142 +864,4 @@ class ThreadScreen extends StatelessWidget {
 
 class _PopIntent extends Intent {
   const _PopIntent();
-}
-
-/// WebView that renders HTML and auto-sizes to content height.
-class _HtmlWebView extends StatefulWidget {
-  const _HtmlWebView({
-    required this.html,
-    required this.messageId,
-    this.parentScrollController,
-  });
-
-  final String html;
-  final String messageId;
-  final ScrollController? parentScrollController;
-
-  @override
-  State<_HtmlWebView> createState() => _HtmlWebViewState();
-}
-
-class _HtmlWebViewState extends State<_HtmlWebView> {
-  late final WebViewController _controller;
-  double _contentHeight = 100;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onNavigationRequest: (request) {
-            // Open external links in browser
-            if (request.url != 'about:blank' &&
-                !request.url.startsWith('data:')) {
-              final uri = Uri.tryParse(request.url);
-              if (uri != null) {
-                launchUrl(uri, mode: LaunchMode.externalApplication);
-              }
-              return NavigationDecision.prevent;
-            }
-            return NavigationDecision.navigate;
-          },
-          onPageFinished: (_) => _measureHeight(),
-        ),
-      )
-      ..addJavaScriptChannel(
-        'FlutterHeight',
-        onMessageReceived: (message) {
-          final height = double.tryParse(message.message);
-          if (height != null && height > 0 && mounted) {
-            setState(() => _contentHeight = height);
-          }
-        },
-      );
-    _loadContent();
-  }
-
-  void _loadContent() {
-    final html = '''
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-html, body { margin: 0; padding: 0; overflow: hidden; }
-body { padding: 4px; font-family: -apple-system, system-ui, sans-serif; font-size: 14px; line-height: 1.4; width: 100%; box-sizing: border-box; overflow-wrap: anywhere; }
-* { max-width: 100%; box-sizing: border-box; }
-img, video, iframe { max-width: 100%; height: auto; }
-table { max-width: 100%; border-collapse: collapse; }
-pre { white-space: pre-wrap; word-break: break-word; }
-a { color: #1a73e8; }
-</style>
-</head>
-<body>
-${widget.html}
-<script>
-function reportHeight() {
-  var h = document.body.scrollHeight;
-  if (window.FlutterHeight) FlutterHeight.postMessage(String(h));
-}
-reportHeight();
-window.onload = reportHeight;
-document.querySelectorAll('img').forEach(function(img) {
-  img.onload = reportHeight;
-  img.onerror = reportHeight;
-});
-setTimeout(reportHeight, 100);
-setTimeout(reportHeight, 500);
-</script>
-</body>
-</html>
-''';
-    _controller.loadHtmlString(html);
-  }
-
-  Future<void> _measureHeight() async {
-    try {
-      final result = await _controller.runJavaScriptReturningResult(
-        'document.body.scrollHeight',
-      );
-      final height = double.tryParse(result.toString());
-      if (height != null && height > 0 && mounted) {
-        setState(() => _contentHeight = height);
-      }
-    } catch (_) {}
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: _contentHeight,
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerSignal: (signal) {
-          if (signal is PointerScrollEvent) {
-            final controller = widget.parentScrollController;
-            if (controller == null || !controller.hasClients) {
-              return;
-            }
-            final position = controller.position;
-            final nextOffset =
-                (position.pixels + signal.scrollDelta.dy).clamp(
-              0.0,
-              position.maxScrollExtent,
-            );
-            controller.jumpTo(nextOffset);
-          }
-        },
-        child: IgnorePointer(
-          ignoring: true,
-          child: ExcludeFocus(
-            excluding: true,
-            child: WebViewWidget(controller: _controller),
-          ),
-        ),
-      ),
-    );
-  }
 }
