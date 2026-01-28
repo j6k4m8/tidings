@@ -1,10 +1,10 @@
 # tidings
 
-Tidings is a native, less-hideous email client for IMAP/SMTP servers, built using Flutter.
-
-(Gmail, Exchange, and JMAP are on the roadmap!)
+Tidings is a native, not-ugly email client for IMAP/SMTP servers, built using Flutter. (Gmail, Exchange, and JMAP are on the roadmap!)
 
 <img width="1292" height="1016" alt="image" src="https://github.com/user-attachments/assets/9d27db7e-78c5-4789-ab28-1571f542a950" />
+
+More screenshots in [docs/Screenshots.md](docs/Screenshots.md)!
 
 > [!WARNING]
 >
