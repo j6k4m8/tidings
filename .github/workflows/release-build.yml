@@ -31,7 +31,7 @@ jobs:
             - name: Package app
               shell: bash
               run: |
-                  APP_PATH=$(ls build/macos/Build/Products/Release/*.app | head -n 1)
+                  APP_PATH="build/macos/Build/Products/Release/tidings.app"
                   ZIP_PATH="Tidings-macos.zip"
                   ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
 
