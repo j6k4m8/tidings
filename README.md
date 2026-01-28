@@ -6,7 +6,7 @@ Tidings is a native, less-hideous email client for IMAP/SMTP servers, built usin
 
 <img width="1292" height="1016" alt="image" src="https://github.com/user-attachments/assets/9d27db7e-78c5-4789-ab28-1571f542a950" />
 
-> **[!WARNING]**
+> [!WARNING]
 >
 > This project is in early development. Expect bugs, crashes, and missing features, maybe don't use it for important messages yet! I'd love your feedback, issues, and contributions in the meantime :)
 
