@@ -50,8 +50,8 @@ class _TidingsAppState extends State<TidingsApp> {
               final selectedAccount = _appState.selectedAccount;
               final accentAccountId =
                   _settings.paletteSource == ThemePaletteSource.accountAccent
-                      ? _appState.accentAccountId
-                      : null;
+                  ? _appState.accentAccountId
+                  : null;
               EmailAccount? accentAccount;
               if (accentAccountId == null) {
                 accentAccount = selectedAccount;
@@ -59,31 +59,29 @@ class _TidingsAppState extends State<TidingsApp> {
                 final matches = _appState.accounts
                     .where((account) => account.id == accentAccountId)
                     .toList();
-                accentAccount =
-                    matches.isNotEmpty ? matches.first : selectedAccount;
+                accentAccount = matches.isNotEmpty
+                    ? matches.first
+                    : selectedAccount;
               }
               final baseAccent = accentAccount == null
                   ? TidingsTheme.defaultAccent
                   : accentAccount.accentColorValue == null
-                      ? accentFromAccount(accentAccount.id)
-                      : Color(accentAccount.accentColorValue!);
+                  ? accentFromAccount(accentAccount.id)
+                  : Color(accentAccount.accentColorValue!);
               final brightness = _settings.themeMode == ThemeMode.system
-                  ? WidgetsBinding.instance.platformDispatcher.platformBrightness
+                  ? WidgetsBinding
+                        .instance
+                        .platformDispatcher
+                        .platformBrightness
                   : (_settings.themeMode == ThemeMode.dark
-                      ? Brightness.dark
-                      : Brightness.light);
+                        ? Brightness.dark
+                        : Brightness.light);
               final accent = resolveAccent(baseAccent, brightness);
               final home = snapshot.connectionState != ConnectionState.done
                   ? _BootSplash(accent: accent)
                   : _appState.hasAccounts
-                      ? HomeScreen(
-                          appState: _appState,
-                          accent: accent,
-                        )
-                      : OnboardingScreen(
-                          appState: _appState,
-                          accent: accent,
-                        );
+                  ? HomeScreen(appState: _appState, accent: accent)
+                  : OnboardingScreen(appState: _appState, accent: accent);
               final homeKey = ValueKey<String>(
                 '${accent.value}-${brightness.name}-${_settings.paletteSource.name}-${accentAccountId ?? 'selected'}',
               );
@@ -114,14 +112,9 @@ class _TidingsAppState extends State<TidingsApp> {
                   duration: const Duration(milliseconds: 220),
                   switchInCurve: Curves.easeOutCubic,
                   switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, animation) => FadeTransition(
-                    opacity: animation,
-                    child: child,
-                  ),
-                  child: KeyedSubtree(
-                    key: homeKey,
-                    child: home,
-                  ),
+                  transitionBuilder: (child, animation) =>
+                      FadeTransition(opacity: animation, child: child),
+                  child: KeyedSubtree(key: homeKey, child: home),
                 ),
               );
             },

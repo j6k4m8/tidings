@@ -780,11 +780,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (currentAccount == null) {
                     return null;
                   }
-                  _handleShortcut(
-                    intent.action,
-                    listProvider,
-                    currentAccount,
-                  );
+                  _handleShortcut(intent.action, listProvider, currentAccount);
                   return null;
                 },
               ),
@@ -805,11 +801,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   final showSettings = _showSettings;
                   final effectiveFolderIndex =
                       _folderIndexForPath(
-                      listProvider.folderSections,
-                      listProvider.selectedFolderPath,
+                        listProvider.folderSections,
+                        listProvider.selectedFolderPath,
                       ) ??
                       _selectedFolderIndex;
-                    final threads = listProvider.threads;
+                  final threads = listProvider.threads;
                   final safeThreadIndex = threads.isEmpty
                       ? 0
                       : _selectedIndex(_selectedThreadIndex, threads.length);
@@ -820,9 +816,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? 0
                       : _selectedMessageIndexForThread(
                           selectedThread,
-                        listProvider
-                          .messagesForThread(selectedThread.id)
-                          .length,
+                          listProvider
+                              .messagesForThread(selectedThread.id)
+                              .length,
                         );
                   final detailCurrentUserEmail = _currentUserEmailForThread(
                     selectedThread,
@@ -1021,7 +1017,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 threadListFocusNode: _threadListFocusNode,
                                 listCurrentUserEmail: listCurrentUserEmail,
                                 currentUserEmailForThread: (thread) =>
-                                  _currentUserEmailForThread(thread, account),
+                                    _currentUserEmailForThread(thread, account),
                               ),
                       ),
                     ),
@@ -1313,7 +1309,8 @@ class _WideLayout extends StatelessWidget {
                                             thread: selectedThread,
                                             provider: provider,
                                             isCompact: false,
-                                            currentUserEmail: detailCurrentUserEmail,
+                                            currentUserEmail:
+                                                detailCurrentUserEmail,
                                             replyController: replyController,
                                             selectedMessageIndex:
                                                 selectedMessageIndex,
@@ -1534,8 +1531,9 @@ class _CompactLayout extends StatelessWidget {
                         onSelected: (index) {
                           onThreadSelected(index);
                           final thread = provider.threads[index];
-                          final currentUserEmail =
-                              currentUserEmailForThread(thread);
+                          final currentUserEmail = currentUserEmailForThread(
+                            thread,
+                          );
                           Navigator.of(context).push(
                             MaterialPageRoute<void>(
                               builder: (_) => ThreadScreen(

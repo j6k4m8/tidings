@@ -1,0 +1,169 @@
+name: Release macOS + iOS + Android + Linux
+
+on:
+    push:
+        tags:
+            - "v*"
+    workflow_dispatch:
+
+permissions:
+    contents: write
+
+jobs:
+    build-macos:
+        runs-on: macos-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Set up Flutter
+              uses: subosito/flutter-action@v2
+              with:
+                  channel: "stable"
+                  cache: true
+
+            - name: Install dependencies
+              run: flutter pub get
+
+            - name: Build macOS app
+              run: flutter build macos --release
+
+            - name: Package app
+              shell: bash
+              run: |
+                  APP_PATH=$(ls build/macos/Build/Products/Release/*.app | head -n 1)
+                  ZIP_PATH="Tidings-macos.zip"
+                  ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: Tidings-macos
+                  path: Tidings-macos.zip
+
+            - name: Create GitHub release
+              if: startsWith(github.ref, 'refs/tags/')
+              uses: softprops/action-gh-release@v2
+              with:
+                  files: Tidings-macos.zip
+
+    build-ios:
+        runs-on: macos-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Set up Flutter
+              uses: subosito/flutter-action@v2
+              with:
+                  channel: "stable"
+                  cache: true
+
+            - name: Install dependencies
+              run: flutter pub get
+
+            - name: Build iOS app (Simulator)
+              run: flutter build ios --simulator --no-codesign
+
+            - name: Package app
+              shell: bash
+              run: |
+                  APP_PATH=$(ls build/ios/iphonesimulator/*.app | head -n 1)
+                  ZIP_PATH="Tidings-ios-simulator.zip"
+                  ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: Tidings-ios-simulator
+                  path: Tidings-ios-simulator.zip
+
+            - name: Create GitHub release
+              if: startsWith(github.ref, 'refs/tags/')
+              uses: softprops/action-gh-release@v2
+              with:
+                  files: Tidings-ios-simulator.zip
+
+    build-android:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Set up Java
+              uses: actions/setup-java@v4
+              with:
+                  distribution: "temurin"
+                  java-version: "17"
+
+            - name: Set up Flutter
+              uses: subosito/flutter-action@v2
+              with:
+                  channel: "stable"
+                  cache: true
+
+            - name: Install dependencies
+              run: flutter pub get
+
+            - name: Build Android APK
+              run: flutter build apk --release
+
+            - name: Package APK
+              run: cp build/app/outputs/flutter-apk/app-release.apk Tidings-android.apk
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: Tidings-android
+                  path: Tidings-android.apk
+
+            - name: Create GitHub release
+              if: startsWith(github.ref, 'refs/tags/')
+              uses: softprops/action-gh-release@v2
+              with:
+                  files: Tidings-android.apk
+
+    build-linux:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Install system dependencies
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y \
+                    clang \
+                    cmake \
+                    ninja-build \
+                    pkg-config \
+                    libgtk-3-dev \
+                    liblzma-dev
+
+            - name: Set up Flutter
+              uses: subosito/flutter-action@v2
+              with:
+                  channel: "stable"
+                  cache: true
+
+            - name: Install dependencies
+              run: flutter pub get
+
+            - name: Build Linux bundle
+              run: flutter build linux --release
+
+            - name: Package bundle
+              run: |
+                  tar -czf Tidings-linux.tar.gz -C build/linux/x64/release/bundle .
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: Tidings-linux
+                  path: Tidings-linux.tar.gz
+
+            - name: Create GitHub release
+              if: startsWith(github.ref, 'refs/tags/')
+              uses: softprops/action-gh-release@v2
+              with:
+                  files: Tidings-linux.tar.gz

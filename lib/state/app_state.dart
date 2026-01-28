@@ -104,9 +104,7 @@ class AppState extends ChangeNotifier {
         );
         if (imapConfig.smtpUseImapCredentials &&
             imapConfig.smtpPassword.isEmpty) {
-          imapConfig = imapConfig.copyWith(
-            smtpPassword: imapConfig.password,
-          );
+          imapConfig = imapConfig.copyWith(smtpPassword: imapConfig.password);
         }
       }
       var account = EmailAccount.fromStorageJson(map, imapConfig: imapConfig);
@@ -211,8 +209,7 @@ class AppState extends ChangeNotifier {
     if (config == null) {
       return;
     }
-    final updatedConfig =
-        config.copyWith(checkMailIntervalMinutes: minutes);
+    final updatedConfig = config.copyWith(checkMailIntervalMinutes: minutes);
     _accounts[index] = account.copyWith(imapConfig: updatedConfig);
     final provider = _providers[accountId];
     if (provider is ImapSmtpEmailProvider) {
@@ -235,8 +232,7 @@ class AppState extends ChangeNotifier {
     if (config == null) {
       return;
     }
-    final updatedConfig =
-        config.copyWith(crossFolderThreadingEnabled: enabled);
+    final updatedConfig = config.copyWith(crossFolderThreadingEnabled: enabled);
     _accounts[index] = account.copyWith(imapConfig: updatedConfig);
     final provider = _providers[accountId];
     if (provider is ImapSmtpEmailProvider) {
@@ -269,8 +265,9 @@ class AppState extends ChangeNotifier {
     if (index == -1) {
       return;
     }
-    _accounts[index] =
-        _accounts[index].copyWith(accentColorValue: color.toARGB32());
+    _accounts[index] = _accounts[index].copyWith(
+      accentColorValue: color.toARGB32(),
+    );
     notifyListeners();
     await _persistConfig();
   }
@@ -280,8 +277,9 @@ class AppState extends ChangeNotifier {
     if (index == -1) {
       return;
     }
-    _accounts[index] =
-        _accounts[index].copyWith(accentColorValue: _randomAccentValue());
+    _accounts[index] = _accounts[index].copyWith(
+      accentColorValue: _randomAccentValue(),
+    );
     notifyListeners();
     await _persistConfig();
   }
@@ -328,12 +326,14 @@ class AppState extends ChangeNotifier {
           final configJson = Map<String, Object?>.from(
             account.imapConfig!.toStorageJson(),
           );
-          configJson['passwordB64'] =
-              base64Encode(utf8.encode(account.imapConfig!.password));
+          configJson['passwordB64'] = base64Encode(
+            utf8.encode(account.imapConfig!.password),
+          );
           if (!account.imapConfig!.smtpUseImapCredentials &&
               account.imapConfig!.smtpPassword.isNotEmpty) {
-            configJson['smtpPasswordB64'] =
-                base64Encode(utf8.encode(account.imapConfig!.smtpPassword));
+            configJson['smtpPasswordB64'] = base64Encode(
+              utf8.encode(account.imapConfig!.smtpPassword),
+            );
           }
           json['imapConfig'] = configJson;
         }
@@ -379,11 +379,13 @@ class AppState extends ChangeNotifier {
     final hue = _random.nextInt(360).toDouble();
     final saturation = 0.6 + _random.nextDouble() * 0.2;
     final lightness = 0.5 + _random.nextDouble() * 0.12;
-    return HSLColor.fromAHSL(1, hue, saturation, lightness)
-        .toColor()
-        .toARGB32();
+    return HSLColor.fromAHSL(
+      1,
+      hue,
+      saturation,
+      lightness,
+    ).toColor().toARGB32();
   }
-
 
   Future<ConnectionTestReport> testAccountConnection(
     EmailAccount account,
@@ -401,11 +403,9 @@ class AppState extends ChangeNotifier {
     final imapClient = ImapClient(isLogEnabled: kDebugMode);
     try {
       final step = Stopwatch()..start();
-      await imapClient.connectToServer(
-        config.server,
-        config.port,
-        isSecure: config.useTls,
-      ).timeout(const Duration(seconds: 10));
+      await imapClient
+          .connectToServer(config.server, config.port, isSecure: config.useTls)
+          .timeout(const Duration(seconds: 10));
       step.stop();
       log.writeln('IMAP connect: ${step.elapsedMilliseconds}ms');
       step
@@ -433,8 +433,9 @@ class AppState extends ChangeNotifier {
       }
     }
 
-    final smtpServer =
-        config.smtpServer.isNotEmpty ? config.smtpServer : config.server;
+    final smtpServer = config.smtpServer.isNotEmpty
+        ? config.smtpServer
+        : config.server;
     try {
       final step = Stopwatch()..start();
       final greeting = await _probeSmtpGreeting(
@@ -457,7 +458,6 @@ class AppState extends ChangeNotifier {
       return ConnectionTestReport(ok: false, log: log.toString());
     }
   }
-
 
   String? _decodePassword(Object? raw) {
     if (raw is! String || raw.isEmpty) {
@@ -486,10 +486,14 @@ class AppState extends ChangeNotifier {
     Socket? socket;
     try {
       socket = useImplicitTls
-          ? await SecureSocket.connect(host, port)
-              .timeout(const Duration(seconds: 10))
-          : await Socket.connect(host, port)
-              .timeout(const Duration(seconds: 10));
+          ? await SecureSocket.connect(
+              host,
+              port,
+            ).timeout(const Duration(seconds: 10))
+          : await Socket.connect(
+              host,
+              port,
+            ).timeout(const Duration(seconds: 10));
       final data = await socket.first.timeout(const Duration(seconds: 8));
       return String.fromCharCodes(data).trim();
     } finally {
@@ -499,10 +503,7 @@ class AppState extends ChangeNotifier {
 }
 
 class ConnectionTestReport {
-  const ConnectionTestReport({
-    required this.ok,
-    required this.log,
-  });
+  const ConnectionTestReport({required this.ok, required this.log});
 
   final bool ok;
   final String log;

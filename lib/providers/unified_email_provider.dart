@@ -79,20 +79,20 @@ class UnifiedEmailProvider extends EmailProvider {
 
   @override
   List<FolderSection> get folderSections => const [
-        FolderSection(
-          title: 'Mailboxes',
-          kind: FolderSectionKind.mailboxes,
-          items: [
-            FolderItem(
-              index: 0,
-              name: 'Inbox',
-              path: 'INBOX',
-              unreadCount: 0,
-              icon: Icons.inbox_rounded,
-            ),
-          ],
+    FolderSection(
+      title: 'Mailboxes',
+      kind: FolderSectionKind.mailboxes,
+      items: [
+        FolderItem(
+          index: 0,
+          name: 'Inbox',
+          path: 'INBOX',
+          unreadCount: 0,
+          icon: Icons.inbox_rounded,
         ),
-      ];
+      ],
+    ),
+  ];
 
   @override
   String get selectedFolderPath => _selectedFolderPath;
