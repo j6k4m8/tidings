@@ -170,6 +170,9 @@ void showAccountPickerSheet(
   required AppState appState,
   required Color accent,
   bool showMockOption = false,
+  bool showUnifiedOption = false,
+  VoidCallback? onSelectUnified,
+  VoidCallback? onSelectAccount,
 }) {
   showModalBottomSheet<void>(
     context: context,
@@ -179,6 +182,9 @@ void showAccountPickerSheet(
       appState: appState,
       accent: accent,
       showMockOption: showMockOption,
+      showUnifiedOption: showUnifiedOption,
+      onSelectUnified: onSelectUnified,
+      onSelectAccount: onSelectAccount,
     ),
   );
 }
@@ -228,11 +234,17 @@ class _AccountPickerSheet extends StatelessWidget {
     required this.appState,
     required this.accent,
     required this.showMockOption,
+    required this.showUnifiedOption,
+    required this.onSelectUnified,
+    required this.onSelectAccount,
   });
 
   final AppState appState;
   final Color accent;
   final bool showMockOption;
+  final bool showUnifiedOption;
+  final VoidCallback? onSelectUnified;
+  final VoidCallback? onSelectAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -249,6 +261,17 @@ class _AccountPickerSheet extends StatelessWidget {
             children: [
               Text('Accounts', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 12),
+              if (showUnifiedOption)
+                ListTile(
+                  leading: const Icon(Icons.layers_rounded),
+                  title: const Text('All accounts'),
+                  subtitle: const Text('Unified inbox'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    onSelectUnified?.call();
+                  },
+                ),
+              if (showUnifiedOption) const SizedBox(height: 4),
               ...appState.accounts.asMap().entries.map((entry) {
                 final isSelected =
                     appState.selectedAccount?.id == entry.value.id;
@@ -261,6 +284,7 @@ class _AccountPickerSheet extends StatelessWidget {
                   onTap: () {
                     appState.selectAccount(entry.key);
                     Navigator.of(context).pop();
+                    onSelectAccount?.call();
                   },
                 );
               }),

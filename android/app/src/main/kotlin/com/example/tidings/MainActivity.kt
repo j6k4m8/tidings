@@ -1,4 +1,4 @@
-package com.example.tidings
+package com.matelsky.tidings
 
 import io.flutter.embedding.android.FlutterActivity
 

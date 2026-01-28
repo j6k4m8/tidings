@@ -1,13 +1,5 @@
 # Tidings Roadmap
 
-## Bugs
-
--   [ ] ..scroll jank? can't repro now...
-
-## Papercuts
-
--   [ ] desktop: pop-out compose should open a new OS window (mobile keeps route-based pop-out).
-
 ## Backend Representation (Server-First + Optional Local Files)
 
 -   [x] Start with a mock provider as the MVP source of truth while online; never finalize state locally without server ack.

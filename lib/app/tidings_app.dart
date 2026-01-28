@@ -4,9 +4,11 @@ import 'package:flutter_quill/flutter_quill.dart';
 
 import '../screens/home_screen.dart';
 import '../screens/onboarding_screen.dart';
+import '../models/account_models.dart';
 import '../state/app_state.dart';
 import '../state/tidings_settings.dart';
 import '../theme/account_accent.dart';
+import '../theme/theme_palette.dart';
 import '../theme/tidings_theme.dart';
 import '../widgets/tidings_background.dart';
 
@@ -45,18 +47,46 @@ class _TidingsAppState extends State<TidingsApp> {
           return AnimatedBuilder(
             animation: Listenable.merge([_settings, _appState]),
             builder: (context, _) {
-              final account = _appState.selectedAccount;
-              final baseAccent = account == null
+              final selectedAccount = _appState.selectedAccount;
+              final accentAccountId =
+                  _settings.paletteSource == ThemePaletteSource.accountAccent
+                      ? _appState.accentAccountId
+                      : null;
+              EmailAccount? accentAccount;
+              if (accentAccountId == null) {
+                accentAccount = selectedAccount;
+              } else {
+                final matches = _appState.accounts
+                    .where((account) => account.id == accentAccountId)
+                    .toList();
+                accentAccount =
+                    matches.isNotEmpty ? matches.first : selectedAccount;
+              }
+              final baseAccent = accentAccount == null
                   ? TidingsTheme.defaultAccent
-                  : account.accentColorValue == null
-                      ? accentFromAccount(account.id)
-                      : Color(account.accentColorValue!);
+                  : accentAccount.accentColorValue == null
+                      ? accentFromAccount(accentAccount.id)
+                      : Color(accentAccount.accentColorValue!);
               final brightness = _settings.themeMode == ThemeMode.system
                   ? WidgetsBinding.instance.platformDispatcher.platformBrightness
                   : (_settings.themeMode == ThemeMode.dark
                       ? Brightness.dark
                       : Brightness.light);
               final accent = resolveAccent(baseAccent, brightness);
+              final home = snapshot.connectionState != ConnectionState.done
+                  ? _BootSplash(accent: accent)
+                  : _appState.hasAccounts
+                      ? HomeScreen(
+                          appState: _appState,
+                          accent: accent,
+                        )
+                      : OnboardingScreen(
+                          appState: _appState,
+                          accent: accent,
+                        );
+              final homeKey = ValueKey<String>(
+                '${accent.value}-${brightness.name}-${_settings.paletteSource.name}-${accentAccountId ?? 'selected'}',
+              );
               return MaterialApp(
                 title: 'Tidings',
                 debugShowCheckedModeBanner: false,
@@ -80,17 +110,19 @@ class _TidingsAppState extends State<TidingsApp> {
                   cornerRadiusScale: _settings.cornerRadiusScale,
                   fontScale: 1.0,
                 ),
-                home: snapshot.connectionState != ConnectionState.done
-                    ? _BootSplash(accent: accent)
-                    : _appState.hasAccounts
-                        ? HomeScreen(
-                            appState: _appState,
-                            accent: accent,
-                          )
-                        : OnboardingScreen(
-                            appState: _appState,
-                            accent: accent,
-                          ),
+                home: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: child,
+                  ),
+                  child: KeyedSubtree(
+                    key: homeKey,
+                    child: home,
+                  ),
+                ),
               );
             },
           );

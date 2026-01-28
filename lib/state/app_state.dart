@@ -18,6 +18,7 @@ class AppState extends ChangeNotifier {
   final Map<String, EmailProvider> _providers = {};
   int _selectedAccountIndex = 0;
   bool _hasInitialized = false;
+  String? _accentAccountId;
 
   List<EmailAccount> get accounts => List.unmodifiable(_accounts);
 
@@ -36,6 +37,16 @@ class AppState extends ChangeNotifier {
       return null;
     }
     return _providers[account.id];
+  }
+
+  String? get accentAccountId => _accentAccountId;
+
+  void setAccentAccountId(String? accountId) {
+    if (_accentAccountId == accountId) {
+      return;
+    }
+    _accentAccountId = accountId;
+    notifyListeners();
   }
 
   EmailProvider? providerForAccount(String accountId) {
