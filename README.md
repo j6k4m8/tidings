@@ -12,15 +12,19 @@ More screenshots in [docs/Screenshots.md](docs/Screenshots.md)!
 
 ## Features
 
--   IMAP account onboarding with multi-account support
--   Mock inbox for exploring the UI without a server
--   Threaded inbox + thread detail view with HTML rendering
--   Rich HTML compose with inline replies and draft saving
+-   Multi-account support
+-   IMAP account support, with onboarding wizard
+-   Threaded inbox + thread detail view, with "chat-style" UX
+-   HTML message rendering
+-   Rich HTML compose with styling and saved drafts
 -   IMAP/SMTP connection testing and per-account refresh intervals
 -   Folder pinning with background cached folder loading
--   Per-account accent colors and glass UI styling
+-   Per-account accent colors
 -   Responsive layout for desktop and mobile with folder navigation
--   Appearance settings (theme, palette, density, corner radius, threads)
+-   Configurable appearance settings (theme, palette, density, corner radius, threads)
+-   **KEYBOARD SHORTCUTS KEYBOARD SHORTCUTS KEYBOARD SHORTCUTS**
+
+See [Keyboard](docs/Keyboard.md) for all the shortcuts.
 
 ## Roadmap
 
