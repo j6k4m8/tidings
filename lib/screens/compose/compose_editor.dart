@@ -321,6 +321,7 @@ class _ComposeEditorState extends State<ComposeEditor> {
                   final buttonSize = context.space(26);
                   return SizedBox(
                     width: constraints.maxWidth,
+                    height: resolvedToolbarSize,
                     child: Stack(
                       alignment: Alignment.centerLeft,
                       children: [

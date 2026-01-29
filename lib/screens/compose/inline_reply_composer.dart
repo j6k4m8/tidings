@@ -541,22 +541,6 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
                   maxEditorHeight: context.space(260),
                   editorFocusNode: _editorFocusNode,
                   showEditorBorder: true,
-                  toolbarIconSize: 8,
-                  toolbarIconPadding: EdgeInsets.zero,
-                  toolbarButtonConstraints:
-                      BoxConstraints.tightFor(width: 16, height: 16),
-                  toolbarButtonStyle: const ButtonStyle(
-                    backgroundColor:
-                        WidgetStatePropertyAll<Color>(Colors.transparent),
-                    overlayColor:
-                        WidgetStatePropertyAll<Color>(Colors.transparent),
-                  ),
-                  toolbarDecoration: const BoxDecoration(
-                    color: Colors.transparent,
-                  ),
-                  toolbarSize: 18,
-                  toolbarSectionSpacing: 2,
-                  toolbarMultiRowsDisplay: false,
                   onEscape: () {
                     widget.parentFocusNode?.requestFocus();
                   },
