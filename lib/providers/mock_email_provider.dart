@@ -138,6 +138,15 @@ class MockEmailProvider extends EmailProvider {
         receivedAt: now.subtract(const Duration(hours: 2)),
       ),
       EmailThread(
+        id: 'thread-06',
+        subject: 'HTML-heavy newsletter preview',
+        participants: [_maya, _you],
+        time: '8:55 AM',
+        unread: true,
+        starred: false,
+        receivedAt: now.subtract(const Duration(minutes: 6)),
+      ),
+      EmailThread(
         id: 'thread-03',
         subject: 'Kitchenette smell: status update + suspects',
         participants: [_maya, _you],
@@ -170,6 +179,7 @@ class MockEmailProvider extends EmailProvider {
   static const Map<String, String> _seedThreadFolders = {
     'thread-01': 'INBOX',
     'thread-02': 'INBOX',
+    'thread-06': 'INBOX',
     'thread-03': 'Press',
     'thread-04': 'Product',
     'thread-05': 'Product/Launch notes',
@@ -226,6 +236,58 @@ class MockEmailProvider extends EmailProvider {
             'Agree on the plan. I’ll handle the disposal (again). If we “fix” it and the smell returns, we’ll log it as a false lead.',
         isMe: true,
         isUnread: false,
+      ),
+    ],
+    'thread-06': [
+      EmailMessage(
+        id: 'msg-06-1',
+        threadId: 'thread-06',
+        subject: 'HTML-heavy newsletter preview',
+        from: _maya,
+        to: [_you],
+        time: '8:55 AM',
+        bodyHtml: '''
+<!doctype html>
+<html>
+  <body>
+    <h2 style="margin:0 0 8px 0;">Weekly Brief — Jan 29, 2026</h2>
+    <p style="margin:0 0 12px 0;">
+      Hey team — here’s a quick HTML-heavy sample with lists, tables, and links.
+    </p>
+    <ul>
+      <li><b>Launch status:</b> <span style="color:#1a73e8;">On track</span></li>
+      <li><b>Open items:</b> docs polish, onboarding copy, QA pass</li>
+      <li><b>Next sync:</b> Friday at 10:00 AM</li>
+    </ul>
+    <hr />
+    <table style="border-collapse:collapse; width:100%; margin:12px 0;">
+      <tr>
+        <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px;">Owner</th>
+        <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px;">Task</th>
+        <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px;">Status</th>
+      </tr>
+      <tr>
+        <td style="padding:6px;">Ari</td>
+        <td style="padding:6px;">Landing page tweaks</td>
+        <td style="padding:6px;">In progress</td>
+      </tr>
+      <tr>
+        <td style="padding:6px;">Sam</td>
+        <td style="padding:6px;">Metrics dashboard</td>
+        <td style="padding:6px;">Blocked</td>
+      </tr>
+    </table>
+    <blockquote style="margin:12px 0; padding-left:12px; border-left:3px solid #ddd;">
+      “Small changes compound into a great product.”
+    </blockquote>
+    <p>
+      Read more at <a href="https://tidings.dev">tidings.dev</a>
+    </p>
+  </body>
+</html>
+''',
+        isMe: false,
+        isUnread: true,
       ),
     ],
     'thread-03': [

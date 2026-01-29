@@ -163,115 +163,119 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                   padding: EdgeInsets.all(
                     widget.isCompact ? context.space(16) : context.space(18),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          if (widget.isCompact)
+                  child: SelectionArea(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            if (widget.isCompact)
+                              IconButton(
+                                onPressed: () =>
+                                    Navigator.of(context).maybePop(),
+                                icon: const Icon(Icons.arrow_back_rounded),
+                              ),
+                            Expanded(
+                              child: Text(
+                                widget.thread.subject,
+                                style: Theme.of(context).textTheme.titleMedium,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                             IconButton(
-                              onPressed: () => Navigator.of(context).maybePop(),
-                              icon: const Icon(Icons.arrow_back_rounded),
+                              onPressed: () {},
+                              icon: const Icon(Icons.star_border_rounded),
                             ),
-                          Expanded(
-                            child: Text(
-                              widget.thread.subject,
-                              style: Theme.of(context).textTheme.titleMedium,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            PopupMenuButton<String>(
+                              icon: const Icon(Icons.more_horiz_rounded),
+                              onSelected: (value) {
+                                switch (value) {
+                                  case 'expand_all':
+                                    _expandAll(messages);
+                                  case 'collapse_all':
+                                    _collapseAll(messages);
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(
+                                  value: 'expand_all',
+                                  child: Text('Expand all'),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'collapse_all',
+                                  child: Text('Collapse all'),
+                                ),
+                              ],
                             ),
-                          ),
-                          IconButton(
-                            onPressed: () {},
-                            icon: const Icon(Icons.star_border_rounded),
-                          ),
-                          PopupMenuButton<String>(
-                            icon: const Icon(Icons.more_horiz_rounded),
-                            onSelected: (value) {
-                              switch (value) {
-                                case 'expand_all':
-                                  _expandAll(messages);
-                                case 'collapse_all':
-                                  _collapseAll(messages);
-                              }
-                            },
-                            itemBuilder: (context) => [
-                              const PopupMenuItem(
-                                value: 'expand_all',
-                                child: Text('Expand all'),
-                              ),
-                              const PopupMenuItem(
-                                value: 'collapse_all',
-                                child: Text('Collapse all'),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: context.space(4)),
-                      Text(
-                        widget.thread.participantSummary,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.6),
+                          ],
                         ),
-                      ),
-                      SizedBox(height: context.space(12)),
-                      Expanded(
-                        child: ProviderBody(
-                          status: widget.provider.status,
-                          errorMessage: widget.provider.errorMessage,
-                          onRetry: widget.provider.refresh,
-                          isEmpty: messages.isEmpty,
-                          emptyMessage: 'No messages in this thread.',
-                          child: ListView.separated(
-                            controller: _scrollController,
-                            padding: EdgeInsets.only(bottom: context.space(16)),
-                            itemCount: messages.length,
-                            separatorBuilder: (context, index) => Divider(
-                              height: context.space(16),
-                              thickness: 1,
-                              color: ColorTokens.border(context, 0.1),
-                            ),
-                            itemBuilder: (context, index) {
-                              final message = messages[index];
-                              final isLatest = index == messages.length - 1;
-                              final defaultExpanded =
-                                  (settings.autoExpandLatest && isLatest) ||
-                                  (settings.autoExpandUnread &&
-                                      message.isUnread);
-                              return MessageCard(
-                                key: ValueKey(message.id),
-                                message: message,
-                                accent: widget.accent,
-                                expanded: _isExpanded(
-                                  message.id,
-                                  defaultExpanded,
-                                ),
-                                onToggleExpanded: () => _toggleExpanded(
-                                  message.id,
-                                  defaultExpanded,
-                                ),
-                                isSelected:
-                                    index == widget.selectedMessageIndex,
-                                onSelected: () =>
-                                    widget.onMessageSelected(index),
-                              );
-                            },
+                        SizedBox(height: context.space(4)),
+                        Text(
+                          widget.thread.participantSummary,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurface.withValues(alpha: 0.6),
                           ),
                         ),
-                      ),
-                      SizedBox(height: context.space(12)),
-                      ComposeBar(
-                        accent: widget.accent,
-                        provider: widget.provider,
-                        thread: widget.thread,
-                        currentUserEmail: widget.currentUserEmail,
-                        parentFocusNode: widget.parentFocusNode,
-                        controller: widget.replyController,
-                      ),
-                    ],
+                        SizedBox(height: context.space(12)),
+                        Expanded(
+                          child: ProviderBody(
+                            status: widget.provider.status,
+                            errorMessage: widget.provider.errorMessage,
+                            onRetry: widget.provider.refresh,
+                            isEmpty: messages.isEmpty,
+                            emptyMessage: 'No messages in this thread.',
+                            child: ListView.separated(
+                              controller: _scrollController,
+                              padding:
+                                  EdgeInsets.only(bottom: context.space(16)),
+                              itemCount: messages.length,
+                              separatorBuilder: (context, index) => Divider(
+                                height: context.space(16),
+                                thickness: 1,
+                                color: ColorTokens.border(context, 0.1),
+                              ),
+                              itemBuilder: (context, index) {
+                                final message = messages[index];
+                                final isLatest = index == messages.length - 1;
+                                final defaultExpanded =
+                                    (settings.autoExpandLatest && isLatest) ||
+                                    (settings.autoExpandUnread &&
+                                        message.isUnread);
+                                return MessageCard(
+                                  key: ValueKey(message.id),
+                                  message: message,
+                                  accent: widget.accent,
+                                  expanded: _isExpanded(
+                                    message.id,
+                                    defaultExpanded,
+                                  ),
+                                  onToggleExpanded: () => _toggleExpanded(
+                                    message.id,
+                                    defaultExpanded,
+                                  ),
+                                  isSelected:
+                                      index == widget.selectedMessageIndex,
+                                  onSelected: () =>
+                                      widget.onMessageSelected(index),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: context.space(12)),
+                        ComposeBar(
+                          accent: widget.accent,
+                          provider: widget.provider,
+                          thread: widget.thread,
+                          currentUserEmail: widget.currentUserEmail,
+                          parentFocusNode: widget.parentFocusNode,
+                          controller: widget.replyController,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -578,183 +582,202 @@ class MessageCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(cardRadius),
           border: isSelected
               ? Border.all(color: accent.withValues(alpha: 0.5), width: 1.5)
-              : message.isMe
-              ? Border(
-                  left: BorderSide(
-                    color: accent.withValues(alpha: 0.3),
-                    width: 2,
-                  ),
-                )
               : null,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  message.from.displayName,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                SizedBox(width: context.space(8)),
-                Text(
-                  message.time,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: scheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-                const Spacer(),
-                PopupMenuButton<String>(
-                  icon: Icon(
-                    Icons.more_horiz_rounded,
-                    color: scheme.onSurface.withValues(alpha: 0.5),
-                  ),
-                  padding: EdgeInsets.zero,
-                  onSelected: (value) {
-                    if (value == 'toggle') {
-                      onToggleExpanded();
-                    } else if (value == 'metadata') {
-                      _showMetadataDialog(context);
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    PopupMenuItem(
-                      value: 'toggle',
-                      child: Text(expanded ? 'Collapse' : 'Expand'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'metadata',
-                      child: Text('View metadata'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            SizedBox(height: context.space(6)),
-            if (showSubject) ...[
-              Text(
-                message.subject,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              SizedBox(height: context.space(6)),
-            ],
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) =>
-                  FadeTransition(opacity: animation, child: child),
-              child: LayoutBuilder(
-                key: ValueKey(
-                  'body-${expanded ? 'expanded' : 'collapsed'}-$collapseMode',
-                ),
-                builder: (context, constraints) {
-                  final boundedWidth = constraints.maxWidth.isFinite;
-
-                  final hasTextContent = bodyText.isNotEmpty;
-
-                  Widget contentWidget;
-
-                  if (bodyHtml != null && bodyHtml.trim().isNotEmpty) {
-                    final sanitized = _sanitizeHtml(bodyHtml);
-                    if (sanitized.isNotEmpty) {
-                      contentWidget = HtmlWidget(
-                        sanitized,
-                        textStyle: Theme.of(context).textTheme.bodyLarge,
-                        onTapUrl: (url) {
-                          final uri = Uri.tryParse(url);
-                          if (uri != null) {
-                            launchUrl(
-                              uri,
-                              mode: LaunchMode.externalApplication,
-                            );
-                          }
-                          return true;
-                        },
-                        customStylesBuilder: (element) {
-                          switch (element.localName) {
-                            case 'a':
-                              return {'color': '#1a73e8'};
-                            case 'img':
-                            case 'video':
-                            case 'iframe':
-                            case 'table':
-                              return {'max-width': '100%'};
-                            case 'pre':
-                              return {
-                                'white-space': 'pre-wrap',
-                                'word-break': 'break-word',
-                              };
-                            case 'code':
-                              return {
-                                'font-family': 'SF Mono, Menlo, monospace',
-                              };
-                          }
-                          return null;
-                        },
-                      );
-                    } else {
-                      contentWidget = Text(
-                        bodyText,
-                        style: Theme.of(context).textTheme.bodyLarge,
-                      );
-                    }
-                  } else if (hasTextContent) {
-                    contentWidget = Text(
-                      bodyText,
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    );
-                  } else {
-                    contentWidget = Text(
-                      '[No content]',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        fontStyle: FontStyle.italic,
-                        color: scheme.onSurface.withValues(alpha: 0.5),
-                      ),
-                    );
-                  }
-                  final content = ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minWidth: boundedWidth ? constraints.maxWidth : 0,
-                      maxWidth: boundedWidth
-                          ? constraints.maxWidth
-                          : double.infinity,
-                    ),
-                    child: contentWidget,
-                  );
-
-                  if (!shouldClamp) {
-                    return content;
-                  }
-
-                  // Compute collapsed height based on mode
-                  final collapsedHeight =
-                      collapseMode == MessageCollapseMode.beforeQuotes
-                      ? _collapsedHeightForQuotes(context, bodyText)
-                      : _collapsedHeight(context, maxLines);
-
-                  return Stack(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(cardRadius),
+          child: Stack(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(context.radius(4)),
-                        child: SizedBox(
-                          height: collapsedHeight,
-                          width: boundedWidth ? constraints.maxWidth : null,
-                          child: SingleChildScrollView(
-                            physics: const NeverScrollableScrollPhysics(),
-                            child: content,
-                          ),
+                      Text(
+                        message.from.displayName,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      SizedBox(width: context.space(8)),
+                      Text(
+                        message.time,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
-                      _buildShowMoreButton(context),
+                      const Spacer(),
+                      PopupMenuButton<String>(
+                        icon: Icon(
+                          Icons.more_horiz_rounded,
+                          color: scheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                        padding: EdgeInsets.zero,
+                        onSelected: (value) {
+                          if (value == 'toggle') {
+                            onToggleExpanded();
+                          } else if (value == 'metadata') {
+                            _showMetadataDialog(context);
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 'toggle',
+                            child: Text(expanded ? 'Collapse' : 'Expand'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'metadata',
+                            child: Text('View metadata'),
+                          ),
+                        ],
+                      ),
                     ],
-                  );
-                },
+                  ),
+                  SizedBox(height: context.space(6)),
+                  if (showSubject) ...[
+                    Text(
+                      message.subject,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    SizedBox(height: context.space(6)),
+                  ],
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) =>
+                        FadeTransition(opacity: animation, child: child),
+                    child: LayoutBuilder(
+                      key: ValueKey(
+                        'body-${expanded ? 'expanded' : 'collapsed'}-$collapseMode',
+                      ),
+                      builder: (context, constraints) {
+                        final boundedWidth = constraints.maxWidth.isFinite;
+
+                        final hasTextContent = bodyText.isNotEmpty;
+
+                        Widget contentWidget;
+
+                        if (bodyHtml != null && bodyHtml.trim().isNotEmpty) {
+                          final sanitized = _sanitizeHtml(bodyHtml);
+                          if (sanitized.isNotEmpty) {
+                            contentWidget = HtmlWidget(
+                              sanitized,
+                              textStyle: Theme.of(context).textTheme.bodyLarge,
+                              onTapUrl: (url) {
+                                final uri = Uri.tryParse(url);
+                                if (uri != null) {
+                                  launchUrl(
+                                    uri,
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                }
+                                return true;
+                              },
+                              customStylesBuilder: (element) {
+                                switch (element.localName) {
+                                  case 'a':
+                                    return {'color': '#1a73e8'};
+                                  case 'img':
+                                  case 'video':
+                                  case 'iframe':
+                                  case 'table':
+                                    return {'max-width': '100%'};
+                                  case 'pre':
+                                    return {
+                                      'white-space': 'pre-wrap',
+                                      'word-break': 'break-word',
+                                    };
+                                  case 'code':
+                                    return {
+                                      'font-family':
+                                          'SF Mono, Menlo, monospace',
+                                    };
+                                }
+                                return null;
+                              },
+                            );
+                          } else {
+                            contentWidget = Text(
+                              bodyText,
+                              style: Theme.of(context).textTheme.bodyLarge,
+                            );
+                          }
+                        } else if (hasTextContent) {
+                          contentWidget = Text(
+                            bodyText,
+                            style: Theme.of(context).textTheme.bodyLarge,
+                          );
+                        } else {
+                          contentWidget = Text(
+                            '[No content]',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyLarge
+                                ?.copyWith(
+                                  fontStyle: FontStyle.italic,
+                                  color:
+                                      scheme.onSurface.withValues(alpha: 0.5),
+                                ),
+                          );
+                        }
+                        final content = ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minWidth: boundedWidth ? constraints.maxWidth : 0,
+                            maxWidth: boundedWidth
+                                ? constraints.maxWidth
+                                : double.infinity,
+                          ),
+                          child: contentWidget,
+                        );
+
+                        if (!shouldClamp) {
+                          return content;
+                        }
+
+                        // Compute collapsed height based on mode
+                        final collapsedHeight =
+                            collapseMode == MessageCollapseMode.beforeQuotes
+                            ? _collapsedHeightForQuotes(context, bodyText)
+                            : _collapsedHeight(context, maxLines);
+
+                        return Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius:
+                                  BorderRadius.circular(context.radius(4)),
+                              child: SizedBox(
+                                height: collapsedHeight,
+                                width:
+                                    boundedWidth ? constraints.maxWidth : null,
+                                child: SingleChildScrollView(
+                                  physics:
+                                      const NeverScrollableScrollPhysics(),
+                                  child: content,
+                                ),
+                              ),
+                            ),
+                            _buildShowMoreButton(context),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
+              if (!isSelected && message.isMe)
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 2,
+                    color: accent.withValues(alpha: 0.3),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
