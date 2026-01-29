@@ -19,8 +19,8 @@ import '../widgets/accent_switch.dart';
 import '../widgets/account/account_avatar.dart';
 import '../widgets/accent/accent_presets.dart';
 import '../widgets/accent/accent_swatch.dart';
-import '../widgets/glass/glass_action_button.dart';
 import '../widgets/glass/glass_bottom_nav.dart';
+import '../widgets/paper_panel.dart';
 import '../widgets/settings/corner_radius_option.dart';
 import '../widgets/settings/settings_rows.dart';
 import '../widgets/settings/settings_tabs.dart';
@@ -831,29 +831,27 @@ class _HomeScreenState extends State<HomeScreen> {
                         FloatingActionButtonLocation.endFloat,
                     floatingActionButton: isWide
                         ? null
-                        : GlassActionButton(
-                            accent: widget.accent,
-                            label: 'Compose',
-                            icon: Icons.edit_rounded,
-                            onTap: () => showComposeSheet(
-                              context,
-                              provider: provider,
-                              accent: widget.accent,
-                              currentUserEmail: account.email,
+                        : GlassPanel(
+                            borderRadius: BorderRadius.circular(
+                              context.radius(18),
                             ),
-                            tooltip:
-                                'Compose (${context.tidingsSettings.shortcutLabel(ShortcutAction.compose, includeSecondary: false)})',
-                          ),
-                    bottomNavigationBar: isWide
-                        ? null
-                        : GlassBottomNav(
+                            padding: EdgeInsets.all(context.space(6)),
+                            variant: GlassVariant.pill,
                             accent: widget.accent,
-                            currentIndex: _navIndex,
-                            onTap: (index) => setState(() {
-                              _navIndex = index;
-                              _showSettings = index == 3;
-                            }),
+                            selected: true,
+                            child: IconButton(
+                              onPressed: () => showComposeSheet(
+                                context,
+                                provider: provider,
+                                accent: widget.accent,
+                                currentUserEmail: account.email,
+                              ),
+                              icon: const Icon(Icons.edit_rounded),
+                              tooltip:
+                                  'Compose (${context.tidingsSettings.shortcutLabel(ShortcutAction.compose, includeSecondary: false)})',
+                            ),
                           ),
+                    bottomNavigationBar: null,
                     body: TidingsBackground(
                       accent: widget.accent,
                       child: SafeArea(
@@ -1122,217 +1120,267 @@ class _WideLayout extends StatelessWidget {
 
     return Padding(
       padding: padding,
-      child: PageReveal(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            AnimatedOpacity(
-              opacity: listOpacity,
-              duration: const Duration(milliseconds: 180),
-              child: sidebarCollapsed
-                  ? SizedBox(
-                      width: context.space(72),
-                      child: _SidebarRail(
-                        account: account,
-                        accent: accent,
-                        mailboxItems: _mailboxItems(folderSections),
-                        pinnedItems: pinnedItems,
-                        selectedIndex: selectedFolderIndex,
-                        onSelected: onFolderSelected,
-                        onExpand: onSidebarToggle,
-                        onAccountTap: onAccountTap,
-                        onSettingsTap: onSettingsTap,
-                        onCompose: onCompose,
-                      ),
-                    )
-                  : SizedBox(
-                      width: context.space(240),
-                      child: SidebarPanel(
-                        account: account,
-                        accent: accent,
-                        provider: provider,
-                        sections: folderSections,
-                        selectedIndex: selectedFolderIndex,
-                        onSelected: onFolderSelected,
-                        onSettingsTap: onSettingsTap,
-                        onCollapse: onSidebarToggle,
-                        onAccountTap: onAccountTap,
-                        onCompose: onCompose,
-                      ),
-                    ),
-            ),
-            SizedBox(width: context.space(16)),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final detailOpen = showSettings || threadPanelOpen;
-                  final handleWidth = context.space(12);
-                  if (!detailOpen) {
-                    final availableWidth = constraints.maxWidth;
-                    return Row(
-                      children: [
-                        Expanded(
-                          child: AnimatedOpacity(
-                            opacity: listOpacity,
-                            duration: const Duration(milliseconds: 180),
-                            child: Listener(
-                              onPointerDown: (_) =>
-                                  threadListFocusNode.requestFocus(),
-                              child: Focus(
-                                focusNode: threadListFocusNode,
-                                child: ThreadListPanel(
+      child: Column(
+        children: [
+          _TopBar(
+            title: _folderLabelForPath(
+                  folderSections,
+                  provider.selectedFolderPath,
+                ) ??
+                'Inbox',
+            accent: accent,
+            searchFocusNode: searchFocusNode,
+            onSettingsTap: onSettingsTap,
+            onAccountTap: onAccountTap,
+          ),
+          SizedBox(height: context.space(12)),
+          Expanded(
+            child: PageReveal(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AnimatedOpacity(
+                    opacity: listOpacity,
+                    duration: const Duration(milliseconds: 180),
+                    child: sidebarCollapsed
+                        ? SizedBox(
+                            width: context.space(72),
+                            child: _SidebarRail(
+                              account: account,
+                              accent: accent,
+                              mailboxItems: _mailboxItems(folderSections),
+                              pinnedItems: pinnedItems,
+                              selectedIndex: selectedFolderIndex,
+                              onSelected: onFolderSelected,
+                              onExpand: onSidebarToggle,
+                              onAccountTap: onAccountTap,
+                              onCompose: onCompose,
+                            ),
+                          )
+                        : SizedBox(
+                            width: context.space(240),
+                            child: SidebarPanel(
+                              account: account,
+                              accent: accent,
+                              provider: provider,
+                              sections: folderSections,
+                              selectedIndex: selectedFolderIndex,
+                              onSelected: onFolderSelected,
+                              onSettingsTap: onSettingsTap,
+                              onCollapse: onSidebarToggle,
+                              onAccountTap: onAccountTap,
+                              onCompose: onCompose,
+                            ),
+                          ),
+                  ),
+                  SizedBox(width: context.space(16)),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final detailOpen = showSettings || threadPanelOpen;
+                        final handleWidth = context.space(12);
+                        if (!detailOpen) {
+                          final availableWidth = constraints.maxWidth;
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: AnimatedOpacity(
+                                  opacity: listOpacity,
+                                  duration:
+                                      const Duration(milliseconds: 180),
+                                  child: Listener(
+                                    onPointerDown: (_) =>
+                                        threadListFocusNode.requestFocus(),
+                                    child: Focus(
+                                      focusNode: threadListFocusNode,
+                                      child: PaperPanel(
+                                        borderRadius: BorderRadius.circular(
+                                          context.radius(22),
+                                        ),
+                                        padding: EdgeInsets.all(
+                                          context.space(12),
+                                        ),
+                                        child: ThreadListPanel(
+                                          accent: accent,
+                                          provider: provider,
+                                          selectedIndex: selectedThreadIndex,
+                                          onSelected: onThreadSelected,
+                                          isCompact: false,
+                                          currentUserEmail:
+                                              listCurrentUserEmail,
+                                          searchFocusNode: searchFocusNode,
+                                          showSearch: false,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              IgnorePointer(
+                                ignoring: false,
+                                child: _ThreadPanelHint(
                                   accent: accent,
-                                  provider: provider,
-                                  selectedIndex: selectedThreadIndex,
-                                  onSelected: onThreadSelected,
-                                  isCompact: false,
-                                  currentUserEmail: listCurrentUserEmail,
-                                  searchFocusNode: searchFocusNode,
+                                  width: handleWidth,
+                                  onTap: onThreadPanelOpen,
+                                  onDragUpdate: (delta) {
+                                    onThreadPanelOpen();
+                                    final nextFraction =
+                                        (threadPanelFraction +
+                                                (-delta / availableWidth))
+                                            .clamp(0.3, 0.8);
+                                    onThreadPanelResize(nextFraction);
+                                  },
+                                  onDragEnd: onThreadPanelResizeEnd,
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+
+                        final availableWidth =
+                            constraints.maxWidth - handleWidth;
+                        final minListWidth = context.space(280);
+                        final minDetailWidth = context.space(260);
+                        final snapThreshold = context.space(300);
+                        final maxDetailWidth = availableWidth - minListWidth;
+                        final boundedMaxDetailWidth =
+                            maxDetailWidth < minDetailWidth
+                                ? minDetailWidth
+                                : maxDetailWidth;
+                        final desiredDetailWidth =
+                            availableWidth * threadPanelFraction;
+                        final detailWidth = desiredDetailWidth.clamp(
+                          minDetailWidth,
+                          boundedMaxDetailWidth,
+                        );
+                        final listWidth = availableWidth - detailWidth;
+
+                        void handleResize(double delta) {
+                          final nextDetailWidth = detailWidth - delta;
+                          if (!showSettings &&
+                              nextDetailWidth <= snapThreshold) {
+                            onThreadPanelClose();
+                            return;
+                          }
+                          final clampedWidth = nextDetailWidth.clamp(
+                            minDetailWidth,
+                            boundedMaxDetailWidth,
+                          );
+                          onThreadPanelResize(clampedWidth / availableWidth);
+                        }
+
+                        return Row(
+                          children: [
+                            SizedBox(
+                              width: listWidth,
+                              child: AnimatedOpacity(
+                                opacity: listOpacity,
+                                duration:
+                                    const Duration(milliseconds: 180),
+                                child: Listener(
+                                  onPointerDown: (_) =>
+                                      threadListFocusNode.requestFocus(),
+                                  child: Focus(
+                                    focusNode: threadListFocusNode,
+                                    child: PaperPanel(
+                                      borderRadius: BorderRadius.circular(
+                                        context.radius(22),
+                                      ),
+                                      padding: EdgeInsets.all(
+                                        context.space(12),
+                                      ),
+                                      child: ThreadListPanel(
+                                        accent: accent,
+                                        provider: provider,
+                                        selectedIndex: selectedThreadIndex,
+                                        onSelected: onThreadSelected,
+                                        isCompact: false,
+                                        currentUserEmail:
+                                            listCurrentUserEmail,
+                                        searchFocusNode: searchFocusNode,
+                                        showSearch: false,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ),
-                        IgnorePointer(
-                          ignoring: false,
-                          child: _ThreadPanelHint(
-                            accent: accent,
-                            width: handleWidth,
-                            onTap: onThreadPanelOpen,
-                            onDragUpdate: (delta) {
-                              onThreadPanelOpen();
-                              final nextFraction =
-                                  (threadPanelFraction +
-                                          (-delta / availableWidth))
-                                      .clamp(0.3, 0.8);
-                              onThreadPanelResize(nextFraction);
-                            },
-                            onDragEnd: onThreadPanelResizeEnd,
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-
-                  final availableWidth = constraints.maxWidth - handleWidth;
-                  final minListWidth = context.space(280);
-                  final minDetailWidth = context.space(260);
-                  final snapThreshold = context.space(300);
-                  final maxDetailWidth = availableWidth - minListWidth;
-                  final boundedMaxDetailWidth = maxDetailWidth < minDetailWidth
-                      ? minDetailWidth
-                      : maxDetailWidth;
-                  final desiredDetailWidth =
-                      availableWidth * threadPanelFraction;
-                  final detailWidth = desiredDetailWidth.clamp(
-                    minDetailWidth,
-                    boundedMaxDetailWidth,
-                  );
-                  final listWidth = availableWidth - detailWidth;
-
-                  void handleResize(double delta) {
-                    final nextDetailWidth = detailWidth - delta;
-                    if (!showSettings && nextDetailWidth <= snapThreshold) {
-                      onThreadPanelClose();
-                      return;
-                    }
-                    final clampedWidth = nextDetailWidth.clamp(
-                      minDetailWidth,
-                      boundedMaxDetailWidth,
-                    );
-                    onThreadPanelResize(clampedWidth / availableWidth);
-                  }
-
-                  return Row(
-                    children: [
-                      SizedBox(
-                        width: listWidth,
-                        child: AnimatedOpacity(
-                          opacity: listOpacity,
-                          duration: const Duration(milliseconds: 180),
-                          child: Listener(
-                            onPointerDown: (_) =>
-                                threadListFocusNode.requestFocus(),
-                            child: Focus(
-                              focusNode: threadListFocusNode,
-                              child: ThreadListPanel(
-                                accent: accent,
-                                provider: provider,
-                                selectedIndex: selectedThreadIndex,
-                                onSelected: onThreadSelected,
-                                isCompact: false,
-                                currentUserEmail: listCurrentUserEmail,
-                                searchFocusNode: searchFocusNode,
-                              ),
+                            _ResizeHandle(
+                              onDragUpdate: handleResize,
+                              onDragEnd: onThreadPanelResizeEnd,
                             ),
-                          ),
-                        ),
-                      ),
-                      _ResizeHandle(
-                        onDragUpdate: handleResize,
-                        onDragEnd: onThreadPanelResizeEnd,
-                      ),
-                      SizedBox(
-                        width: detailWidth,
-                        child: showSettings
-                            ? SettingsPanel(
-                                accent: accent,
-                                appState: appState,
-                                onClose: onSettingsClose,
-                              )
-                            : AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 300),
-                                switchInCurve: Curves.easeOutCubic,
-                                switchOutCurve: Curves.easeInCubic,
-                                transitionBuilder: (child, animation) =>
-                                    SizeTransition(
-                                      sizeFactor: animation,
-                                      axisAlignment: -1,
-                                      child: FadeTransition(
-                                        opacity: animation,
-                                        child: child,
-                                      ),
-                                    ),
-                                child: selectedThread == null
-                                    ? const SizedBox.shrink()
-                                    : Listener(
-                                        onPointerDown: (_) =>
-                                            threadDetailFocusNode
-                                                .requestFocus(),
-                                        child: Focus(
-                                          focusNode: threadDetailFocusNode,
-                                          onKeyEvent: (node, event) =>
-                                              onThreadDetailKeyEvent(event),
-                                          child: CurrentThreadPanel(
-                                            key: ValueKey(selectedThread.id),
-                                            accent: accent,
-                                            thread: selectedThread,
-                                            provider: provider,
-                                            isCompact: false,
-                                            currentUserEmail:
-                                                detailCurrentUserEmail,
-                                            replyController: replyController,
-                                            selectedMessageIndex:
-                                                selectedMessageIndex,
-                                            onMessageSelected:
-                                                onMessageSelected,
-                                            isFocused: threadFocused,
-                                            parentFocusNode:
-                                                threadDetailFocusNode,
-                                            scrollController:
-                                                threadDetailScrollController,
-                                          ),
+                            SizedBox(
+                              width: detailWidth,
+                              child: showSettings
+                                  ? SettingsPanel(
+                                      accent: accent,
+                                      appState: appState,
+                                      onClose: onSettingsClose,
+                                    )
+                                  : AnimatedSwitcher(
+                                      duration:
+                                          const Duration(milliseconds: 300),
+                                      switchInCurve: Curves.easeOutCubic,
+                                      switchOutCurve: Curves.easeInCubic,
+                                      transitionBuilder: (child, animation) =>
+                                          SizeTransition(
+                                        sizeFactor: animation,
+                                        axisAlignment: -1,
+                                        child: FadeTransition(
+                                          opacity: animation,
+                                          child: child,
                                         ),
                                       ),
-                              ),
-                      ),
-                    ],
-                  );
-                },
+                                      child: selectedThread == null
+                                          ? const SizedBox.shrink()
+                                          : Listener(
+                                              onPointerDown: (_) =>
+                                                  threadDetailFocusNode
+                                                      .requestFocus(),
+                                              child: Focus(
+                                                focusNode:
+                                                    threadDetailFocusNode,
+                                                onKeyEvent:
+                                                    (node, event) =>
+                                                        onThreadDetailKeyEvent(
+                                                  event,
+                                                ),
+                                                child: CurrentThreadPanel(
+                                                  key: ValueKey(
+                                                    selectedThread.id,
+                                                  ),
+                                                  accent: accent,
+                                                  thread: selectedThread,
+                                                  provider: provider,
+                                                  isCompact: false,
+                                                  currentUserEmail:
+                                                      detailCurrentUserEmail,
+                                                  replyController:
+                                                      replyController,
+                                                  selectedMessageIndex:
+                                                      selectedMessageIndex,
+                                                  onMessageSelected:
+                                                      onMessageSelected,
+                                                  isFocused: threadFocused,
+                                                  parentFocusNode:
+                                                      threadDetailFocusNode,
+                                                  scrollController:
+                                                      threadDetailScrollController,
+                                                ),
+                                              ),
+                                            ),
+                                    ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1370,6 +1418,20 @@ List<FolderItem> _pinnedItems(
     }
   }
   return items;
+}
+
+String? _folderLabelForPath(
+  List<FolderSection> sections,
+  String path,
+) {
+  for (final section in sections) {
+    for (final item in section.items) {
+      if (item.path == path) {
+        return item.name;
+      }
+    }
+  }
+  return null;
 }
 
 const List<FolderItem> _fallbackRailItems = [
@@ -1458,6 +1520,94 @@ class _ThreadPanelHint extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _TopBar extends StatelessWidget {
+  const _TopBar({
+    required this.title,
+    required this.accent,
+    required this.searchFocusNode,
+    required this.onSettingsTap,
+    required this.onAccountTap,
+  });
+
+  final String title;
+  final Color accent;
+  final FocusNode searchFocusNode;
+  final VoidCallback onSettingsTap;
+  final VoidCallback onAccountTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderRadius = BorderRadius.circular(context.radius(18));
+    final fillColor = isDark
+        ? Colors.white.withValues(alpha: 0.05)
+        : Colors.black.withValues(alpha: 0.04);
+    return PaperPanel(
+      borderRadius: BorderRadius.circular(context.radius(20)),
+      padding: EdgeInsets.symmetric(
+        horizontal: context.space(14),
+        vertical: context.space(10),
+      ),
+      fillColor: ColorTokens.cardFillStrong(context, 0.18),
+      elevated: false,
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          SizedBox(width: context.space(14)),
+          Expanded(
+            child: Align(
+              alignment: Alignment.center,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: TextField(
+                  focusNode: searchFocusNode,
+                  decoration: InputDecoration(
+                    hintText: 'Search',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                    isDense: true,
+                    filled: true,
+                    fillColor: fillColor,
+                    contentPadding: EdgeInsets.symmetric(
+                      vertical: context.space(10),
+                      horizontal: context.space(12),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: borderRadius,
+                      borderSide:
+                          BorderSide(color: ColorTokens.border(context, 0.12)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: borderRadius,
+                      borderSide: BorderSide(
+                        color: accent.withValues(alpha: 0.45),
+                        width: 1.2,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: context.space(14)),
+          IconButton(
+            tooltip: 'Account',
+            onPressed: onAccountTap,
+            icon: const Icon(Icons.account_circle_outlined),
+          ),
+          IconButton(
+            tooltip: 'Settings',
+            onPressed: onSettingsTap,
+            icon: const Icon(Icons.settings_rounded),
+          ),
+        ],
       ),
     );
   }
@@ -1621,7 +1771,7 @@ class SidebarPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassPanel(
+    return PaperPanel(
       borderRadius: BorderRadius.circular(context.radius(22)),
       padding: EdgeInsets.fromLTRB(
         context.space(14),
@@ -1629,7 +1779,6 @@ class SidebarPanel extends StatelessWidget {
         context.space(14),
         context.space(12),
       ),
-      variant: GlassVariant.panel,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1691,19 +1840,19 @@ class SidebarPanel extends StatelessWidget {
           SizedBox(height: context.space(8)),
           Row(
             children: [
-              IconButton(
-                onPressed: onSettingsTap,
-                icon: const Icon(Icons.settings_rounded),
-                tooltip: 'Settings',
-              ),
               const Spacer(),
-              GlassActionButton(
+              GlassPanel(
+                borderRadius: BorderRadius.circular(context.radius(18)),
+                padding: EdgeInsets.all(context.space(4)),
+                variant: GlassVariant.pill,
                 accent: accent,
-                label: 'Compose',
-                icon: Icons.edit_rounded,
-                onTap: onCompose,
-                tooltip:
-                    'Compose (${context.tidingsSettings.shortcutLabel(ShortcutAction.compose, includeSecondary: false)})',
+                selected: true,
+                child: IconButton(
+                  onPressed: onCompose,
+                  icon: const Icon(Icons.edit_rounded),
+                  tooltip:
+                      'Compose (${context.tidingsSettings.shortcutLabel(ShortcutAction.compose, includeSecondary: false)})',
+                ),
               ),
             ],
           ),
@@ -2019,7 +2168,6 @@ class _SidebarRail extends StatelessWidget {
     required this.onSelected,
     required this.onExpand,
     required this.onAccountTap,
-    required this.onSettingsTap,
     required this.onCompose,
   });
 
@@ -2031,7 +2179,6 @@ class _SidebarRail extends StatelessWidget {
   final ValueChanged<int> onSelected;
   final VoidCallback onExpand;
   final VoidCallback onAccountTap;
-  final VoidCallback onSettingsTap;
   final VoidCallback onCompose;
 
   @override
@@ -2083,12 +2230,6 @@ class _SidebarRail extends StatelessWidget {
               tooltip:
                   'Compose (${context.tidingsSettings.shortcutLabel(ShortcutAction.compose, includeSecondary: false)})',
             ),
-          ),
-          SizedBox(height: context.space(8)),
-          IconButton(
-            onPressed: onSettingsTap,
-            icon: const Icon(Icons.settings_rounded),
-            tooltip: 'Settings',
           ),
           IconButton(
             onPressed: onExpand,
@@ -2160,8 +2301,14 @@ class _CompactHeader extends StatelessWidget {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Welcome back', style: Theme.of(context).textTheme.labelLarge),
-            Text(account.email, style: Theme.of(context).textTheme.bodyMedium),
+            Text(
+              account.displayName,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            Text(
+              account.email,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
           ],
         ),
         const Spacer(),

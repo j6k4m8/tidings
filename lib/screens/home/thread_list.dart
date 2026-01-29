@@ -119,6 +119,7 @@ class ThreadListPanel extends StatelessWidget {
     required this.isCompact,
     required this.currentUserEmail,
     this.searchFocusNode,
+    this.showSearch = true,
   });
 
   final Color accent;
@@ -128,6 +129,7 @@ class ThreadListPanel extends StatelessWidget {
   final bool isCompact;
   final String currentUserEmail;
   final FocusNode? searchFocusNode;
+  final bool showSearch;
 
   @override
   Widget build(BuildContext context) {
@@ -154,9 +156,11 @@ class ThreadListPanel extends StatelessWidget {
                   const Spacer(),
                 ],
               ),
-              SizedBox(height: context.space(12)),
-              ThreadSearchRow(accent: accent, focusNode: searchFocusNode),
-              SizedBox(height: context.space(12)),
+              if (showSearch) ...[
+                SizedBox(height: context.space(12)),
+                ThreadSearchRow(accent: accent, focusNode: searchFocusNode),
+                SizedBox(height: context.space(12)),
+              ],
               SizedBox(height: context.space(8)),
             ],
             Expanded(
