@@ -242,7 +242,7 @@ class MockEmailProvider extends EmailProvider {
       EmailMessage(
         id: 'msg-06-1',
         threadId: 'thread-06',
-        subject: 'HTML-heavy newsletter preview',
+        subject: 'Newsletter for this week',
         from: _maya,
         to: [_you],
         time: '8:55 AM',
@@ -252,11 +252,11 @@ class MockEmailProvider extends EmailProvider {
   <body>
     <h2 style="margin:0 0 8px 0;">Weekly Brief — Jan 29, 2026</h2>
     <p style="margin:0 0 12px 0;">
-      Hey team — here’s a quick HTML-heavy sample with lists, tables, and links.
+      Hey team — here's a quick update.
     </p>
     <ul>
-      <li><b>Launch status:</b> <span style="color:#1a73e8;">On track</span></li>
-      <li><b>Open items:</b> docs polish, onboarding copy, QA pass</li>
+      <li><b>Status:</b> <span style="color:#1a73e8;">STILL THERES A SMELL</span></li>
+      <li><b>Open items:</b> find smell; identify smell; figure out where smell coming from</li>
       <li><b>Next sync:</b> Friday at 10:00 AM</li>
     </ul>
     <hr />
@@ -267,22 +267,16 @@ class MockEmailProvider extends EmailProvider {
         <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px;">Status</th>
       </tr>
       <tr>
-        <td style="padding:6px;">Ari</td>
-        <td style="padding:6px;">Landing page tweaks</td>
+        <td style="padding:6px;">jordan</td>
+        <td style="padding:6px;">making less smells</td>
         <td style="padding:6px;">In progress</td>
       </tr>
       <tr>
-        <td style="padding:6px;">Sam</td>
-        <td style="padding:6px;">Metrics dashboard</td>
+        <td style="padding:6px;">alice</td>
+        <td style="padding:6px;">smells dashboard</td>
         <td style="padding:6px;">Blocked</td>
       </tr>
     </table>
-    <blockquote style="margin:12px 0; padding-left:12px; border-left:3px solid #ddd;">
-      “Small changes compound into a great product.”
-    </blockquote>
-    <p>
-      Read more at <a href="https://tidings.dev">tidings.dev</a>
-    </p>
   </body>
 </html>
 ''',
