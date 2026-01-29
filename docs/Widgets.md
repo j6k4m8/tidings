@@ -13,6 +13,7 @@ This is a (partial) catalog of reusable UI widgets in Tidings.
 -   `LabeledField`: Text field with a label and hint, used in onboarding.
 -   `ToggleRow`: Label + `AccentSwitch` row for simple boolean toggles.
 -   `AuthFields`: Wrapper that disables and dims auth inputs.
+-   `ComposeForm`: Shared compose body (fields + editor + footer/error slots).
 
 ## Settings
 
@@ -29,6 +30,16 @@ This is a (partial) catalog of reusable UI widgets in Tidings.
 -   `GlassActionButton`: Accent-tinted call-to-action button.
 -   `GlassBottomNav`: Bottom navigation bar with glass styling.
 -   `GlassPill`: Compact glass chip used for filters and tags.
+
+## Home
+
+-   `HomeTopBar`: Accent-aware top app bar with search and primary actions.
+-   `SidebarPanel`: Full sidebar panel with account header, folders, and compose.
+-   `SidebarRail`: Collapsed sidebar rail with icon-only actions.
+-   `FolderList`: Folder tree list with optional sections and pin indicators.
+-   `CompactHeader`: Narrow layout header with account avatar and actions.
+-   `ThreadPanelResizeHandle`: Drag handle for resizing the thread/detail split.
+-   `ThreadPanelHint`: Visual affordance for reopening the thread panel.
 
 ## Animation
 

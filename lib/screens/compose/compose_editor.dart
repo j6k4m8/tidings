@@ -29,6 +29,18 @@ class ComposeEditor extends StatefulWidget {
     this.editorFocusNode,
     this.subjectFocusNode,
     this.onEscape,
+    this.showEditorBorder = false,
+    this.editorBorderColor,
+    this.editorBorderRadius,
+    this.editorPadding,
+    this.toolbarIconSize,
+    this.toolbarIconPadding,
+    this.toolbarButtonConstraints,
+    this.toolbarButtonStyle,
+    this.toolbarDecoration,
+    this.toolbarSize,
+    this.toolbarSectionSpacing,
+    this.toolbarMultiRowsDisplay,
   });
 
   final QuillController controller;
@@ -47,6 +59,18 @@ class ComposeEditor extends StatefulWidget {
   final FocusNode? editorFocusNode;
   final FocusNode? subjectFocusNode;
   final VoidCallback? onEscape;
+  final bool showEditorBorder;
+  final Color? editorBorderColor;
+  final BorderRadius? editorBorderRadius;
+  final EdgeInsetsGeometry? editorPadding;
+  final double? toolbarIconSize;
+  final EdgeInsetsGeometry? toolbarIconPadding;
+  final BoxConstraints? toolbarButtonConstraints;
+  final ButtonStyle? toolbarButtonStyle;
+  final Decoration? toolbarDecoration;
+  final double? toolbarSize;
+  final double? toolbarSectionSpacing;
+  final bool? toolbarMultiRowsDisplay;
 
   @override
   State<ComposeEditor> createState() => _ComposeEditorState();
@@ -65,10 +89,7 @@ class _ComposeEditorState extends State<ComposeEditor> {
     final styles = DefaultStyles.getInstance(context);
     final bodySize = Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14;
     final paragraph = styles.paragraph?.copyWith(
-      style: styles.paragraph!.style.copyWith(
-        fontSize: bodySize,
-        height: 1.4,
-      ),
+      style: styles.paragraph!.style.copyWith(fontSize: bodySize, height: 1.4),
     );
     final placeholder = styles.placeHolder?.copyWith(
       style: styles.placeHolder!.style.copyWith(
@@ -171,8 +192,36 @@ class _ComposeEditorState extends State<ComposeEditor> {
 
   @override
   Widget build(BuildContext context) {
+    const toolbarScale = 0.6;
+    final resolvedToolbarIconSize = widget.toolbarIconSize ?? 10;
+    final resolvedToolbarPadding = widget.toolbarIconPadding ?? EdgeInsets.zero;
+    final resolvedToolbarConstraints =
+        widget.toolbarButtonConstraints ??
+        const BoxConstraints.tightFor(width: 20, height: 20);
+    final resolvedToolbarStyle =
+        widget.toolbarButtonStyle ??
+        const ButtonStyle(
+          backgroundColor: WidgetStatePropertyAll<Color>(Colors.transparent),
+          overlayColor: WidgetStatePropertyAll<Color>(Colors.transparent),
+        );
+    final resolvedToolbarDecoration =
+        widget.toolbarDecoration ??
+        const BoxDecoration(color: Colors.transparent);
+    final resolvedToolbarSize = widget.toolbarSize ?? 24;
+    final resolvedToolbarSpacing = widget.toolbarSectionSpacing ?? 1;
+    final resolvedToolbarMultiRows = widget.toolbarMultiRowsDisplay ?? false;
     final showFields = widget.showFields;
     final textStyle = Theme.of(context).textTheme.bodyMedium;
+    final editorBorderColor =
+        widget.editorBorderColor ?? ColorTokens.border(context, 0.14);
+    final editorBorderRadius =
+        widget.editorBorderRadius ?? BorderRadius.circular(context.radius(16));
+    final editorPadding =
+        widget.editorPadding ??
+        EdgeInsets.symmetric(
+          horizontal: context.space(10),
+          vertical: context.space(8),
+        );
     return FocusTraversalGroup(
       policy: OrderedTraversalPolicy(),
       child: Column(
@@ -182,16 +231,16 @@ class _ComposeEditorState extends State<ComposeEditor> {
             Text(
               widget.recipientSummary!,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: ColorTokens.textSecondary(context),
-                  ),
+                color: ColorTokens.textSecondary(context),
+              ),
             ),
             if (widget.subjectSummary != null) ...[
               SizedBox(height: context.space(6)),
               Text(
                 widget.subjectSummary!,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: ColorTokens.textSecondary(context),
-                    ),
+                  color: ColorTokens.textSecondary(context),
+                ),
               ),
             ],
             SizedBox(height: context.space(10)),
@@ -267,95 +316,147 @@ class _ComposeEditorState extends State<ComposeEditor> {
           if (widget.showFormattingToggle) ...[
             FocusTraversalOrder(
               order: const NumericFocusOrder(5),
-              child: Row(
-                children: [
-                  const Spacer(),
-                  IconButton(
-                    onPressed: _toggleToolbar,
-                    icon: Icon(
-                      _showToolbar
-                          ? Icons.close_fullscreen_rounded
-                          : Icons.text_format_rounded,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final buttonSize = context.space(26);
+                  return SizedBox(
+                    width: constraints.maxWidth,
+                    child: Stack(
+                      alignment: Alignment.centerLeft,
+                      children: [
+                        if (_showToolbar)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Transform.scale(
+                              scale: toolbarScale,
+                              alignment: Alignment.centerLeft,
+                              child: QuillSimpleToolbar(
+                                controller: widget.controller,
+                                config: QuillSimpleToolbarConfig(
+                                  decoration: resolvedToolbarDecoration,
+                                  toolbarIconAlignment: WrapAlignment.start,
+                                  showUndo: false,
+                                  showRedo: false,
+                                  showFontFamily: false,
+                                  showFontSize: false,
+                                  showColorButton: false,
+                                  showBackgroundColorButton: false,
+                                  showSearchButton: false,
+                                  showSubscript: false,
+                                  showSuperscript: false,
+                                  showCodeBlock: false,
+                                  showQuote: false,
+                                  showIndent: false,
+                                  showListNumbers: false,
+                                  showListBullets: false,
+                                  showListCheck: false,
+                                  showInlineCode: false,
+                                  showHeaderStyle: false,
+                                  showClearFormat: false,
+                                  toolbarSize: resolvedToolbarSize,
+                                  toolbarSectionSpacing:
+                                      resolvedToolbarSpacing,
+                                  multiRowsDisplay: true,
+                                  iconTheme: QuillIconTheme(
+                                    iconButtonUnselectedData: IconButtonData(
+                                      iconSize: resolvedToolbarIconSize,
+                                      padding: resolvedToolbarPadding,
+                                      constraints: resolvedToolbarConstraints,
+                                      visualDensity: VisualDensity.compact,
+                                      style: resolvedToolbarStyle,
+                                    ),
+                                    iconButtonSelectedData: IconButtonData(
+                                      iconSize: resolvedToolbarIconSize,
+                                      padding: resolvedToolbarPadding,
+                                      constraints: resolvedToolbarConstraints,
+                                      visualDensity: VisualDensity.compact,
+                                      style: resolvedToolbarStyle,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        Positioned(
+                          right: 0,
+                          child: IconButton(
+                            onPressed: _toggleToolbar,
+                            icon: Icon(
+                              _showToolbar
+                                  ? Icons.close_fullscreen_rounded
+                                  : Icons.text_format_rounded,
+                            ),
+                            tooltip: _showToolbar
+                                ? 'Hide formatting'
+                                : 'Show formatting',
+                            constraints: BoxConstraints.tightFor(
+                              width: buttonSize,
+                              height: buttonSize,
+                            ),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      ],
                     ),
-                    tooltip:
-                        _showToolbar ? 'Hide formatting' : 'Show formatting',
-                  ),
-                ],
+                  );
+                },
               ),
-            ),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              child: _showToolbar
-                  ? QuillSimpleToolbar(
-                      controller: widget.controller,
-                      config: const QuillSimpleToolbarConfig(
-                        showUndo: false,
-                        showRedo: false,
-                        showFontFamily: false,
-                        showFontSize: false,
-                        showColorButton: false,
-                        showBackgroundColorButton: false,
-                        showSearchButton: false,
-                        showSubscript: false,
-                        showSuperscript: false,
-                        showCodeBlock: false,
-                        showQuote: false,
-                        showIndent: false,
-                        showListNumbers: false,
-                        showListBullets: false,
-                        showListCheck: false,
-                        showInlineCode: false,
-                        showHeaderStyle: false,
-                        showClearFormat: false,
-                      ),
-                    )
-                  : const SizedBox.shrink(),
             ),
             SizedBox(height: context.space(8)),
           ],
           FocusTraversalOrder(
             order: const NumericFocusOrder(6),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: widget.minEditorHeight,
-                maxHeight: widget.maxEditorHeight,
-              ),
-              child: QuillEditor.basic(
-                controller: widget.controller,
-                focusNode: _editorFocusNode,
-                config: QuillEditorConfig(
-                  placeholder: widget.placeholder,
-                  customStyles: _editorStyles(context),
-                  customShortcuts: {
-                    const SingleActivator(LogicalKeyboardKey.escape):
-                        const _QuillEscapeIntent(),
-                  },
-                  customActions: {
-                    _QuillEscapeIntent: CallbackAction<_QuillEscapeIntent>(
-                      onInvoke: (intent) {
+            child: Container(
+              decoration: widget.showEditorBorder
+                  ? BoxDecoration(
+                      borderRadius: editorBorderRadius,
+                      border: Border.all(color: editorBorderColor),
+                    )
+                  : null,
+              padding: widget.showEditorBorder ? editorPadding : null,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: widget.minEditorHeight,
+                  maxHeight: widget.maxEditorHeight,
+                ),
+                child: QuillEditor.basic(
+                  controller: widget.controller,
+                  focusNode: _editorFocusNode,
+                  config: QuillEditorConfig(
+                    placeholder: widget.placeholder,
+                    customStyles: _editorStyles(context),
+                    customShortcuts: {
+                      const SingleActivator(LogicalKeyboardKey.escape):
+                          const _QuillEscapeIntent(),
+                    },
+                    customActions: {
+                      _QuillEscapeIntent: CallbackAction<_QuillEscapeIntent>(
+                        onInvoke: (intent) {
+                          if (_editorFocusNode.hasFocus) {
+                            _editorFocusNode.unfocus();
+                          } else {
+                            FocusManager.instance.primaryFocus?.unfocus();
+                          }
+                          widget.onEscape?.call();
+                          return null;
+                        },
+                      ),
+                    },
+                    onKeyPressed: (event, _) {
+                      if (event is KeyDownEvent &&
+                          event.logicalKey == LogicalKeyboardKey.escape) {
                         if (_editorFocusNode.hasFocus) {
                           _editorFocusNode.unfocus();
                         } else {
                           FocusManager.instance.primaryFocus?.unfocus();
                         }
                         widget.onEscape?.call();
-                        return null;
-                      },
-                    ),
-                  },
-                  onKeyPressed: (event, _) {
-                    if (event is KeyDownEvent &&
-                        event.logicalKey == LogicalKeyboardKey.escape) {
-                      if (_editorFocusNode.hasFocus) {
-                        _editorFocusNode.unfocus();
-                      } else {
-                        FocusManager.instance.primaryFocus?.unfocus();
+                        return KeyEventResult.handled;
                       }
-                      widget.onEscape?.call();
-                      return KeyEventResult.handled;
-                    }
-                    return null;
-                  },
+                      return null;
+                    },
+                  ),
                 ),
               ),
             ),

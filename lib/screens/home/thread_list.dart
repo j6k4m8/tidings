@@ -3,9 +3,9 @@ import 'package:flutter/services.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
-import '../../models/folder_models.dart';
 import '../../state/tidings_settings.dart';
 import '../../theme/account_accent.dart';
+import 'home_utils.dart';
 import '../../theme/color_tokens.dart';
 import '../../widgets/animations/staggered_fade_in.dart';
 import 'provider_body.dart';
@@ -146,7 +146,7 @@ class ThreadListPanel extends StatelessWidget {
               Row(
                 children: [
                   Text(
-                    _folderLabelForPath(
+                    folderLabelForPath(
                           provider.folderSections,
                           provider.selectedFolderPath,
                         ) ??
@@ -677,16 +677,4 @@ class _ThreadSectionHeader extends StatelessWidget {
   }
 }
 
-String? _folderLabelForPath(
-  List<FolderSection> sections,
-  String path,
-) {
-  for (final section in sections) {
-    for (final item in section.items) {
-      if (item.path == path) {
-        return item.name;
-      }
-    }
-  }
-  return null;
-}
+// Uses shared home utils.

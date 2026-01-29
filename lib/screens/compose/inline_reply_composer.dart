@@ -4,9 +4,12 @@ import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
+import '../../theme/color_tokens.dart';
 import '../../theme/glass.dart';
 import '../../state/tidings_settings.dart';
 import 'compose_editor.dart';
+import 'compose_form.dart';
+import 'compose_sheet.dart';
 import 'compose_utils.dart';
 
 class InlineReplyController {
@@ -231,7 +234,65 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
     if (_replyMode == ReplyMode.forward) {
       return 'someone';
     }
+    if (_replyMode == ReplyMode.replyAll) {
+      return _replyAllTargetLabel();
+    }
     return name;
+  }
+
+  List<String> _replyAllNames() {
+    final names = <String>[];
+    final seen = <String>{};
+    for (final participant in widget.thread.participants) {
+      if (participant.email == widget.currentUserEmail) {
+        continue;
+      }
+      final name = participant.normalizedDisplayName.trim();
+      if (name.isNotEmpty && !seen.contains(name)) {
+        seen.add(name);
+        names.add(name);
+      }
+    }
+    return names;
+  }
+
+  String _replyAllTargetLabel() {
+    final names = _replyAllNames();
+    if (names.isEmpty) {
+      return 'thread';
+    }
+    if (names.length == 1) {
+      return names.first;
+    }
+    if (names.length == 2) {
+      return '${names[0]} and ${names[1]}';
+    }
+    if (names.length == 3) {
+      return '${names[0]}, ${names[1]}, and ${names[2]}';
+    }
+    final others = names.length - 2;
+    return '${names[0]}, ${names[1]}, and $others others';
+  }
+
+  String _replyLabel() {
+    if (_replyMode == ReplyMode.forward) {
+      return 'Forward';
+    }
+    if (_replyMode == ReplyMode.replyAll) {
+      return 'Reply all to ${_replyAllTargetLabel()}';
+    }
+    return 'Reply to ${_replyTargetLabel()}';
+  }
+
+  String _placeholderForMode() {
+    switch (_replyMode) {
+      case ReplyMode.reply:
+        return 'Reply';
+      case ReplyMode.replyAll:
+        return 'Reply All';
+      case ReplyMode.forward:
+        return 'Forward';
+    }
   }
 
   void _focusEditor() {
@@ -256,13 +317,10 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
   @override
   Widget build(BuildContext context) {
     final errorText = _sendError;
-    final summary = 'To: ${_toController.text.trim()}';
-    final subject =
-        _subjectController.text.trim().isEmpty
-            ? 'Subject: (No subject)'
-            : 'Subject: ${_subjectController.text.trim()}';
-    final collapsedHeight = context.space(44);
+    final collapsedHeight = context.space(42);
     final expandedMinHeight = context.space(140);
+    final replyLabel = _replyLabel();
+    final placeholder = _placeholderForMode();
     return Shortcuts(
       shortcuts: {_escapeKey: const _EscapeIntent()},
       child: Actions(
@@ -279,97 +337,245 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
             },
           ),
         },
-        child: GlassPanel(
-          borderRadius: BorderRadius.circular(context.radius(20)),
+        child: Container(
           padding: EdgeInsets.all(context.space(12)),
-          variant: GlassVariant.sheet,
-          flat: true,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(context.radius(20)),
+            border: Border.all(color: ColorTokens.border(context, 0.18)),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-          Row(
-            children: [
-              PopupMenuButton<ReplyMode>(
-                tooltip: 'Reply options',
-                onSelected: (mode) {
-                  _setReplyMode(mode);
-                },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: ReplyMode.reply,
-                    child: Text('Reply'),
-                  ),
-                  PopupMenuItem(
-                    value: ReplyMode.replyAll,
-                    child: Text('Reply all'),
-                  ),
-                  PopupMenuItem(
-                    value: ReplyMode.forward,
-                    child: Text('Forward'),
-                  ),
-                ],
-                child: Row(
+              if (!_showDetails) ...[
+                Row(
                   children: [
-                    Icon(Icons.reply_rounded,
-                        color: widget.accent, size: 16),
-                    SizedBox(width: context.space(8)),
-                    Text(
-                      '${_replyMode.label} to ${_replyTargetLabel()}',
-                      style: Theme.of(context).textTheme.bodySmall,
+                    PopupMenuButton<ReplyMode>(
+                      tooltip: 'Reply options',
+                      onSelected: (mode) {
+                        _setReplyMode(mode);
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: ReplyMode.reply,
+                          child: Text('Reply'),
+                        ),
+                        PopupMenuItem(
+                          value: ReplyMode.replyAll,
+                          child: Text('Reply all'),
+                        ),
+                        PopupMenuItem(
+                          value: ReplyMode.forward,
+                          child: Text('Forward'),
+                        ),
+                      ],
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.reply_rounded,
+                            color: widget.accent,
+                            size: 16,
+                          ),
+                          SizedBox(width: context.space(8)),
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: context.space(200),
+                            ),
+                            child: Text(
+                              replyLabel,
+                              style: Theme.of(context).textTheme.bodySmall,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Expand',
+                      onPressed: () {
+                        setState(() {
+                          _showDetails = true;
+                        });
+                      },
+                      icon: const Icon(Icons.unfold_more_rounded),
                     ),
                   ],
                 ),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _showDetails = !_showDetails;
-                  });
-                },
-                icon: Icon(
-                  _showDetails
-                      ? Icons.unfold_less_rounded
-                      : Icons.unfold_more_rounded,
+                SizedBox(height: context.space(8)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius:
+                              BorderRadius.circular(context.radius(16)),
+                          border: Border.all(
+                            color: ColorTokens.border(context, 0.14),
+                          ),
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: context.space(8),
+                          vertical: context.space(4),
+                        ),
+                        child: ComposeEditor(
+                          controller: _controller,
+                          toController: _toController,
+                          ccController: _ccController,
+                          bccController: _bccController,
+                          subjectController: _subjectController,
+                          showFields: false,
+                          showFormattingToggle: false,
+                          placeholder: placeholder,
+                          minEditorHeight: collapsedHeight,
+                          maxEditorHeight: collapsedHeight,
+                          editorFocusNode: _editorFocusNode,
+                          onEscape: () {
+                            widget.parentFocusNode?.requestFocus();
+                          },
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: context.space(8)),
+                    GlassPanel(
+                      borderRadius:
+                          BorderRadius.circular(context.radius(16)),
+                      padding: EdgeInsets.all(context.space(4)),
+                      variant: GlassVariant.pill,
+                      accent: widget.accent,
+                      selected: true,
+                      child: IconButton(
+                        onPressed: _isSending ? null : _send,
+                        icon: const Icon(Icons.send_rounded, size: 16),
+                        tooltip: _isSending
+                            ? 'Sending...'
+                            : (_sendError == null ? 'Send' : 'Retry'),
+                      ),
+                    ),
+                  ],
                 ),
-                label: Text(_showDetails ? 'Collapse' : 'Expand'),
-              ),
-            ],
-          ),
-          SizedBox(height: context.space(8)),
-          ComposeEditor(
-            controller: _controller,
-            toController: _toController,
-            ccController: _ccController,
-            bccController: _bccController,
-            subjectController: _subjectController,
-            showFields: _showDetails,
-            showFormattingToggle: _showDetails,
-            recipientSummary: _showDetails ? summary : null,
-            subjectSummary: _showDetails ? subject : null,
-            placeholder: 'Write a reply...',
-            minEditorHeight:
-                _showDetails ? expandedMinHeight : collapsedHeight,
-            maxEditorHeight:
-                _showDetails ? context.space(260) : collapsedHeight,
-            editorFocusNode: _editorFocusNode,
-            onEscape: () {
-              widget.parentFocusNode?.requestFocus();
-            },
-          ),
-          SizedBox(height: context.space(12)),
-          Row(
-            children: [
-              const Spacer(),
-              FilledButton.icon(
-                onPressed: _isSending ? null : _send,
-                icon: const Icon(Icons.send_rounded),
-                label: Text(_isSending
-                    ? 'Sending...'
-                    : (_sendError == null ? 'Send' : 'Retry')),
-              ),
-            ],
-          ),
+              ] else ...[
+                Row(
+                  children: [
+                    PopupMenuButton<ReplyMode>(
+                      tooltip: 'Reply options',
+                      onSelected: (mode) {
+                        _setReplyMode(mode);
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: ReplyMode.reply,
+                          child: Text('Reply'),
+                        ),
+                        PopupMenuItem(
+                          value: ReplyMode.replyAll,
+                          child: Text('Reply all'),
+                        ),
+                        PopupMenuItem(
+                          value: ReplyMode.forward,
+                          child: Text('Forward'),
+                        ),
+                      ],
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.reply_rounded,
+                            color: widget.accent,
+                            size: 16,
+                          ),
+                          SizedBox(width: context.space(8)),
+                          Text(
+                            replyLabel,
+                            style: Theme.of(context).textTheme.bodySmall,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Pop out',
+                      onPressed: () {
+                        showComposeSheet(
+                          context,
+                          provider: widget.provider,
+                          accent: widget.accent,
+                          thread: widget.thread,
+                          currentUserEmail: widget.currentUserEmail,
+                          initialTo: _toController.text,
+                          initialCc: _ccController.text,
+                          initialBcc: _bccController.text,
+                          initialSubject: _subjectController.text,
+                          initialDelta: _controller.document.toDelta(),
+                        );
+                      },
+                      icon: const Icon(Icons.open_in_new_rounded),
+                    ),
+                    TextButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _showDetails = !_showDetails;
+                        });
+                      },
+                      icon: Icon(
+                        _showDetails
+                            ? Icons.unfold_less_rounded
+                            : Icons.unfold_more_rounded,
+                      ),
+                      label: Text(_showDetails ? 'Collapse' : 'Expand'),
+                    ),
+                  ],
+                ),
+                SizedBox(height: context.space(8)),
+                ComposeForm(
+                  controller: _controller,
+                  toController: _toController,
+                  ccController: _ccController,
+                  bccController: _bccController,
+                  subjectController: _subjectController,
+                  showFields: _showDetails,
+                  showFormattingToggle: _showDetails,
+                  placeholder: placeholder,
+                  minEditorHeight: expandedMinHeight,
+                  maxEditorHeight: context.space(260),
+                  editorFocusNode: _editorFocusNode,
+                  showEditorBorder: true,
+                  toolbarIconSize: 8,
+                  toolbarIconPadding: EdgeInsets.zero,
+                  toolbarButtonConstraints:
+                      BoxConstraints.tightFor(width: 16, height: 16),
+                  toolbarButtonStyle: const ButtonStyle(
+                    backgroundColor:
+                        WidgetStatePropertyAll<Color>(Colors.transparent),
+                    overlayColor:
+                        WidgetStatePropertyAll<Color>(Colors.transparent),
+                  ),
+                  toolbarDecoration: const BoxDecoration(
+                    color: Colors.transparent,
+                  ),
+                  toolbarSize: 18,
+                  toolbarSectionSpacing: 2,
+                  toolbarMultiRowsDisplay: false,
+                  onEscape: () {
+                    widget.parentFocusNode?.requestFocus();
+                  },
+                  footer: Row(
+                    children: [
+                      const Spacer(),
+                      FilledButton.icon(
+                        onPressed: _isSending ? null : _send,
+                        icon: const Icon(Icons.send_rounded),
+                        label: Text(
+                          _isSending
+                              ? 'Sending...'
+                              : (_sendError == null ? 'Send' : 'Retry'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
           if (errorText != null) ...[
             SizedBox(height: context.space(8)),
             Row(

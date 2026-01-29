@@ -83,7 +83,7 @@ class _TidingsAppState extends State<TidingsApp> {
                   ? HomeScreen(appState: _appState, accent: accent)
                   : OnboardingScreen(appState: _appState, accent: accent);
               final homeKey = ValueKey<String>(
-                '${accent.value}-${brightness.name}-${_settings.paletteSource.name}-${accentAccountId ?? 'selected'}',
+                '${accent.toARGB32()}-${brightness.name}-${_settings.paletteSource.name}-${accentAccountId ?? 'selected'}',
               );
               return MaterialApp(
                 title: 'Tidings',

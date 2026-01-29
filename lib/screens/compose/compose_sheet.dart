@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:flutter_quill/quill_delta.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
-import '../../theme/glass.dart';
-import 'compose_editor.dart';
+import 'compose_form.dart';
 import '../../widgets/tidings_background.dart';
+import '../../widgets/paper_panel.dart';
 import 'compose_utils.dart';
 
 Future<void> showComposeSheet(
@@ -15,6 +16,11 @@ Future<void> showComposeSheet(
   required Color accent,
   EmailThread? thread,
   String? currentUserEmail,
+  String? initialTo,
+  String? initialCc,
+  String? initialBcc,
+  String? initialSubject,
+  Delta? initialDelta,
 }) {
   final isCompact = MediaQuery.of(context).size.width < 720;
   if (isCompact) {
@@ -27,6 +33,11 @@ Future<void> showComposeSheet(
         accent: accent,
         thread: thread,
         currentUserEmail: currentUserEmail,
+        initialTo: initialTo,
+        initialCc: initialCc,
+        initialBcc: initialBcc,
+        initialSubject: initialSubject,
+        initialDelta: initialDelta,
         isSheet: true,
         allowPopOut: true,
       ),
@@ -45,6 +56,11 @@ Future<void> showComposeSheet(
           accent: accent,
           thread: thread,
           currentUserEmail: currentUserEmail,
+          initialTo: initialTo,
+          initialCc: initialCc,
+          initialBcc: initialBcc,
+          initialSubject: initialSubject,
+          initialDelta: initialDelta,
           isSheet: false,
           allowPopOut: false,
         ),
@@ -59,6 +75,11 @@ Future<void> showComposeWindow(
   required Color accent,
   EmailThread? thread,
   String? currentUserEmail,
+  String? initialTo,
+  String? initialCc,
+  String? initialBcc,
+  String? initialSubject,
+  Delta? initialDelta,
 }) {
   return Navigator.of(context).push(
     MaterialPageRoute(
@@ -67,6 +88,11 @@ Future<void> showComposeWindow(
         accent: accent,
         thread: thread,
         currentUserEmail: currentUserEmail,
+        initialTo: initialTo,
+        initialCc: initialCc,
+        initialBcc: initialBcc,
+        initialSubject: initialSubject,
+        initialDelta: initialDelta,
       ),
     ),
   );
@@ -79,6 +105,11 @@ class ComposeSheet extends StatefulWidget {
     required this.accent,
     this.thread,
     this.currentUserEmail,
+    this.initialTo,
+    this.initialCc,
+    this.initialBcc,
+    this.initialSubject,
+    this.initialDelta,
     required this.isSheet,
     required this.allowPopOut,
   });
@@ -87,6 +118,11 @@ class ComposeSheet extends StatefulWidget {
   final Color accent;
   final EmailThread? thread;
   final String? currentUserEmail;
+  final String? initialTo;
+  final String? initialCc;
+  final String? initialBcc;
+  final String? initialSubject;
+  final Delta? initialDelta;
   final bool isSheet;
   final bool allowPopOut;
 
@@ -109,13 +145,33 @@ class _ComposeSheetState extends State<ComposeSheet> {
   @override
   void initState() {
     super.initState();
-    _controller = QuillController.basic();
-    if (widget.thread != null) {
+    if (widget.initialDelta != null) {
+      final document = Document.fromDelta(widget.initialDelta!);
+      _controller = QuillController(
+        document: document,
+        selection: TextSelection.collapsed(offset: document.length),
+      );
+    } else {
+      _controller = QuillController.basic();
+    }
+    if (widget.initialSubject != null) {
+      _subjectController.text = widget.initialSubject!;
+    } else if (widget.thread != null) {
       _subjectController.text = replySubject(widget.thread!.subject);
+    }
+    if (widget.initialTo != null) {
+      _toController.text = widget.initialTo!;
+    } else if (widget.thread != null) {
       _toController.text = replyRecipients(
         widget.thread!.participants,
         widget.currentUserEmail,
       );
+    }
+    if (widget.initialCc != null) {
+      _ccController.text = widget.initialCc!;
+    }
+    if (widget.initialBcc != null) {
+      _bccController.text = widget.initialBcc!;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -240,6 +296,11 @@ class _ComposeSheetState extends State<ComposeSheet> {
     if (!widget.allowPopOut) {
       return;
     }
+    final delta = _controller.document.toDelta();
+    final to = _toController.text;
+    final cc = _ccController.text;
+    final bcc = _bccController.text;
+    final subject = _subjectController.text;
     Navigator.of(context).pop();
     await showComposeWindow(
       context,
@@ -247,6 +308,11 @@ class _ComposeSheetState extends State<ComposeSheet> {
       accent: widget.accent,
       thread: widget.thread,
       currentUserEmail: widget.currentUserEmail,
+      initialTo: to,
+      initialCc: cc,
+      initialBcc: bcc,
+      initialSubject: subject,
+      initialDelta: delta,
     );
   }
 
@@ -255,16 +321,18 @@ class _ComposeSheetState extends State<ComposeSheet> {
     final insets = MediaQuery.of(context).viewInsets;
     final isReply = widget.thread != null;
     final errorText = _sendError ?? _draftError;
+    final surface = Theme.of(context).colorScheme.surface;
     final padding = widget.isSheet
         ? EdgeInsets.fromLTRB(16, 16, 16, 16 + insets.bottom)
         : EdgeInsets.only(bottom: insets.bottom);
     return SafeArea(
       child: Padding(
         padding: padding,
-        child: GlassPanel(
+        child: PaperPanel(
           borderRadius: BorderRadius.circular(24),
           padding: const EdgeInsets.all(16),
-          variant: GlassVariant.sheet,
+          fillColor: surface,
+          elevated: true,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -296,7 +364,7 @@ class _ComposeSheetState extends State<ComposeSheet> {
                 ],
               ),
               const SizedBox(height: 12),
-              ComposeEditor(
+              ComposeForm(
                 controller: _controller,
                 toController: _toController,
                 ccController: _ccController,
@@ -304,51 +372,32 @@ class _ComposeSheetState extends State<ComposeSheet> {
                 subjectController: _subjectController,
                 toFocusNode: _toFocusNode,
                 showFields: true,
-                placeholder: 'Write something beautiful...',
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Spacer(),
-                  FilledButton.icon(
-                    onPressed: _isSending ? null : _send,
-                    icon: const Icon(Icons.send_rounded),
-                    label: Text(_isSending
-                        ? 'Sending...'
-                        : (_sendError == null ? 'Send' : 'Retry')),
-                  ),
-                ],
-              ),
-              if (errorText != null) ...[
-                const SizedBox(height: 8),
-                Row(
+                placeholder: 'Write a message...',
+                footer: Row(
                   children: [
-                    Text(
-                      _sendError != null ? 'Send error' : 'Draft error',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: Colors.redAccent,
-                          ),
-                    ),
                     const Spacer(),
-                    IconButton(
-                      onPressed: () {
+                    FilledButton.icon(
+                      onPressed: _isSending ? null : _send,
+                      icon: const Icon(Icons.send_rounded),
+                      label: Text(
+                        _isSending
+                            ? 'Sending...'
+                            : (_sendError == null ? 'Send' : 'Retry'),
+                      ),
+                    ),
+                  ],
+                ),
+                errorText: errorText,
+                errorLabel: _sendError != null ? 'Send error' : 'Draft error',
+                onCopyError: errorText == null
+                    ? null
+                    : () {
                         Clipboard.setData(ClipboardData(text: errorText));
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Error copied.')),
                         );
                       },
-                      icon: const Icon(Icons.copy_rounded, size: 18),
-                      tooltip: 'Copy error',
-                    ),
-                  ],
-                ),
-                SelectableText(
-                  errorText,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.redAccent,
-                      ),
-                ),
-              ],
+              ),
             ],
           ),
         ),
@@ -363,12 +412,22 @@ class _ComposeScreen extends StatelessWidget {
     required this.accent,
     this.thread,
     this.currentUserEmail,
+    this.initialTo,
+    this.initialCc,
+    this.initialBcc,
+    this.initialSubject,
+    this.initialDelta,
   });
 
   final EmailProvider provider;
   final Color accent;
   final EmailThread? thread;
   final String? currentUserEmail;
+  final String? initialTo;
+  final String? initialCc;
+  final String? initialBcc;
+  final String? initialSubject;
+  final Delta? initialDelta;
 
   @override
   Widget build(BuildContext context) {
@@ -386,6 +445,11 @@ class _ComposeScreen extends StatelessWidget {
                   accent: accent,
                   thread: thread,
                   currentUserEmail: currentUserEmail,
+                  initialTo: initialTo,
+                  initialCc: initialCc,
+                  initialBcc: initialBcc,
+                  initialSubject: initialSubject,
+                  initialDelta: initialDelta,
                   isSheet: false,
                   allowPopOut: false,
                 ),
