@@ -127,7 +127,6 @@ class WideLayout extends StatelessWidget {
           accent: accent,
           searchFocusNode: searchFocusNode,
           onSettingsTap: onSettingsTap,
-          onAccountTap: onAccountTap,
           onOutboxTap: onOutboxTap,
           onRefreshTap: onRefreshTap,
           outboxCount: outboxCount,
