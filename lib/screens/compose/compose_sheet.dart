@@ -143,6 +143,53 @@ class _ComposeSheetState extends State<ComposeSheet> {
   String? _sendError;
   String? _draftError;
 
+  Future<void> _reopenFromUndo(BuildContext hostContext, OutboxItem item) {
+    if (widget.isSheet) {
+      return showModalBottomSheet<void>(
+        context: hostContext,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => ComposeSheet(
+          provider: widget.provider,
+          accent: widget.accent,
+          thread: widget.thread,
+          currentUserEmail: widget.currentUserEmail,
+          initialTo: item.toLine,
+          initialCc: item.ccLine,
+          initialBcc: item.bccLine,
+          initialSubject: item.subject,
+          initialDelta: deltaFromPlainText(item.bodyText),
+          isSheet: true,
+          allowPopOut: widget.allowPopOut,
+        ),
+      );
+    }
+    return showDialog<void>(
+      context: hostContext,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: ComposeSheet(
+            provider: widget.provider,
+            accent: widget.accent,
+            thread: widget.thread,
+            currentUserEmail: widget.currentUserEmail,
+            initialTo: item.toLine,
+            initialCc: item.ccLine,
+            initialBcc: item.bccLine,
+            initialSubject: item.subject,
+            initialDelta: deltaFromPlainText(item.bodyText),
+            isSheet: false,
+            allowPopOut: false,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -251,18 +298,7 @@ class _ComposeSheetState extends State<ComposeSheet> {
                         );
                         return;
                       }
-                      await showComposeSheet(
-                        messenger.context,
-                        provider: widget.provider,
-                        accent: widget.accent,
-                        thread: widget.thread,
-                        currentUserEmail: widget.currentUserEmail,
-                        initialTo: item.toLine,
-                        initialCc: item.ccLine,
-                        initialBcc: item.bccLine,
-                        initialSubject: item.subject,
-                        initialDelta: deltaFromPlainText(item.bodyText),
-                      );
+                      await _reopenFromUndo(messenger.context, item);
                     },
                   ),
           ),

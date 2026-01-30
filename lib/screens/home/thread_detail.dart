@@ -183,6 +183,11 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
       );
       return;
     }
+    if (widget.replyController != null) {
+      widget.replyController!.restoreDraftForThread(widget.thread.id, item);
+      widget.replyController!.focusEditorForThread(widget.thread.id);
+      return;
+    }
     final thread = _threadForOutboxItem(provider, item);
     await showComposeSheet(
       messenger.context,
