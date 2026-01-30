@@ -111,6 +111,30 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
     });
   }
 
+  String? _outboxIdForMessage(EmailMessage message) {
+    const prefix = 'outbox-';
+    if (!message.id.startsWith(prefix)) {
+      return null;
+    }
+    return message.id.substring(prefix.length);
+  }
+
+  Future<void> _undoSend(String outboxId) async {
+    final messenger = ScaffoldMessenger.of(context);
+    var undone = false;
+    try {
+      undone = await widget.provider.cancelSend(outboxId);
+    } catch (_) {
+      undone = false;
+    }
+    if (!mounted) {
+      return;
+    }
+    messenger.showSnackBar(
+      SnackBar(content: Text(undone ? 'Undone' : 'Unable to undo')),
+    );
+  }
+
   void _toggleExpanded(String messageId, bool defaultExpanded) {
     final current = _isExpanded(messageId, defaultExpanded);
     _setExpanded(messageId, !current);
@@ -244,6 +268,10 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                     (settings.autoExpandLatest && isLatest) ||
                                     (settings.autoExpandUnread &&
                                         message.isUnread);
+                                final outboxId = _outboxIdForMessage(message);
+                                final canUndo = outboxId != null &&
+                                    message.sendStatus ==
+                                        MessageSendStatus.queued;
                                 return MessageCard(
                                   key: ValueKey(message.id),
                                   message: message,
@@ -260,6 +288,9 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                       index == widget.selectedMessageIndex,
                                   onSelected: () =>
                                       widget.onMessageSelected(index),
+                                  onUndoSend: canUndo
+                                      ? () => _undoSend(outboxId!)
+                                      : null,
                                 );
                               },
                             ),
@@ -315,6 +346,7 @@ class MessageCard extends StatelessWidget {
     required this.onToggleExpanded,
     required this.isSelected,
     this.onSelected,
+    this.onUndoSend,
   });
 
   final EmailMessage message;
@@ -323,6 +355,7 @@ class MessageCard extends StatelessWidget {
   final VoidCallback onToggleExpanded;
   final bool isSelected;
   final VoidCallback? onSelected;
+  final VoidCallback? onUndoSend;
 
   static const int _collapsedCharLimit = 420;
 
@@ -594,25 +627,50 @@ class MessageCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        message.from.displayName,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      SizedBox(width: context.space(8)),
-                      Text(
-                        message.time,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: scheme.onSurface.withValues(alpha: 0.6),
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final nameMaxWidth =
+                                (constraints.maxWidth * 0.6).clamp(
+                                      120.0,
+                                      constraints.maxWidth,
+                                    );
+                            return Wrap(
+                              spacing: context.space(8),
+                              runSpacing: context.space(2),
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                ConstrainedBox(
+                                  constraints:
+                                      BoxConstraints(maxWidth: nameMaxWidth),
+                                  child: Text(
+                                    message.from.displayName,
+                                    style:
+                                        Theme.of(context).textTheme.titleMedium,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Text(
+                                  message.time,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                        color: scheme.onSurface
+                                            .withValues(alpha: 0.6),
+                                      ),
+                                ),
+                                if (message.sendStatus != null)
+                                  _SendStatusChip(
+                                    status: message.sendStatus!,
+                                    accent: accent,
+                                  ),
+                              ],
+                            );
+                          },
                         ),
                       ),
-                      if (message.sendStatus != null) ...[
-                        SizedBox(width: context.space(8)),
-                        _SendStatusChip(
-                          status: message.sendStatus!,
-                          accent: accent,
-                        ),
-                      ],
-                      const Spacer(),
                       PopupMenuButton<String>(
                         icon: Icon(
                           Icons.more_horiz_rounded,
@@ -640,6 +698,26 @@ class MessageCard extends StatelessWidget {
                     ],
                   ),
                   SizedBox(height: context.space(6)),
+                  if (onUndoSend != null) ...[
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: onUndoSend,
+                        icon: const Icon(Icons.undo_rounded, size: 16),
+                        label: const Text('Undo send'),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: context.space(6),
+                            vertical: 0,
+                          ),
+                          minimumSize: Size(0, context.space(28)),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: context.space(4)),
+                  ],
                   if (showSubject) ...[
                     Text(
                       message.subject,

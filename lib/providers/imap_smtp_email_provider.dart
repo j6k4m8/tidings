@@ -226,7 +226,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
   }
 
   @override
-  Future<void> sendMessage({
+  Future<OutboxItem?> sendMessage({
     EmailThread? thread,
     required String toLine,
     String? ccLine,
@@ -241,7 +241,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
       throw StateError('No recipients provided.');
     }
     final replySnapshot = _captureReplySnapshot(thread);
-    await _sendQueue.enqueue(
+    return _sendQueue.enqueue(
       OutboxDraft(
         accountKey: accountId,
         threadId: thread?.id,
@@ -255,6 +255,12 @@ class ImapSmtpEmailProvider extends EmailProvider {
         replyInReplyTo: replySnapshot?.inReplyTo,
       ),
     );
+  }
+
+  @override
+  Future<bool> cancelSend(String outboxId) async {
+    await _sendQueue.initialize();
+    return _sendQueue.cancel(outboxId);
   }
 
   Future<void> _sendQueuedMessage(OutboxItem item) async {

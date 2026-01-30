@@ -480,7 +480,7 @@ class MockEmailProvider extends EmailProvider {
   }
 
   @override
-  Future<void> sendMessage({
+  Future<OutboxItem?> sendMessage({
     EmailThread? thread,
     required String toLine,
     String? ccLine,
@@ -493,7 +493,7 @@ class MockEmailProvider extends EmailProvider {
     if (toLine.trim().isEmpty) {
       throw StateError('No recipients provided.');
     }
-    await _sendQueue.enqueue(
+    return _sendQueue.enqueue(
       OutboxDraft(
         accountKey: accountId,
         threadId: thread?.id,
@@ -505,6 +505,12 @@ class MockEmailProvider extends EmailProvider {
         bodyText: bodyText,
       ),
     );
+  }
+
+  @override
+  Future<bool> cancelSend(String outboxId) async {
+    await _sendQueue.initialize();
+    return _sendQueue.cancel(outboxId);
   }
 
   Future<void> _sendQueuedMessage(OutboxItem item) async {

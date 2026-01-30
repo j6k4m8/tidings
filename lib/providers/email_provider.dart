@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/email_models.dart';
 import '../models/folder_models.dart';
+import '../state/send_queue.dart';
 
 enum ProviderStatus {
   idle,
@@ -25,7 +26,7 @@ abstract class EmailProvider extends ChangeNotifier {
   Future<void> initialize();
   Future<void> refresh();
   Future<void> selectFolder(String path);
-  Future<void> sendMessage({
+  Future<OutboxItem?> sendMessage({
     EmailThread? thread,
     required String toLine,
     String? ccLine,
@@ -34,6 +35,8 @@ abstract class EmailProvider extends ChangeNotifier {
     required String bodyHtml,
     required String bodyText,
   });
+
+  Future<bool> cancelSend(String outboxId);
 
   Future<void> saveDraft({
     EmailThread? thread,

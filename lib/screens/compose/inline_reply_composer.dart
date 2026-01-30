@@ -4,6 +4,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
+import '../../state/send_queue.dart';
 import '../../theme/color_tokens.dart';
 import '../../theme/glass.dart';
 import '../../state/tidings_settings.dart';
@@ -213,7 +214,7 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
       _sendError = null;
     });
     try {
-      await widget.provider.sendMessage(
+      final queued = await widget.provider.sendMessage(
         thread: widget.thread,
         toLine: _toController.text.trim(),
         ccLine: _ccController.text.trim(),
@@ -225,9 +226,32 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
         bodyText: plain,
       );
       if (mounted) {
-        // TODO: "Sent (Click to undo)" once undo-send delay is implemented.
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sent')),
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.showSnackBar(
+          SnackBar(
+            // TODO: Replace with "Sent (Click to undo)" when countdown UI ships.
+            content: const Text('Sent'),
+            duration: kUndoSendDelay,
+            action: queued == null
+                ? null
+                : SnackBarAction(
+                    label: 'Undo',
+                    onPressed: () async {
+                      final undone =
+                          await widget.provider.cancelSend(queued.id);
+                      if (!messenger.mounted) {
+                        return;
+                      }
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            undone ? 'Undone' : 'Unable to undo',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
         );
       }
       _controller.clear();

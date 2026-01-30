@@ -9,6 +9,7 @@ import 'package:yaml/yaml.dart';
 import 'config_store.dart';
 
 const String kOutboxFolderPath = 'OUTBOX';
+const Duration kUndoSendDelay = Duration(seconds: 8);
 
 enum OutboxStatus {
   queued,
@@ -201,6 +202,17 @@ class OutboxStore {
     return List<OutboxItem>.from(items);
   }
 
+  OutboxItem? findById(String id) {
+    for (final items in _itemsByAccount.values) {
+      for (final item in items) {
+        if (item.id == id) {
+          return item;
+        }
+      }
+    }
+    return null;
+  }
+
   Future<void> upsertItem(OutboxItem item) async {
     await ensureLoaded();
     final list = _itemsByAccount.putIfAbsent(item.accountKey, () => []);
@@ -307,6 +319,7 @@ class SendQueue {
     required this.saveDraft,
     OutboxStore? store,
     this.maxRetries = 5,
+    this.undoDelay = kUndoSendDelay,
   }) : _store = store ?? OutboxStore.instance;
 
   final String accountKey;
@@ -314,6 +327,7 @@ class SendQueue {
   final Future<void> Function(OutboxItem item) sendNow;
   final Future<void> Function(OutboxItem item) saveDraft;
   final int maxRetries;
+  final Duration undoDelay;
   final OutboxStore _store;
   Timer? _retryTimer;
   bool _processing = false;
@@ -339,6 +353,8 @@ class SendQueue {
   Future<OutboxItem> enqueue(OutboxDraft draft) async {
     await initialize();
     final now = DateTime.now();
+    final scheduled =
+        undoDelay.inMilliseconds > 0 ? now.add(undoDelay) : null;
     final item = OutboxItem(
       id: _generateId(now),
       accountKey: draft.accountKey,
@@ -354,11 +370,42 @@ class SendQueue {
       threadId: draft.threadId,
       replyMessageId: draft.replyMessageId,
       replyInReplyTo: draft.replyInReplyTo,
+      nextAttemptAt: scheduled,
     );
     await _store.upsertItem(item);
     onChanged();
     _kick();
     return item;
+  }
+
+  Future<bool> cancel(String id) async {
+    await initialize();
+    final items = _store.itemsForAccount(accountKey);
+    OutboxItem? item;
+    for (final candidate in items) {
+      if (candidate.id == id) {
+        item = candidate;
+        break;
+      }
+    }
+    if (item == null) {
+      return false;
+    }
+    if (item.status != OutboxStatus.queued || item.attempts > 0) {
+      return false;
+    }
+    final now = DateTime.now();
+    if (item.nextAttemptAt != null &&
+        item.nextAttemptAt!.isBefore(now)) {
+      return false;
+    }
+    try {
+      await saveDraft(item);
+    } catch (_) {}
+    await _store.removeItem(accountKey, item.id);
+    onChanged();
+    _scheduleNextAttempt();
+    return true;
   }
 
   void dispose() {
@@ -399,7 +446,6 @@ class SendQueue {
         if (item == null) {
           break;
         }
-        // TODO: Add configurable undo delay before attempting send.
         final now = DateTime.now();
         if (item.nextAttemptAt != null &&
             item.nextAttemptAt!.isAfter(now)) {
@@ -453,6 +499,7 @@ class SendQueue {
       attempts: attempt,
       lastAttemptAt: now,
       lastError: null,
+      nextAttemptAt: null,
     );
     await _store.upsertItem(inFlight);
     onChanged();
@@ -499,6 +546,7 @@ class SendQueue {
   void _scheduleNextAttempt() {
     final next = _nextItem();
     if (next == null || next.nextAttemptAt == null) {
+      _retryTimer?.cancel();
       return;
     }
     _scheduleRetry(next.nextAttemptAt!);

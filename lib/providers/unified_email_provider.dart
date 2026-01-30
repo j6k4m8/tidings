@@ -1,5 +1,7 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 import '../models/account_models.dart';
 import '../models/email_models.dart';
@@ -195,7 +197,7 @@ class UnifiedEmailProvider extends EmailProvider {
   }
 
   @override
-  Future<void> sendMessage({
+  Future<OutboxItem?> sendMessage({
     EmailThread? thread,
     required String toLine,
     String? ccLine,
@@ -207,7 +209,7 @@ class UnifiedEmailProvider extends EmailProvider {
     if (thread == null) {
       final provider = _providers[_defaultAccountId];
       if (provider != null) {
-        await provider.sendMessage(
+        return provider.sendMessage(
           toLine: toLine,
           ccLine: ccLine,
           bccLine: bccLine,
@@ -216,13 +218,13 @@ class UnifiedEmailProvider extends EmailProvider {
           bodyText: bodyText,
         );
       }
-      return;
+      return null;
     }
     final ref = _threadRefs[thread.id] ?? _rebuildThreadRef(thread.id);
     if (ref == null) {
-      return;
+      return null;
     }
-    await ref.provider.sendMessage(
+    return ref.provider.sendMessage(
       thread: ref.thread,
       toLine: toLine,
       ccLine: ccLine,
@@ -231,6 +233,20 @@ class UnifiedEmailProvider extends EmailProvider {
       bodyHtml: bodyHtml,
       bodyText: bodyText,
     );
+  }
+
+  @override
+  Future<bool> cancelSend(String outboxId) async {
+    await _outboxStore.ensureLoaded();
+    final item = _outboxStore.findById(outboxId);
+    if (item == null) {
+      return false;
+    }
+    final provider = _providers[item.accountKey];
+    if (provider == null) {
+      return false;
+    }
+    return provider.cancelSend(outboxId);
   }
 
   @override

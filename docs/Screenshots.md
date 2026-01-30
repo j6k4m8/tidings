@@ -1,6 +1,10 @@
+# Screenshots
+
+These are unfortunately now outdated! But fortunately there's a new hot look! Hooray!
+
 ## Inbox :)
 
-<img width="1292" height="1016" alt="image" src="https://github.com/user-attachments/assets/9d27db7e-78c5-4789-ab28-1571f542a950" />
+<img width="1236" height="935" alt="Image" src="https://github.com/user-attachments/assets/a5482344-63ad-4df9-aa03-e8e20c47838a" />
 
 ## Inline replies
 
@@ -26,7 +30,7 @@
 
 <img width="1222" height="967" alt="image" src="https://github.com/user-attachments/assets/0a365962-18a8-4ec6-b255-1fac9c179f47" />
 
-## Layout / Appearance Settings 
+## Layout / Appearance Settings
 
 <img width="1222" height="967" alt="image" src="https://github.com/user-attachments/assets/b61c1b4a-a476-474e-a478-a5fa64f7d984" />
 
@@ -45,6 +49,3 @@ So you always know what account you're looking at in unified views
 With optional pinned folders per account
 
 <img width="1170" height="955" alt="image" src="https://github.com/user-attachments/assets/c75d9936-e081-447e-a5f5-bbac19d353e7" />
-
-
-

@@ -5,6 +5,7 @@ import 'package:flutter_quill/quill_delta.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
+import '../../state/send_queue.dart';
 import 'compose_form.dart';
 import '../../widgets/tidings_background.dart';
 import '../../widgets/paper_panel.dart';
@@ -217,7 +218,7 @@ class _ComposeSheetState extends State<ComposeSheet> {
     final bcc = _bccController.text.trim();
 
     try {
-      await widget.provider.sendMessage(
+      final queued = await widget.provider.sendMessage(
         thread: widget.thread,
         toLine: to,
         ccLine: cc,
@@ -227,9 +228,32 @@ class _ComposeSheetState extends State<ComposeSheet> {
         bodyText: plain,
       );
       if (mounted) {
-        // TODO: "Sent (Click to undo)" once undo-send delay is implemented.
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sent')),
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.showSnackBar(
+          SnackBar(
+            // TODO: Replace with "Sent (Click to undo)" when countdown UI ships.
+            content: const Text('Sent'),
+            duration: kUndoSendDelay,
+            action: queued == null
+                ? null
+                : SnackBarAction(
+                    label: 'Undo',
+                    onPressed: () async {
+                      final undone =
+                          await widget.provider.cancelSend(queued.id);
+                      if (!messenger.mounted) {
+                        return;
+                      }
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            undone ? 'Undone' : 'Unable to undo',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
         );
       }
       if (mounted) {
