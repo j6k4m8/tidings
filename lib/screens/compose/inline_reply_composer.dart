@@ -182,7 +182,7 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
   void _applyMode(ReplyMode mode) {
     final latest = widget.provider.latestMessageForThread(widget.thread.id);
     if (mode == ReplyMode.forward) {
-      _subjectController.text = _forwardSubject(widget.thread.subject);
+      _subjectController.text = forwardSubject(widget.thread.subject);
       _toController.text = '';
       _showDetails = true;
     } else if (mode == ReplyMode.replyAll) {
@@ -705,13 +705,4 @@ extension ReplyModeMeta on ReplyMode {
         return 'Forward';
     }
   }
-}
-
-String _forwardSubject(String subject) {
-  final trimmed = subject.trim();
-  if (trimmed.toLowerCase().startsWith('fwd:') ||
-      trimmed.toLowerCase().startsWith('fw:')) {
-    return trimmed;
-  }
-  return trimmed.isEmpty ? 'Fwd:' : 'Fwd: $trimmed';
 }

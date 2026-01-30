@@ -10,6 +10,15 @@ String replySubject(String subject) {
   return trimmed.isEmpty ? 'Re:' : 'Re: $trimmed';
 }
 
+String forwardSubject(String subject) {
+  final trimmed = subject.trim();
+  final lowered = trimmed.toLowerCase();
+  if (lowered.startsWith('fwd:') || lowered.startsWith('fw:')) {
+    return trimmed;
+  }
+  return trimmed.isEmpty ? 'Fwd:' : 'Fwd: $trimmed';
+}
+
 String replyRecipients(
   List<EmailAddress> participants,
   String? currentUserEmail,

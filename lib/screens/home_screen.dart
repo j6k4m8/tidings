@@ -16,6 +16,7 @@ import '../theme/glass.dart';
 import '../widgets/settings/shortcut_recorder.dart';
 import '../widgets/tidings_background.dart';
 import 'compose/compose_sheet.dart';
+import 'compose/compose_utils.dart';
 import 'compose/inline_reply_composer.dart';
 import 'home/home_utils.dart';
 import 'home/home_layouts.dart';
@@ -529,14 +530,18 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _triggerReply(
+  Future<void> _triggerReply(
     EmailProvider provider,
     EmailAccount account,
     ReplyMode mode,
-  ) {
+  ) async {
     final thread = _currentThread(provider);
     if (thread == null) {
       _toast('No thread selected.');
+      return;
+    }
+    if (_resolveScope() == _HomeScope.list) {
+      await _openReplyFromList(provider, account, thread, mode);
       return;
     }
     setState(() {
@@ -552,6 +557,52 @@ class _HomeScreenState extends State<HomeScreen> {
       _inlineReplyController.setModeForThread(thread.id, mode);
       _inlineReplyController.focusEditorForThread(thread.id);
     });
+  }
+
+  Future<void> _openReplyFromList(
+    EmailProvider provider,
+    EmailAccount account,
+    EmailThread thread,
+    ReplyMode mode,
+  ) async {
+    final currentUserEmail = _currentUserEmailForThread(thread, account);
+    final latest = provider.latestMessageForThread(thread.id);
+    final subject = mode == ReplyMode.forward
+        ? forwardSubject(thread.subject)
+        : replySubject(thread.subject);
+    String to;
+    switch (mode) {
+      case ReplyMode.replyAll:
+        to = replyRecipients(thread.participants, currentUserEmail);
+        break;
+      case ReplyMode.forward:
+        to = '';
+        break;
+      case ReplyMode.reply:
+        final latestSender = latest?.from;
+        if (latestSender != null && latestSender.email != currentUserEmail) {
+          to = latestSender.email;
+        } else if (thread.participants.isNotEmpty) {
+          to = thread.participants
+              .firstWhere(
+                (participant) => participant.email != currentUserEmail,
+                orElse: () => latestSender ?? thread.participants.first,
+              )
+              .email;
+        } else {
+          to = '';
+        }
+        break;
+    }
+    await showComposeSheet(
+      context,
+      provider: provider,
+      accent: widget.accent,
+      thread: thread,
+      currentUserEmail: currentUserEmail,
+      initialTo: to,
+      initialSubject: subject,
+    );
   }
 
   Future<void> _archiveSelectedThread(EmailProvider provider) async {
@@ -721,13 +772,13 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         break;
       case ShortcutAction.reply:
-        _triggerReply(provider, account, ReplyMode.reply);
+        await _triggerReply(provider, account, ReplyMode.reply);
         break;
       case ShortcutAction.replyAll:
-        _triggerReply(provider, account, ReplyMode.replyAll);
+        await _triggerReply(provider, account, ReplyMode.replyAll);
         break;
       case ShortcutAction.forward:
-        _triggerReply(provider, account, ReplyMode.forward);
+        await _triggerReply(provider, account, ReplyMode.forward);
         break;
       case ShortcutAction.archive:
         await _archiveSelectedThread(provider);
