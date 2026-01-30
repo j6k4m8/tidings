@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
 import '../../providers/unified_email_provider.dart';
+import '../../state/shortcut_definitions.dart';
 import '../../state/send_queue.dart';
 import '../../state/tidings_settings.dart';
 import '../../theme/color_tokens.dart';
@@ -1008,7 +1010,7 @@ class ComposeBar extends StatelessWidget {
   }
 }
 
-class ThreadScreen extends StatelessWidget {
+class ThreadScreen extends StatefulWidget {
   const ThreadScreen({
     super.key,
     required this.accent,
@@ -1023,17 +1025,96 @@ class ThreadScreen extends StatelessWidget {
   final String currentUserEmail;
 
   @override
+  State<ThreadScreen> createState() => _ThreadScreenState();
+}
+
+class _ThreadScreenState extends State<ThreadScreen> {
+  final InlineReplyController _replyController = InlineReplyController();
+
+  bool _isTextInputFocused() {
+    final focus = FocusManager.instance.primaryFocus;
+    if (focus == null) {
+      return false;
+    }
+    final context = focus.context;
+    if (context == null) {
+      return false;
+    }
+    final widget = context.widget;
+    if (widget is EditableText || widget is QuillEditor) {
+      return true;
+    }
+    return context.findAncestorWidgetOfExactType<EditableText>() != null ||
+        context.findAncestorWidgetOfExactType<QuillEditor>() != null;
+  }
+
+  Map<LogicalKeySet, Intent> _shortcutMap(
+    TidingsSettings settings, {
+    required bool allowGlobal,
+  }) {
+    final shortcuts = <LogicalKeySet, Intent>{};
+    void addShortcut(ShortcutAction action, Intent intent) {
+      if (!allowGlobal) {
+        return;
+      }
+      shortcuts[settings.shortcutFor(action).toKeySet()] = intent;
+      final secondary = settings.secondaryShortcutFor(action);
+      if (secondary != null) {
+        shortcuts[secondary.toKeySet()] = intent;
+      }
+    }
+
+    addShortcut(
+      ShortcutAction.reply,
+      const _ReplyIntent(ReplyMode.reply),
+    );
+    addShortcut(
+      ShortcutAction.replyAll,
+      const _ReplyIntent(ReplyMode.replyAll),
+    );
+    addShortcut(
+      ShortcutAction.forward,
+      const _ReplyIntent(ReplyMode.forward),
+    );
+    shortcuts[LogicalKeySet(LogicalKeyboardKey.escape)] = const _PopIntent();
+    return shortcuts;
+  }
+
+  void _triggerReply(ReplyMode mode) {
+    final threadId = widget.thread.id;
+    _replyController.setModeForThread(threadId, mode);
+    _replyController.focusEditorForThread(threadId);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _replyController.setModeForThread(threadId, mode);
+      _replyController.focusEditorForThread(threadId);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final messages = provider.messagesForThread(thread.id);
+    final messages = widget.provider.messagesForThread(widget.thread.id);
     final selectedMessageIndex = messages.isEmpty ? 0 : messages.length - 1;
+    final settings = context.tidingsSettings;
+    final allowGlobal = !_isTextInputFocused();
     return Shortcuts(
-      shortcuts: {LogicalKeySet(LogicalKeyboardKey.escape): const _PopIntent()},
+      shortcuts: _shortcutMap(settings, allowGlobal: allowGlobal),
       child: Actions(
         actions: {
           _PopIntent: CallbackAction<_PopIntent>(
             onInvoke: (intent) {
-              Navigator.of(context).maybePop();
+              if (!_isTextInputFocused()) {
+                Navigator.of(context).maybePop();
+              }
+              return null;
+            },
+          ),
+          _ReplyIntent: CallbackAction<_ReplyIntent>(
+            onInvoke: (intent) {
+              _triggerReply(intent.mode);
               return null;
             },
           ),
@@ -1048,7 +1129,7 @@ class ThreadScreen extends StatelessWidget {
               statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
             ),
             child: TidingsBackground(
-              accent: accent,
+              accent: widget.accent,
               child: SafeArea(
                 top: false,
                 child: Padding(
@@ -1059,14 +1140,15 @@ class ThreadScreen extends StatelessWidget {
                     context.gutter(16),
                   ),
                   child: CurrentThreadPanel(
-                    accent: accent,
-                    thread: thread,
-                    provider: provider,
+                    accent: widget.accent,
+                    thread: widget.thread,
+                    provider: widget.provider,
                     isCompact: true,
-                    currentUserEmail: currentUserEmail,
+                    currentUserEmail: widget.currentUserEmail,
                     selectedMessageIndex: selectedMessageIndex,
                     onMessageSelected: (_) {},
                     isFocused: true,
+                    replyController: _replyController,
                   ),
                 ),
               ),
@@ -1080,4 +1162,10 @@ class ThreadScreen extends StatelessWidget {
 
 class _PopIntent extends Intent {
   const _PopIntent();
+}
+
+class _ReplyIntent extends Intent {
+  const _ReplyIntent(this.mode);
+
+  final ReplyMode mode;
 }
