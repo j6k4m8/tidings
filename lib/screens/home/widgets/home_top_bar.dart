@@ -11,12 +11,20 @@ class HomeTopBar extends StatelessWidget {
     required this.searchFocusNode,
     required this.onSettingsTap,
     required this.onAccountTap,
+    required this.onOutboxTap,
+    required this.onRefreshTap,
+    required this.outboxCount,
+    required this.outboxSelected,
   });
 
   final Color accent;
   final FocusNode searchFocusNode;
   final VoidCallback onSettingsTap;
   final VoidCallback onAccountTap;
+  final VoidCallback onOutboxTap;
+  final VoidCallback onRefreshTap;
+  final int outboxCount;
+  final bool outboxSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -100,6 +108,17 @@ class HomeTopBar extends StatelessWidget {
                   ),
                 ),
                 SizedBox(width: context.space(12)),
+                _OutboxButton(
+                  count: outboxCount,
+                  accent: accent,
+                  selected: outboxSelected,
+                  onTap: onOutboxTap,
+                ),
+                IconButton(
+                  tooltip: 'Refresh',
+                  onPressed: onRefreshTap,
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
                 IconButton(
                   tooltip: 'Account',
                   onPressed: onAccountTap,
@@ -115,6 +134,56 @@ class HomeTopBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _OutboxButton extends StatelessWidget {
+  const _OutboxButton({
+    required this.count,
+    required this.accent,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final int count;
+  final Color accent;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = count > 99 ? '99+' : count.toString();
+    final badgeVisible = count > 0;
+    final iconColor = selected ? accent.withValues(alpha: 0.9) : null;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          tooltip: badgeVisible ? 'Outbox ($label)' : 'Outbox',
+          onPressed: onTap,
+          icon: Icon(Icons.outbox_rounded, color: iconColor),
+        ),
+        if (badgeVisible)
+          Positioned(
+            right: 6,
+            top: 6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: accent,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../utils/contact_utils.dart';
 
+enum MessageSendStatus {
+  queued,
+  sending,
+  failed,
+}
+
 @immutable
 class EmailAddress {
   const EmailAddress({
@@ -73,6 +79,7 @@ class EmailMessage {
     this.receivedAt,
     this.messageId,
     this.inReplyTo,
+    this.sendStatus,
   });
 
   final String id;
@@ -90,6 +97,7 @@ class EmailMessage {
   final DateTime? receivedAt;
   final String? messageId;
   final String? inReplyTo;
+  final MessageSendStatus? sendStatus;
 
   String get toSummary {
     return to.map((recipient) => recipient.displayName).join(', ');

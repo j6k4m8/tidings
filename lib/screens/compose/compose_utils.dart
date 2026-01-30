@@ -52,6 +52,12 @@ String deltaToHtml(Delta delta) {
   return buffer.toString();
 }
 
+Delta deltaFromPlainText(String text) {
+  final normalized = text.replaceAll('\r\n', '\n');
+  final content = normalized.endsWith('\n') ? normalized : '$normalized\n';
+  return Delta()..insert(content);
+}
+
 String _wrapInline(String text, Map<String, dynamic> attrs) {
   var result = text;
   if (attrs['bold'] == true) {

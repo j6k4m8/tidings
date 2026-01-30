@@ -170,6 +170,10 @@ class TidingsTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF0B0F14).withValues(alpha: 0.95),
+        contentTextStyle: textTheme.bodyMedium?.copyWith(
+          color: Colors.white.withValues(alpha: 0.92),
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14 * cornerRadiusScale),
         ),

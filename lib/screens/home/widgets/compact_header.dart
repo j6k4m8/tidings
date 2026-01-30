@@ -39,20 +39,26 @@ class CompactHeader extends StatelessWidget {
           child: AccountAvatar(name: account.displayName, accent: accent),
         ),
         SizedBox(width: context.space(12)),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              account.displayName,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            Text(
-              account.email,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                account.displayName,
+                style: Theme.of(context).textTheme.titleMedium,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                account.email,
+                style: Theme.of(context).textTheme.bodyMedium,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
-        const Spacer(),
+        SizedBox(width: context.space(8)),
         IconButton(
           onPressed: onAccountTap,
           icon: const Icon(Icons.people_alt_rounded),

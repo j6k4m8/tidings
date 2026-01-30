@@ -357,7 +357,7 @@ class _ComposeEditorState extends State<ComposeEditor> {
                                   toolbarSize: resolvedToolbarSize,
                                   toolbarSectionSpacing:
                                       resolvedToolbarSpacing,
-                                  multiRowsDisplay: true,
+                                  multiRowsDisplay: resolvedToolbarMultiRows,
                                   iconTheme: QuillIconTheme(
                                     iconButtonUnselectedData: IconButtonData(
                                       iconSize: resolvedToolbarIconSize,

@@ -5,6 +5,7 @@ import 'package:flutter_quill/quill_delta.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
+import '../../state/send_queue.dart';
 import 'compose_form.dart';
 import '../../widgets/tidings_background.dart';
 import '../../widgets/paper_panel.dart';
@@ -14,6 +15,7 @@ Future<void> showComposeSheet(
   BuildContext context, {
   required EmailProvider provider,
   required Color accent,
+  BuildContext? hostContext,
   EmailThread? thread,
   String? currentUserEmail,
   String? initialTo,
@@ -31,6 +33,7 @@ Future<void> showComposeSheet(
       builder: (_) => ComposeSheet(
         provider: provider,
         accent: accent,
+        hostContext: hostContext ?? context,
         thread: thread,
         currentUserEmail: currentUserEmail,
         initialTo: initialTo,
@@ -54,6 +57,7 @@ Future<void> showComposeSheet(
         child: ComposeSheet(
           provider: provider,
           accent: accent,
+          hostContext: hostContext ?? context,
           thread: thread,
           currentUserEmail: currentUserEmail,
           initialTo: initialTo,
@@ -73,6 +77,7 @@ Future<void> showComposeWindow(
   BuildContext context, {
   required EmailProvider provider,
   required Color accent,
+  BuildContext? hostContext,
   EmailThread? thread,
   String? currentUserEmail,
   String? initialTo,
@@ -86,6 +91,7 @@ Future<void> showComposeWindow(
       builder: (_) => _ComposeScreen(
         provider: provider,
         accent: accent,
+        hostContext: hostContext ?? context,
         thread: thread,
         currentUserEmail: currentUserEmail,
         initialTo: initialTo,
@@ -103,6 +109,7 @@ class ComposeSheet extends StatefulWidget {
     super.key,
     required this.provider,
     required this.accent,
+    this.hostContext,
     this.thread,
     this.currentUserEmail,
     this.initialTo,
@@ -116,6 +123,7 @@ class ComposeSheet extends StatefulWidget {
 
   final EmailProvider provider;
   final Color accent;
+  final BuildContext? hostContext;
   final EmailThread? thread;
   final String? currentUserEmail;
   final String? initialTo;
@@ -141,6 +149,57 @@ class _ComposeSheetState extends State<ComposeSheet> {
   bool _isSaving = false;
   String? _sendError;
   String? _draftError;
+
+  Future<void> _reopenFromUndo(BuildContext hostContext, OutboxItem item) {
+    if (widget.isSheet) {
+      return showModalBottomSheet<void>(
+        context: hostContext,
+        useRootNavigator: true,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => ComposeSheet(
+          provider: widget.provider,
+          accent: widget.accent,
+          hostContext: widget.hostContext,
+          thread: widget.thread,
+          currentUserEmail: widget.currentUserEmail,
+          initialTo: item.toLine,
+          initialCc: item.ccLine,
+          initialBcc: item.bccLine,
+          initialSubject: item.subject,
+          initialDelta: deltaFromPlainText(item.bodyText),
+          isSheet: true,
+          allowPopOut: widget.allowPopOut,
+        ),
+      );
+    }
+    return showDialog<void>(
+      context: hostContext,
+      useRootNavigator: true,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: ComposeSheet(
+            provider: widget.provider,
+            accent: widget.accent,
+            hostContext: widget.hostContext,
+            thread: widget.thread,
+            currentUserEmail: widget.currentUserEmail,
+            initialTo: item.toLine,
+            initialCc: item.ccLine,
+            initialBcc: item.bccLine,
+            initialSubject: item.subject,
+            initialDelta: deltaFromPlainText(item.bodyText),
+            isSheet: false,
+            allowPopOut: false,
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -217,7 +276,7 @@ class _ComposeSheetState extends State<ComposeSheet> {
     final bcc = _bccController.text.trim();
 
     try {
-      await widget.provider.sendMessage(
+      final queued = await widget.provider.sendMessage(
         thread: widget.thread,
         toLine: to,
         ccLine: cc,
@@ -226,6 +285,39 @@ class _ComposeSheetState extends State<ComposeSheet> {
         bodyHtml: html,
         bodyText: plain,
       );
+      if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.showSnackBar(
+          SnackBar(
+            // TODO: Replace with "Sent (Click to undo)" when countdown UI ships.
+            content: const Text('Sent'),
+            duration: kUndoSendDelay,
+            action: queued == null
+                ? null
+                : SnackBarAction(
+                    label: 'Undo',
+                    onPressed: () async {
+                      final item = queued;
+                      final messenger = ScaffoldMessenger.of(context);
+                      final hostContext =
+                          widget.hostContext ?? messenger.context;
+                      final undone =
+                          await widget.provider.cancelSend(item.id);
+                      if (!context.mounted || !hostContext.mounted) {
+                        return;
+                      }
+                      if (!undone) {
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text('Unable to undo')),
+                        );
+                        return;
+                      }
+                      await _reopenFromUndo(hostContext, item);
+                    },
+                  ),
+          ),
+        );
+      }
       if (mounted) {
         Navigator.of(context).pop();
       }
@@ -410,6 +502,7 @@ class _ComposeScreen extends StatelessWidget {
   const _ComposeScreen({
     required this.provider,
     required this.accent,
+    this.hostContext,
     this.thread,
     this.currentUserEmail,
     this.initialTo,
@@ -421,6 +514,7 @@ class _ComposeScreen extends StatelessWidget {
 
   final EmailProvider provider;
   final Color accent;
+  final BuildContext? hostContext;
   final EmailThread? thread;
   final String? currentUserEmail;
   final String? initialTo;
@@ -443,6 +537,7 @@ class _ComposeScreen extends StatelessWidget {
                 child: ComposeSheet(
                   provider: provider,
                   accent: accent,
+                  hostContext: hostContext ?? context,
                   thread: thread,
                   currentUserEmail: currentUserEmail,
                   initialTo: initialTo,

@@ -113,8 +113,12 @@ class AppState extends ChangeNotifier {
         needsPersist = true;
       }
       final provider = account.providerType == EmailProviderType.imap
-          ? ImapSmtpEmailProvider(config: imapConfig!, email: account.email)
-          : MockEmailProvider();
+          ? ImapSmtpEmailProvider(
+              config: imapConfig!,
+              email: account.email,
+              accountId: account.id,
+            )
+          : MockEmailProvider(accountId: account.id);
       _accounts.add(account);
       _providers[account.id] = provider;
     }
@@ -139,7 +143,7 @@ class AppState extends ChangeNotifier {
       providerType: EmailProviderType.mock,
       accentColorValue: _randomAccentValue(),
     );
-    _addAccount(account, MockEmailProvider());
+    _addAccount(account, MockEmailProvider(accountId: account.id));
     await _persistConfig();
     await _initializeCurrentProvider();
   }
@@ -157,7 +161,11 @@ class AppState extends ChangeNotifier {
       imapConfig: config,
       accentColorValue: _randomAccentValue(),
     );
-    final provider = ImapSmtpEmailProvider(config: config, email: email);
+    final provider = ImapSmtpEmailProvider(
+      config: config,
+      email: email,
+      accountId: account.id,
+    );
     _addAccount(account, provider);
     await _persistConfig();
     await _initializeCurrentProvider();
@@ -185,7 +193,11 @@ class AppState extends ChangeNotifier {
     );
     _accounts[index] = updated;
     _providers[accountId]?.dispose();
-    final provider = ImapSmtpEmailProvider(config: config, email: email);
+    final provider = ImapSmtpEmailProvider(
+      config: config,
+      email: email,
+      accountId: accountId,
+    );
     _providers[accountId] = provider;
     await _persistConfig();
     await _initializeCurrentProvider();

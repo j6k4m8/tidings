@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/account_models.dart';
 import '../models/email_models.dart';
 import '../models/folder_models.dart';
 import '../state/app_state.dart';
+import '../state/send_queue.dart';
 import 'email_provider.dart';
 
 class UnifiedEmailProvider extends EmailProvider {
@@ -11,16 +14,22 @@ class UnifiedEmailProvider extends EmailProvider {
     _defaultAccountId = appState.selectedAccount?.id;
     appState.addListener(_handleAppStateChanged);
     _syncProviders();
+    unawaited(_outboxStore.ensureLoaded().then((_) => notifyListeners()));
   }
 
   final AppState appState;
   final Map<String, EmailProvider> _providers = {};
   final Map<String, _ThreadRef> _threadRefs = {};
+  final Map<String, _OutboxRef> _outboxRefs = {};
+  final OutboxStore _outboxStore = OutboxStore.instance;
   String _selectedFolderPath = 'INBOX';
   String? _defaultAccountId;
 
   @override
   ProviderStatus get status {
+    if (_selectedFolderPath == kOutboxFolderPath) {
+      return ProviderStatus.ready;
+    }
     var hasLoading = false;
     var hasReady = false;
     for (final provider in _providers.values) {
@@ -48,6 +57,9 @@ class UnifiedEmailProvider extends EmailProvider {
 
   @override
   String? get errorMessage {
+    if (_selectedFolderPath == kOutboxFolderPath) {
+      return null;
+    }
     for (final provider in _providers.values) {
       if (provider.status == ProviderStatus.error) {
         return provider.errorMessage;
@@ -57,10 +69,22 @@ class UnifiedEmailProvider extends EmailProvider {
   }
 
   @override
-  List<EmailThread> get threads => _buildThreads();
+  List<EmailThread> get threads {
+    if (_selectedFolderPath == kOutboxFolderPath) {
+      return _buildOutboxThreads();
+    }
+    return _buildThreads();
+  }
 
   @override
   List<EmailMessage> messagesForThread(String threadId) {
+    if (_selectedFolderPath == kOutboxFolderPath) {
+      final ref = _outboxRefs[threadId] ?? _rebuildOutboxRef(threadId);
+      if (ref == null) {
+        return const [];
+      }
+      return [_outboxMessage(ref.item, ref.account, threadId)];
+    }
     final ref = _threadRefs[threadId] ?? _rebuildThreadRef(threadId);
     if (ref == null) {
       return const [];
@@ -70,6 +94,13 @@ class UnifiedEmailProvider extends EmailProvider {
 
   @override
   EmailMessage? latestMessageForThread(String threadId) {
+    if (_selectedFolderPath == kOutboxFolderPath) {
+      final ref = _outboxRefs[threadId] ?? _rebuildOutboxRef(threadId);
+      if (ref == null) {
+        return null;
+      }
+      return _outboxMessage(ref.item, ref.account, threadId);
+    }
     final ref = _threadRefs[threadId] ?? _rebuildThreadRef(threadId);
     if (ref == null) {
       return null;
@@ -78,21 +109,37 @@ class UnifiedEmailProvider extends EmailProvider {
   }
 
   @override
-  List<FolderSection> get folderSections => const [
+  List<FolderSection> get folderSections => [
     FolderSection(
       title: 'Mailboxes',
       kind: FolderSectionKind.mailboxes,
       items: [
-        FolderItem(
+        const FolderItem(
           index: 0,
           name: 'Inbox',
           path: 'INBOX',
           unreadCount: 0,
           icon: Icons.inbox_rounded,
         ),
+        FolderItem(
+          index: -1,
+          name: 'Outbox',
+          path: kOutboxFolderPath,
+          unreadCount: outboxCount,
+          icon: Icons.outbox_rounded,
+        ),
       ],
     ),
   ];
+
+  @override
+  int get outboxCount {
+    var total = 0;
+    for (final account in appState.accounts) {
+      total += _outboxStore.itemsForAccount(account.id).length;
+    }
+    return total;
+  }
 
   @override
   String get selectedFolderPath => _selectedFolderPath;
@@ -123,13 +170,28 @@ class UnifiedEmailProvider extends EmailProvider {
   }
 
   EmailAccount? accountForThread(String threadId) {
+    if (_selectedFolderPath == kOutboxFolderPath) {
+      final ref = _outboxRefs[threadId] ?? _rebuildOutboxRef(threadId);
+      return ref?.account;
+    }
     final ref = _threadRefs[threadId] ?? _rebuildThreadRef(threadId);
     return ref?.account;
   }
 
   EmailProvider? providerForThread(String threadId) {
+    if (_selectedFolderPath == kOutboxFolderPath) {
+      final ref = _outboxRefs[threadId] ?? _rebuildOutboxRef(threadId);
+      if (ref == null) {
+        return null;
+      }
+      return _providers[ref.account.id];
+    }
     final ref = _threadRefs[threadId] ?? _rebuildThreadRef(threadId);
     return ref?.provider;
+  }
+
+  EmailProvider? providerForAccount(String accountId) {
+    return _providers[accountId];
   }
 
   String? accountEmailForThread(String threadId) {
@@ -138,7 +200,7 @@ class UnifiedEmailProvider extends EmailProvider {
   }
 
   @override
-  Future<void> sendMessage({
+  Future<OutboxItem?> sendMessage({
     EmailThread? thread,
     required String toLine,
     String? ccLine,
@@ -150,7 +212,7 @@ class UnifiedEmailProvider extends EmailProvider {
     if (thread == null) {
       final provider = _providers[_defaultAccountId];
       if (provider != null) {
-        await provider.sendMessage(
+        return provider.sendMessage(
           toLine: toLine,
           ccLine: ccLine,
           bccLine: bccLine,
@@ -159,13 +221,13 @@ class UnifiedEmailProvider extends EmailProvider {
           bodyText: bodyText,
         );
       }
-      return;
+      return null;
     }
     final ref = _threadRefs[thread.id] ?? _rebuildThreadRef(thread.id);
     if (ref == null) {
-      return;
+      return null;
     }
-    await ref.provider.sendMessage(
+    return ref.provider.sendMessage(
       thread: ref.thread,
       toLine: toLine,
       ccLine: ccLine,
@@ -174,6 +236,20 @@ class UnifiedEmailProvider extends EmailProvider {
       bodyHtml: bodyHtml,
       bodyText: bodyText,
     );
+  }
+
+  @override
+  Future<bool> cancelSend(String outboxId) async {
+    await _outboxStore.ensureLoaded();
+    final item = _outboxStore.findById(outboxId);
+    if (item == null) {
+      return false;
+    }
+    final provider = _providers[item.accountKey];
+    if (provider == null) {
+      return false;
+    }
+    return provider.cancelSend(outboxId);
   }
 
   @override
@@ -300,6 +376,112 @@ class UnifiedEmailProvider extends EmailProvider {
     return combined;
   }
 
+  List<EmailThread> _buildOutboxThreads() {
+    _outboxRefs.clear();
+    final threads = <EmailThread>[];
+    for (final account in appState.accounts) {
+      final items = _outboxStore.itemsForAccount(account.id);
+      for (final item in items) {
+        final threadId = _outboxThreadId(account.id, item.id);
+        _outboxRefs[threadId] = _OutboxRef(
+          account: account,
+          item: item,
+        );
+        final recipients = <EmailAddress>[
+          ..._parseEmailAddresses(item.toLine),
+          ..._parseEmailAddresses(item.ccLine ?? ''),
+          ..._parseEmailAddresses(item.bccLine ?? ''),
+        ];
+        final createdAt = item.createdAt.toLocal();
+        threads.add(
+          EmailThread(
+            id: threadId,
+            subject: item.subject,
+            participants: [
+              EmailAddress(name: account.displayName, email: account.email),
+              ...recipients,
+            ],
+            time: _formatTime(createdAt),
+            unread: false,
+            starred: false,
+            receivedAt: createdAt,
+          ),
+        );
+      }
+    }
+    threads.sort((a, b) {
+      final aTime = a.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bTime = b.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bTime.compareTo(aTime);
+    });
+    return threads;
+  }
+
+  _OutboxRef? _rebuildOutboxRef(String threadId) {
+    _buildOutboxThreads();
+    return _outboxRefs[threadId];
+  }
+
+  EmailMessage _outboxMessage(
+    OutboxItem item,
+    EmailAccount account,
+    String threadId,
+  ) {
+    final to = _parseEmailAddresses(item.toLine);
+    final cc = _parseEmailAddresses(item.ccLine ?? '');
+    final bcc = _parseEmailAddresses(item.bccLine ?? '');
+    final createdAt = item.createdAt.toLocal();
+    return EmailMessage(
+      id: 'outbox-${item.id}',
+      threadId: threadId,
+      subject: item.subject,
+      from: EmailAddress(name: account.displayName, email: account.email),
+      to: to,
+      cc: cc,
+      bcc: bcc,
+      time: _formatTime(createdAt),
+      bodyText: item.bodyText.isEmpty ? null : item.bodyText,
+      bodyHtml: item.bodyHtml.isEmpty ? null : item.bodyHtml,
+      isMe: true,
+      isUnread: false,
+      receivedAt: createdAt,
+      inReplyTo: item.replyMessageId,
+      sendStatus: _statusForOutbox(item.status),
+    );
+  }
+
+  String _outboxThreadId(String accountId, String itemId) {
+    return 'outbox-$accountId::$itemId';
+  }
+
+  List<EmailAddress> _parseEmailAddresses(String raw) {
+    final parts = raw
+        .split(RegExp(r'[;,]'))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    return parts
+        .map((email) => EmailAddress(name: email, email: email))
+        .toList();
+  }
+
+  String _formatTime(DateTime time) {
+    final hours = time.hour.toString().padLeft(2, '0');
+    final minutes = time.minute.toString().padLeft(2, '0');
+    return '$hours:$minutes';
+  }
+
+  MessageSendStatus _statusForOutbox(OutboxStatus status) {
+    switch (status) {
+      case OutboxStatus.queued:
+        return MessageSendStatus.queued;
+      case OutboxStatus.sending:
+        return MessageSendStatus.sending;
+      case OutboxStatus.failed:
+        return MessageSendStatus.failed;
+    }
+  }
+
   _ThreadRef? _rebuildThreadRef(String unifiedId) {
     _buildThreads();
     return _threadRefs[unifiedId];
@@ -320,4 +502,14 @@ class _ThreadRef {
   final EmailAccount account;
   final EmailProvider provider;
   final EmailThread thread;
+}
+
+class _OutboxRef {
+  _OutboxRef({
+    required this.account,
+    required this.item,
+  });
+
+  final EmailAccount account;
+  final OutboxItem item;
 }

@@ -5,10 +5,14 @@ import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
+import '../../providers/unified_email_provider.dart';
+import '../../state/send_queue.dart';
 import '../../state/tidings_settings.dart';
 import '../../theme/color_tokens.dart';
 import '../../widgets/key_hint.dart';
 import '../../widgets/tidings_background.dart';
+import '../compose/compose_sheet.dart';
+import '../compose/compose_utils.dart';
 import '../compose/inline_reply_composer.dart';
 import 'provider_body.dart';
 
@@ -109,6 +113,94 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
     setState(() {
       _expandedState[messageId] = expanded;
     });
+  }
+
+  String? _outboxIdForMessage(EmailMessage message) {
+    const prefix = 'outbox-';
+    if (!message.id.startsWith(prefix)) {
+      return null;
+    }
+    return message.id.substring(prefix.length);
+  }
+
+  EmailProvider? _providerForOutboxItem(OutboxItem item) {
+    final provider = widget.provider;
+    if (provider is UnifiedEmailProvider) {
+      return provider.providerForAccount(item.accountKey);
+    }
+    return provider;
+  }
+
+  EmailThread? _threadForOutboxItem(
+    EmailProvider provider,
+    OutboxItem item,
+  ) {
+    final threadId = item.threadId;
+    if (threadId == null || threadId.isEmpty) {
+      return null;
+    }
+    for (final thread in provider.threads) {
+      if (thread.id == threadId) {
+        return thread;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _undoSend(String outboxId) async {
+    final messenger = ScaffoldMessenger.of(context);
+    await OutboxStore.instance.ensureLoaded();
+    final item = OutboxStore.instance.findById(outboxId);
+    if (item == null) {
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Unable to undo')),
+        );
+      }
+      return;
+    }
+    final provider = _providerForOutboxItem(item);
+    if (provider == null) {
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Unable to undo')),
+        );
+      }
+      return;
+    }
+    var undone = false;
+    try {
+      undone = await provider.cancelSend(outboxId);
+    } catch (_) {
+      undone = false;
+    }
+    if (!mounted) {
+      return;
+    }
+    if (!undone) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Unable to undo')),
+      );
+      return;
+    }
+    if (widget.replyController != null) {
+      widget.replyController!.restoreDraftForThread(widget.thread.id, item);
+      widget.replyController!.focusEditorForThread(widget.thread.id);
+      return;
+    }
+    final thread = _threadForOutboxItem(provider, item);
+    await showComposeSheet(
+      messenger.context,
+      provider: provider,
+      accent: widget.accent,
+      thread: thread,
+      currentUserEmail: widget.currentUserEmail,
+      initialTo: item.toLine,
+      initialCc: item.ccLine,
+      initialBcc: item.bccLine,
+      initialSubject: item.subject,
+      initialDelta: deltaFromPlainText(item.bodyText),
+    );
   }
 
   void _toggleExpanded(String messageId, bool defaultExpanded) {
@@ -244,6 +336,11 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                     (settings.autoExpandLatest && isLatest) ||
                                     (settings.autoExpandUnread &&
                                         message.isUnread);
+                                final outboxId = _outboxIdForMessage(message);
+                                final canUndo = outboxId != null &&
+                                    message.sendStatus ==
+                                        MessageSendStatus.queued;
+                                final undoId = canUndo ? outboxId : null;
                                 return MessageCard(
                                   key: ValueKey(message.id),
                                   message: message,
@@ -260,6 +357,9 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                       index == widget.selectedMessageIndex,
                                   onSelected: () =>
                                       widget.onMessageSelected(index),
+                                  onUndoSend: undoId == null
+                                      ? null
+                                      : () => _undoSend(undoId),
                                 );
                               },
                             ),
@@ -315,6 +415,7 @@ class MessageCard extends StatelessWidget {
     required this.onToggleExpanded,
     required this.isSelected,
     this.onSelected,
+    this.onUndoSend,
   });
 
   final EmailMessage message;
@@ -323,6 +424,7 @@ class MessageCard extends StatelessWidget {
   final VoidCallback onToggleExpanded;
   final bool isSelected;
   final VoidCallback? onSelected;
+  final VoidCallback? onUndoSend;
 
   static const int _collapsedCharLimit = 420;
 
@@ -461,6 +563,7 @@ class MessageCard extends StatelessWidget {
       ..writeln('Time: ${message.time}')
       ..writeln('Message-ID: ${message.messageId}')
       ..writeln('In-Reply-To: ${message.inReplyTo}')
+      ..writeln('Send status: ${message.sendStatus}')
       ..writeln()
       ..writeln('=== BODY TEXT (raw field) ===')
       ..writeln('Length: ${bodyText?.length ?? 0}')
@@ -593,18 +696,50 @@ class MessageCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        message.from.displayName,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      SizedBox(width: context.space(8)),
-                      Text(
-                        message.time,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: scheme.onSurface.withValues(alpha: 0.6),
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final nameMaxWidth =
+                                (constraints.maxWidth * 0.6).clamp(
+                                      120.0,
+                                      constraints.maxWidth,
+                                    );
+                            return Wrap(
+                              spacing: context.space(8),
+                              runSpacing: context.space(2),
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                ConstrainedBox(
+                                  constraints:
+                                      BoxConstraints(maxWidth: nameMaxWidth),
+                                  child: Text(
+                                    message.from.displayName,
+                                    style:
+                                        Theme.of(context).textTheme.titleMedium,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Text(
+                                  message.time,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                        color: scheme.onSurface
+                                            .withValues(alpha: 0.6),
+                                      ),
+                                ),
+                                if (message.sendStatus != null)
+                                  _SendStatusChip(
+                                    status: message.sendStatus!,
+                                    accent: accent,
+                                  ),
+                              ],
+                            );
+                          },
                         ),
                       ),
-                      const Spacer(),
                       PopupMenuButton<String>(
                         icon: Icon(
                           Icons.more_horiz_rounded,
@@ -632,6 +767,26 @@ class MessageCard extends StatelessWidget {
                     ],
                   ),
                   SizedBox(height: context.space(6)),
+                  if (onUndoSend != null) ...[
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: onUndoSend,
+                        icon: const Icon(Icons.undo_rounded, size: 16),
+                        label: const Text('Undo send'),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: context.space(6),
+                            vertical: 0,
+                          ),
+                          minimumSize: Size(0, context.space(28)),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: context.space(4)),
+                  ],
                   if (showSubject) ...[
                     Text(
                       message.subject,
@@ -779,6 +934,44 @@ class MessageCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SendStatusChip extends StatelessWidget {
+  const _SendStatusChip({required this.status, required this.accent});
+
+  final MessageSendStatus status;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final label = switch (status) {
+      MessageSendStatus.queued => 'Queued',
+      MessageSendStatus.sending => 'Sending',
+      MessageSendStatus.failed => 'Failed',
+    };
+    final color = status == MessageSendStatus.failed
+        ? Colors.redAccent
+        : accent.withValues(alpha: 0.9);
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: context.space(6),
+        vertical: context.space(2),
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(context.radius(999)),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onSurface.withValues(alpha: 0.7),
+              fontWeight: FontWeight.w600,
+            ),
       ),
     );
   }

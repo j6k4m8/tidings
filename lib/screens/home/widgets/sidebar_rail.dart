@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models/account_models.dart';
 import '../../../models/folder_models.dart';
 import '../../../state/shortcut_definitions.dart';
+import '../../../state/send_queue.dart';
 import '../../../state/tidings_settings.dart';
 import '../../../theme/glass.dart';
 import '../../../widgets/account/account_avatar.dart';
@@ -13,6 +14,12 @@ const List<FolderItem> _fallbackRailItems = [
     name: 'Inbox',
     path: 'Inbox',
     icon: Icons.inbox_rounded,
+  ),
+  FolderItem(
+    index: -1,
+    name: 'Outbox',
+    path: kOutboxFolderPath,
+    icon: Icons.outbox_rounded,
   ),
   FolderItem(
     index: 1,

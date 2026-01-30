@@ -4,6 +4,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
+import '../../state/send_queue.dart';
 import '../../theme/color_tokens.dart';
 import '../../theme/glass.dart';
 import '../../state/tidings_settings.dart';
@@ -16,21 +17,26 @@ class InlineReplyController {
   ReplyMode? _pendingMode;
   bool _pendingFocus = false;
   String? _pendingThreadId;
+  String? _pendingDraftThreadId;
   String? _attachedThreadId;
   void Function(ReplyMode mode)? _setMode;
   VoidCallback? _focusEditor;
   Future<void> Function()? _send;
+  void Function(OutboxItem item)? _restoreDraft;
+  OutboxItem? _pendingDraft;
 
   void attach({
     required String threadId,
     required void Function(ReplyMode mode) setMode,
     required VoidCallback focusEditor,
     required Future<void> Function() send,
+    required void Function(OutboxItem item) restoreDraft,
   }) {
     _attachedThreadId = threadId;
     _setMode = setMode;
     _focusEditor = focusEditor;
     _send = send;
+    _restoreDraft = restoreDraft;
     if (_pendingMode != null && _pendingThreadId == threadId) {
       _setMode?.call(_pendingMode!);
       _pendingMode = null;
@@ -38,6 +44,11 @@ class InlineReplyController {
     if (_pendingFocus && _pendingThreadId == threadId) {
       _focusEditor?.call();
       _pendingFocus = false;
+    }
+    if (_pendingDraft != null && _pendingDraftThreadId == threadId) {
+      _restoreDraft?.call(_pendingDraft!);
+      _pendingDraft = null;
+      _pendingDraftThreadId = null;
     }
   }
 
@@ -49,6 +60,7 @@ class InlineReplyController {
     _setMode = null;
     _focusEditor = null;
     _send = null;
+    _restoreDraft = null;
   }
 
   void setModeForThread(String threadId, ReplyMode mode) {
@@ -67,6 +79,15 @@ class InlineReplyController {
       return;
     }
     _focusEditor?.call();
+  }
+
+  void restoreDraftForThread(String threadId, OutboxItem item) {
+    if (_restoreDraft == null || _attachedThreadId != threadId) {
+      _pendingDraftThreadId = threadId;
+      _pendingDraft = item;
+      return;
+    }
+    _restoreDraft?.call(item);
   }
 
   Future<void> send() async {
@@ -120,6 +141,7 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
       setMode: _setReplyMode,
       focusEditor: _focusEditor,
       send: _send,
+      restoreDraft: _restoreDraft,
     );
   }
 
@@ -136,6 +158,7 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
         setMode: _setReplyMode,
         focusEditor: _focusEditor,
         send: _send,
+        restoreDraft: _restoreDraft,
       );
     } else if (oldWidget.thread.id != widget.thread.id) {
       widget.controller?.attach(
@@ -143,6 +166,7 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
         setMode: _setReplyMode,
         focusEditor: _focusEditor,
         send: _send,
+        restoreDraft: _restoreDraft,
       );
     }
   }
@@ -169,8 +193,40 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
       );
     } else {
       _subjectController.text = replySubject(widget.thread.subject);
-      _toController.text = latest?.from.email ?? '';
+      final latestSender = latest?.from;
+      if (latestSender != null &&
+          latestSender.email != widget.currentUserEmail) {
+        _toController.text = latestSender.email;
+      } else if (widget.thread.participants.isNotEmpty) {
+        _toController.text = widget.thread.participants
+            .firstWhere(
+              (participant) => participant.email != widget.currentUserEmail,
+              orElse: () => latestSender ?? widget.thread.participants.first,
+            )
+            .email;
+      } else {
+        _toController.text = '';
+      }
     }
+  }
+
+  void _restoreDraft(OutboxItem item) {
+    setState(() {
+      _replyMode = ReplyMode.reply;
+      _toController.text = item.toLine;
+      _ccController.text = item.ccLine ?? '';
+      _bccController.text = item.bccLine ?? '';
+      _subjectController.text = item.subject;
+      _showDetails =
+          _ccController.text.trim().isNotEmpty ||
+          _bccController.text.trim().isNotEmpty;
+      _sendError = null;
+    });
+    _controller.document = Document.fromDelta(
+      deltaFromPlainText(item.bodyText),
+    );
+    _controller.moveCursorToEnd();
+    _focusEditor();
   }
 
   @override
@@ -200,7 +256,7 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
       _sendError = null;
     });
     try {
-      await widget.provider.sendMessage(
+      final queued = await widget.provider.sendMessage(
         thread: widget.thread,
         toLine: _toController.text.trim(),
         ccLine: _ccController.text.trim(),
@@ -211,6 +267,36 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
         bodyHtml: html,
         bodyText: plain,
       );
+      if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.showSnackBar(
+          SnackBar(
+            // TODO: Replace with "Sent (Click to undo)" when countdown UI ships.
+            content: const Text('Sent'),
+            duration: kUndoSendDelay,
+            action: queued == null
+                ? null
+                : SnackBarAction(
+                    label: 'Undo',
+                    onPressed: () async {
+                      final item = queued;
+                      final undone =
+                          await widget.provider.cancelSend(item.id);
+                      if (!messenger.mounted) {
+                        return;
+                      }
+                      if (!undone) {
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text('Unable to undo')),
+                        );
+                        return;
+                      }
+                      _restoreDraft(item);
+                    },
+                  ),
+          ),
+        );
+      }
       _controller.clear();
     } catch (error) {
       if (mounted) {
