@@ -8,6 +8,7 @@ import '../models/folder_models.dart';
 import '../providers/email_provider.dart';
 import '../providers/unified_email_provider.dart';
 import '../state/app_state.dart';
+import '../state/send_queue.dart';
 import '../state/tidings_settings.dart';
 import '../state/shortcut_definitions.dart';
 import '../state/keyboard_shortcut.dart';
@@ -253,10 +254,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _handleFolderSelected(EmailProvider provider, int index) {
-    if (_isUnifiedInbox) {
+    final path = _folderPathForIndex(provider.folderSections, index);
+    if (_isUnifiedInbox &&
+        path != kOutboxFolderPath &&
+        path != 'INBOX') {
       return;
     }
-    final path = _folderPathForIndex(provider.folderSections, index);
     setState(() {
       _selectedFolderIndex = index;
       _selectedThreadIndex = 0;
@@ -269,6 +272,23 @@ class _HomeScreenState extends State<HomeScreen> {
     if (path != null) {
       provider.selectFolder(path);
     }
+  }
+
+  void _openOutbox(EmailProvider provider) {
+    final index =
+        _folderIndexForPath(provider.folderSections, kOutboxFolderPath);
+    setState(() {
+      if (index != null) {
+        _selectedFolderIndex = index;
+      }
+      _selectedThreadIndex = 0;
+      _threadPanelOpen = true;
+      _showSettings = false;
+      if (_navIndex == 3) {
+        _navIndex = 0;
+      }
+    });
+    provider.selectFolder(kOutboxFolderPath);
   }
 
   String? _folderPathForIndex(List<FolderSection> sections, int index) {
@@ -896,6 +916,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                   onSelectUnified: _enableUnifiedInbox,
                                   onSelectAccount: _disableUnifiedInbox,
                                 ),
+                                onOutboxTap: () => _openOutbox(listProvider),
+                                outboxCount: listProvider.outboxCount,
+                                outboxSelected:
+                                    listProvider.selectedFolderPath ==
+                                    kOutboxFolderPath,
                                 navIndex: _navIndex,
                                 onNavSelected: (index) => setState(() {
                                   _navIndex = index;

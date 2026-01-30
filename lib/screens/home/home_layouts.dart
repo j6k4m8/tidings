@@ -35,6 +35,9 @@ class WideLayout extends StatelessWidget {
     required this.sidebarCollapsed,
     required this.onSidebarToggle,
     required this.onAccountTap,
+    required this.onOutboxTap,
+    required this.outboxCount,
+    required this.outboxSelected,
     required this.navIndex,
     required this.onNavSelected,
     required this.onSettingsTap,
@@ -71,6 +74,9 @@ class WideLayout extends StatelessWidget {
   final bool sidebarCollapsed;
   final VoidCallback onSidebarToggle;
   final VoidCallback onAccountTap;
+  final VoidCallback onOutboxTap;
+  final int outboxCount;
+  final bool outboxSelected;
   final int navIndex;
   final ValueChanged<int> onNavSelected;
   final VoidCallback onSettingsTap;
@@ -120,6 +126,9 @@ class WideLayout extends StatelessWidget {
           searchFocusNode: searchFocusNode,
           onSettingsTap: onSettingsTap,
           onAccountTap: onAccountTap,
+          onOutboxTap: onOutboxTap,
+          outboxCount: outboxCount,
+          outboxSelected: outboxSelected,
         ),
         SizedBox(height: context.space(14)),
         Expanded(

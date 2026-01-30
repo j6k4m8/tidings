@@ -461,6 +461,7 @@ class MessageCard extends StatelessWidget {
       ..writeln('Time: ${message.time}')
       ..writeln('Message-ID: ${message.messageId}')
       ..writeln('In-Reply-To: ${message.inReplyTo}')
+      ..writeln('Send status: ${message.sendStatus}')
       ..writeln()
       ..writeln('=== BODY TEXT (raw field) ===')
       ..writeln('Length: ${bodyText?.length ?? 0}')
@@ -604,6 +605,13 @@ class MessageCard extends StatelessWidget {
                           color: scheme.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
+                      if (message.sendStatus != null) ...[
+                        SizedBox(width: context.space(8)),
+                        _SendStatusChip(
+                          status: message.sendStatus!,
+                          accent: accent,
+                        ),
+                      ],
                       const Spacer(),
                       PopupMenuButton<String>(
                         icon: Icon(
@@ -779,6 +787,44 @@ class MessageCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SendStatusChip extends StatelessWidget {
+  const _SendStatusChip({required this.status, required this.accent});
+
+  final MessageSendStatus status;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final label = switch (status) {
+      MessageSendStatus.queued => 'Queued',
+      MessageSendStatus.sending => 'Sending',
+      MessageSendStatus.failed => 'Failed',
+    };
+    final color = status == MessageSendStatus.failed
+        ? Colors.redAccent
+        : accent.withValues(alpha: 0.9);
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: context.space(6),
+        vertical: context.space(2),
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(context.radius(999)),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onSurface.withValues(alpha: 0.7),
+              fontWeight: FontWeight.w600,
+            ),
       ),
     );
   }

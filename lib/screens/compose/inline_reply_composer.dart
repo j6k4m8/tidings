@@ -169,7 +169,20 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
       );
     } else {
       _subjectController.text = replySubject(widget.thread.subject);
-      _toController.text = latest?.from.email ?? '';
+      final latestSender = latest?.from;
+      if (latestSender != null &&
+          latestSender.email != widget.currentUserEmail) {
+        _toController.text = latestSender.email;
+      } else if (widget.thread.participants.isNotEmpty) {
+        _toController.text = widget.thread.participants
+            .firstWhere(
+              (participant) => participant.email != widget.currentUserEmail,
+              orElse: () => latestSender ?? widget.thread.participants.first,
+            )
+            .email;
+      } else {
+        _toController.text = '';
+      }
     }
   }
 
@@ -211,6 +224,12 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
         bodyHtml: html,
         bodyText: plain,
       );
+      if (mounted) {
+        // TODO: "Sent (Click to undo)" once undo-send delay is implemented.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sent')),
+        );
+      }
       _controller.clear();
     } catch (error) {
       if (mounted) {

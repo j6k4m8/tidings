@@ -2,17 +2,36 @@ import 'package:flutter/material.dart';
 
 import '../models/email_models.dart';
 import '../models/folder_models.dart';
+import '../state/send_queue.dart';
 import 'email_provider.dart';
 
 class MockEmailProvider extends EmailProvider {
+  MockEmailProvider({required this.accountId}) {
+    _sendQueue = SendQueue(
+      accountKey: accountId,
+      onChanged: notifyListeners,
+      sendNow: _sendQueuedMessage,
+      saveDraft: _saveQueuedDraft,
+    );
+  }
+
+  final String accountId;
   @override
-  ProviderStatus get status => _status;
+  ProviderStatus get status {
+    if (_selectedFolderPath == kOutboxFolderPath) {
+      return ProviderStatus.ready;
+    }
+    return _status;
+  }
 
   @override
   String? get errorMessage => _errorMessage;
 
   @override
   List<EmailThread> get threads {
+    if (_selectedFolderPath == kOutboxFolderPath) {
+      return _outboxThreads();
+    }
     final filtered = _threads.where((thread) {
       return _threadFolders[thread.id] == _selectedFolderPath;
     }).toList();
@@ -36,9 +55,11 @@ class MockEmailProvider extends EmailProvider {
   ProviderStatus _status = ProviderStatus.idle;
   String? _errorMessage;
   String _selectedFolderPath = 'INBOX';
+  late final SendQueue _sendQueue;
 
   @override
   Future<void> initialize() async {
+    await _sendQueue.initialize();
     if (_status == ProviderStatus.ready) {
       return;
     }
@@ -66,11 +87,26 @@ class MockEmailProvider extends EmailProvider {
 
   @override
   List<EmailMessage> messagesForThread(String threadId) {
-    return _messages[threadId] ?? const [];
+    if (_selectedFolderPath == kOutboxFolderPath) {
+      final item = _outboxItemForThread(threadId);
+      if (item == null) {
+        return const [];
+      }
+      return [_outboxMessage(item, threadIdOverride: threadId)];
+    }
+    final base = _messages[threadId] ?? const [];
+    return _mergeOutboxMessages(threadId, base);
   }
 
   @override
   EmailMessage? latestMessageForThread(String threadId) {
+    if (_selectedFolderPath == kOutboxFolderPath) {
+      final item = _outboxItemForThread(threadId);
+      if (item == null) {
+        return null;
+      }
+      return _outboxMessage(item, threadIdOverride: threadId);
+    }
     final messages = _messages[threadId];
     if (messages == null || messages.isEmpty) {
       return null;
@@ -79,7 +115,10 @@ class MockEmailProvider extends EmailProvider {
   }
 
   @override
-  List<FolderSection> get folderSections => _folderSections;
+  List<FolderSection> get folderSections => _withOutboxSection(_folderSections);
+
+  @override
+  int get outboxCount => _sendQueue.pendingCount;
 
   static const EmailAddress _you = EmailAddress(
     name: 'You',
@@ -450,6 +489,61 @@ class MockEmailProvider extends EmailProvider {
     required String bodyHtml,
     required String bodyText,
   }) async {
+    await _sendQueue.initialize();
+    if (toLine.trim().isEmpty) {
+      throw StateError('No recipients provided.');
+    }
+    await _sendQueue.enqueue(
+      OutboxDraft(
+        accountKey: accountId,
+        threadId: thread?.id,
+        toLine: toLine,
+        ccLine: ccLine,
+        bccLine: bccLine,
+        subject: subject,
+        bodyHtml: bodyHtml,
+        bodyText: bodyText,
+      ),
+    );
+  }
+
+  Future<void> _sendQueuedMessage(OutboxItem item) async {
+    final thread =
+        item.threadId == null ? null : _findThread(item.threadId!);
+    await _sendMessageNow(
+      thread: thread,
+      toLine: item.toLine,
+      ccLine: item.ccLine,
+      bccLine: item.bccLine,
+      subject: item.subject,
+      bodyHtml: item.bodyHtml,
+      bodyText: item.bodyText,
+    );
+  }
+
+  Future<void> _saveQueuedDraft(OutboxItem item) async {
+    final thread =
+        item.threadId == null ? null : _findThread(item.threadId!);
+    await _saveDraftNow(
+      thread: thread,
+      toLine: item.toLine,
+      ccLine: item.ccLine,
+      bccLine: item.bccLine,
+      subject: item.subject,
+      bodyHtml: item.bodyHtml,
+      bodyText: item.bodyText,
+    );
+  }
+
+  Future<void> _sendMessageNow({
+    EmailThread? thread,
+    required String toLine,
+    String? ccLine,
+    String? bccLine,
+    required String subject,
+    required String bodyHtml,
+    required String bodyText,
+  }) async {
     final now = DateTime.now();
     final timeLabel = _formatTime(now);
     final recipients = _parseRecipients(toLine);
@@ -467,7 +561,7 @@ class MockEmailProvider extends EmailProvider {
         receivedAt: now,
       );
       _threads.insert(0, newThread);
-      _threadFolders[threadId] = _selectedFolderPath;
+      _threadFolders[threadId] = 'Sent';
       _messages[threadId] = [
         EmailMessage(
           id: 'msg-${now.microsecondsSinceEpoch}',
@@ -524,6 +618,26 @@ class MockEmailProvider extends EmailProvider {
 
   @override
   Future<void> saveDraft({
+    EmailThread? thread,
+    required String toLine,
+    String? ccLine,
+    String? bccLine,
+    required String subject,
+    required String bodyHtml,
+    required String bodyText,
+  }) async {
+    await _saveDraftNow(
+      thread: thread,
+      toLine: toLine,
+      ccLine: ccLine,
+      bccLine: bccLine,
+      subject: subject,
+      bodyHtml: bodyHtml,
+      bodyText: bodyText,
+    );
+  }
+
+  Future<void> _saveDraftNow({
     EmailThread? thread,
     required String toLine,
     String? ccLine,
@@ -600,6 +714,196 @@ class MockEmailProvider extends EmailProvider {
         .toList();
   }
 
+  List<EmailAddress> _parseRecipientAddresses(String raw) {
+    final parts = raw
+        .split(RegExp(r'[;,]'))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    return parts
+        .map((email) => EmailAddress(name: email, email: email))
+        .toList();
+  }
+
+  List<EmailThread> _outboxThreads() {
+    final items = _sendQueue.items;
+    if (items.isEmpty) {
+      return const [];
+    }
+    final threads = <EmailThread>[];
+    for (final item in items) {
+      final recipients = <EmailAddress>[
+        ..._parseRecipientAddresses(item.toLine),
+        ..._parseRecipientAddresses(item.ccLine ?? ''),
+        ..._parseRecipientAddresses(item.bccLine ?? ''),
+      ];
+      final createdAt = item.createdAt.toLocal();
+      threads.add(
+        EmailThread(
+          id: _outboxThreadId(item),
+          subject: item.subject,
+          participants: [_you, ...recipients],
+          time: _formatTime(createdAt),
+          unread: false,
+          starred: false,
+          receivedAt: createdAt,
+        ),
+      );
+    }
+    threads.sort((a, b) {
+      final aTime = a.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bTime = b.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bTime.compareTo(aTime);
+    });
+    return threads;
+  }
+
+  String _outboxThreadId(OutboxItem item) {
+    return 'outbox-${item.id}';
+  }
+
+  OutboxItem? _outboxItemForThread(String threadId) {
+    if (!threadId.startsWith('outbox-')) {
+      return null;
+    }
+    final id = threadId.substring('outbox-'.length);
+    for (final item in _sendQueue.items) {
+      if (item.id == id) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  EmailMessage _outboxMessage(
+    OutboxItem item, {
+    String? threadIdOverride,
+  }) {
+    final to = _parseRecipientAddresses(item.toLine);
+    final cc = _parseRecipientAddresses(item.ccLine ?? '');
+    final bcc = _parseRecipientAddresses(item.bccLine ?? '');
+    final createdAt = item.createdAt.toLocal();
+    return EmailMessage(
+      id: 'outbox-${item.id}',
+      threadId: threadIdOverride ?? item.threadId ?? _outboxThreadId(item),
+      subject: item.subject,
+      from: _you,
+      to: to,
+      cc: cc,
+      bcc: bcc,
+      time: _formatTime(createdAt),
+      bodyText: item.bodyText.isEmpty ? null : item.bodyText,
+      bodyHtml: item.bodyHtml.isEmpty ? null : item.bodyHtml,
+      isMe: true,
+      isUnread: false,
+      receivedAt: createdAt,
+      inReplyTo: item.replyMessageId,
+      sendStatus: _statusForOutbox(item.status),
+    );
+  }
+
+  List<EmailMessage> _mergeOutboxMessages(
+    String threadId,
+    List<EmailMessage> base,
+  ) {
+    final merged = <String, EmailMessage>{
+      for (final message in base) message.id: message,
+    };
+    _mergeOutboxIntoMap(merged, threadId);
+    final list = merged.values.toList();
+    list.sort((a, b) {
+      final aTime = a.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bTime = b.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return aTime.compareTo(bTime);
+    });
+    return list;
+  }
+
+  void _mergeOutboxIntoMap(
+    Map<String, EmailMessage> merged,
+    String threadId,
+  ) {
+    for (final item in _sendQueue.items) {
+      if (item.threadId != threadId) {
+        continue;
+      }
+      final message = _outboxMessage(item, threadIdOverride: threadId);
+      merged[message.id] = message;
+    }
+  }
+
+  MessageSendStatus _statusForOutbox(OutboxStatus status) {
+    switch (status) {
+      case OutboxStatus.queued:
+        return MessageSendStatus.queued;
+      case OutboxStatus.sending:
+        return MessageSendStatus.sending;
+      case OutboxStatus.failed:
+        return MessageSendStatus.failed;
+    }
+  }
+
+  EmailThread? _findThread(String threadId) {
+    for (final thread in _threads) {
+      if (thread.id == threadId) {
+        return thread;
+      }
+    }
+    return null;
+  }
+
+  List<FolderSection> _withOutboxSection(List<FolderSection> sections) {
+    if (sections.isEmpty) {
+      return [
+        FolderSection(
+          title: 'Mailboxes',
+          kind: FolderSectionKind.mailboxes,
+          items: [
+            FolderItem(
+              index: -1,
+              name: 'Outbox',
+              path: kOutboxFolderPath,
+              unreadCount: _sendQueue.pendingCount,
+              icon: Icons.outbox_rounded,
+            ),
+          ],
+        ),
+      ];
+    }
+    final updated = <FolderSection>[];
+    for (final section in sections) {
+      if (section.kind != FolderSectionKind.mailboxes) {
+        updated.add(section);
+        continue;
+      }
+      final hasOutbox = section.items.any(
+        (item) => item.path == kOutboxFolderPath,
+      );
+      if (hasOutbox) {
+        updated.add(section);
+        continue;
+      }
+      final items = [
+        FolderItem(
+          index: -1,
+          name: 'Outbox',
+          path: kOutboxFolderPath,
+          unreadCount: _sendQueue.pendingCount,
+          icon: Icons.outbox_rounded,
+        ),
+        ...section.items,
+      ];
+      updated.add(
+        FolderSection(
+          title: section.title,
+          kind: section.kind,
+          items: items,
+        ),
+      );
+    }
+    return updated;
+  }
+
   String _formatTime(DateTime timestamp) {
     var hour = timestamp.hour;
     final minute = timestamp.minute;
@@ -610,5 +914,11 @@ class MockEmailProvider extends EmailProvider {
     }
     final minuteLabel = minute.toString().padLeft(2, '0');
     return '$hour:$minuteLabel $suffix';
+  }
+
+  @override
+  void dispose() {
+    _sendQueue.dispose();
+    super.dispose();
   }
 }

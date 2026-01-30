@@ -227,6 +227,12 @@ class _ComposeSheetState extends State<ComposeSheet> {
         bodyText: plain,
       );
       if (mounted) {
+        // TODO: "Sent (Click to undo)" once undo-send delay is implemented.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sent')),
+        );
+      }
+      if (mounted) {
         Navigator.of(context).pop();
       }
     } catch (error) {

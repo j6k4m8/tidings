@@ -17,6 +17,7 @@ abstract class EmailProvider extends ChangeNotifier {
   List<EmailThread> get threads;
   List<EmailMessage> messagesForThread(String threadId);
   EmailMessage? latestMessageForThread(String threadId);
+  int get outboxCount;
   List<FolderSection> get folderSections;
   String get selectedFolderPath;
   bool isFolderLoading(String path);
