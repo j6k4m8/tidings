@@ -917,6 +917,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                   onSelectAccount: _disableUnifiedInbox,
                                 ),
                                 onOutboxTap: () => _openOutbox(listProvider),
+                                onRefreshTap: () async {
+                                  await listProvider.refresh();
+                                },
                                 outboxCount: listProvider.outboxCount,
                                 outboxSelected:
                                     listProvider.selectedFolderPath ==

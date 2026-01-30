@@ -12,6 +12,7 @@ class HomeTopBar extends StatelessWidget {
     required this.onSettingsTap,
     required this.onAccountTap,
     required this.onOutboxTap,
+    required this.onRefreshTap,
     required this.outboxCount,
     required this.outboxSelected,
   });
@@ -21,6 +22,7 @@ class HomeTopBar extends StatelessWidget {
   final VoidCallback onSettingsTap;
   final VoidCallback onAccountTap;
   final VoidCallback onOutboxTap;
+  final VoidCallback onRefreshTap;
   final int outboxCount;
   final bool outboxSelected;
 
@@ -111,6 +113,11 @@ class HomeTopBar extends StatelessWidget {
                   accent: accent,
                   selected: outboxSelected,
                   onTap: onOutboxTap,
+                ),
+                IconButton(
+                  tooltip: 'Refresh',
+                  onPressed: onRefreshTap,
+                  icon: const Icon(Icons.refresh_rounded),
                 ),
                 IconButton(
                   tooltip: 'Account',

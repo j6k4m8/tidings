@@ -17,6 +17,9 @@ More screenshots in [docs/Screenshots.md](docs/Screenshots.md)!
 -   Threaded inbox + thread detail view, with "chat-style" UX
 -   HTML message rendering
 -   Rich HTML compose with styling and saved drafts
+-   Outbox send queue with instant-send UX (optimistic threading)
+-   Undo send (click to undo during the send window)
+-   Automatic send retries with exponential backoff + fallback to Drafts
 -   IMAP/SMTP connection testing and per-account refresh intervals
 -   Folder pinning with background cached folder loading
 -   Per-account accent colors
