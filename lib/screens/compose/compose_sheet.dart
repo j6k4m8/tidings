@@ -15,6 +15,7 @@ Future<void> showComposeSheet(
   BuildContext context, {
   required EmailProvider provider,
   required Color accent,
+  BuildContext? hostContext,
   EmailThread? thread,
   String? currentUserEmail,
   String? initialTo,
@@ -32,6 +33,7 @@ Future<void> showComposeSheet(
       builder: (_) => ComposeSheet(
         provider: provider,
         accent: accent,
+        hostContext: hostContext ?? context,
         thread: thread,
         currentUserEmail: currentUserEmail,
         initialTo: initialTo,
@@ -55,6 +57,7 @@ Future<void> showComposeSheet(
         child: ComposeSheet(
           provider: provider,
           accent: accent,
+          hostContext: hostContext ?? context,
           thread: thread,
           currentUserEmail: currentUserEmail,
           initialTo: initialTo,
@@ -74,6 +77,7 @@ Future<void> showComposeWindow(
   BuildContext context, {
   required EmailProvider provider,
   required Color accent,
+  BuildContext? hostContext,
   EmailThread? thread,
   String? currentUserEmail,
   String? initialTo,
@@ -87,6 +91,7 @@ Future<void> showComposeWindow(
       builder: (_) => _ComposeScreen(
         provider: provider,
         accent: accent,
+        hostContext: hostContext ?? context,
         thread: thread,
         currentUserEmail: currentUserEmail,
         initialTo: initialTo,
@@ -104,6 +109,7 @@ class ComposeSheet extends StatefulWidget {
     super.key,
     required this.provider,
     required this.accent,
+    this.hostContext,
     this.thread,
     this.currentUserEmail,
     this.initialTo,
@@ -117,6 +123,7 @@ class ComposeSheet extends StatefulWidget {
 
   final EmailProvider provider;
   final Color accent;
+  final BuildContext? hostContext;
   final EmailThread? thread;
   final String? currentUserEmail;
   final String? initialTo;
@@ -147,11 +154,13 @@ class _ComposeSheetState extends State<ComposeSheet> {
     if (widget.isSheet) {
       return showModalBottomSheet<void>(
         context: hostContext,
+        useRootNavigator: true,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (_) => ComposeSheet(
           provider: widget.provider,
           accent: widget.accent,
+          hostContext: widget.hostContext,
           thread: widget.thread,
           currentUserEmail: widget.currentUserEmail,
           initialTo: item.toLine,
@@ -166,6 +175,7 @@ class _ComposeSheetState extends State<ComposeSheet> {
     }
     return showDialog<void>(
       context: hostContext,
+      useRootNavigator: true,
       barrierColor: Colors.black.withValues(alpha: 0.45),
       builder: (_) => Dialog(
         backgroundColor: Colors.transparent,
@@ -175,6 +185,7 @@ class _ComposeSheetState extends State<ComposeSheet> {
           child: ComposeSheet(
             provider: widget.provider,
             accent: widget.accent,
+            hostContext: widget.hostContext,
             thread: widget.thread,
             currentUserEmail: widget.currentUserEmail,
             initialTo: item.toLine,
@@ -298,7 +309,9 @@ class _ComposeSheetState extends State<ComposeSheet> {
                         );
                         return;
                       }
-                      await _reopenFromUndo(messenger.context, item);
+                      final hostContext =
+                          widget.hostContext ?? messenger.context;
+                      await _reopenFromUndo(hostContext, item);
                     },
                   ),
           ),
@@ -488,6 +501,7 @@ class _ComposeScreen extends StatelessWidget {
   const _ComposeScreen({
     required this.provider,
     required this.accent,
+    this.hostContext,
     this.thread,
     this.currentUserEmail,
     this.initialTo,
@@ -499,6 +513,7 @@ class _ComposeScreen extends StatelessWidget {
 
   final EmailProvider provider;
   final Color accent;
+  final BuildContext? hostContext;
   final EmailThread? thread;
   final String? currentUserEmail;
   final String? initialTo;
@@ -521,6 +536,7 @@ class _ComposeScreen extends StatelessWidget {
                 child: ComposeSheet(
                   provider: provider,
                   accent: accent,
+                  hostContext: hostContext ?? context,
                   thread: thread,
                   currentUserEmail: currentUserEmail,
                   initialTo: initialTo,
