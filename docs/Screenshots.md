@@ -49,3 +49,9 @@ So you always know what account you're looking at in unified views
 With optional pinned folders per account
 
 <img width="1170" height="955" alt="image" src="https://github.com/user-attachments/assets/c75d9936-e081-447e-a5f5-bbac19d353e7" />
+
+# IT GETS NARROW
+
+<img width="540" height="970" alt="image" src="https://github.com/user-attachments/assets/1d911f97-6ed3-4940-af8c-a60f47bbeaa9" />
+
+<img width="540" height="970" alt="image" src="https://github.com/user-attachments/assets/4d6af104-aabd-4738-85a7-cc8298b49744" />

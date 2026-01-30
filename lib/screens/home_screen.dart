@@ -75,6 +75,9 @@ class _HomeScreenState extends State<HomeScreen> {
     appState: widget.appState,
   );
   bool _isUnifiedInbox = false;
+  bool _isRefreshing = false;
+  bool _compactRailOpen = false;
+  bool _compactRailExpanded = false;
 
   @override
   void initState() {
@@ -372,6 +375,20 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _runRefresh(EmailProvider provider) async {
+    if (_isRefreshing) {
+      return;
+    }
+    setState(() => _isRefreshing = true);
+    try {
+      await provider.refresh();
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
   }
 
   Map<LogicalKeySet, Intent> _shortcutMap(
@@ -917,9 +934,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   onSelectAccount: _disableUnifiedInbox,
                                 ),
                                 onOutboxTap: () => _openOutbox(listProvider),
-                                onRefreshTap: () async {
-                                  await listProvider.refresh();
-                                },
+                                onRefreshTap: () => _runRefresh(listProvider),
+                                isRefreshing: _isRefreshing,
                                 outboxCount: listProvider.outboxCount,
                                 outboxSelected:
                                     listProvider.selectedFolderPath ==
@@ -1017,8 +1033,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                   _threadListFocusNode.requestFocus();
                                 },
                                 selectedFolderIndex: effectiveFolderIndex,
-                                onFolderSelected: (index) =>
-                                    _handleFolderSelected(listProvider, index),
+                                onFolderSelected: (index) {
+                                  _handleFolderSelected(listProvider, index);
+                                  if (_compactRailOpen) {
+                                    setState(
+                                      () => _compactRailOpen = false,
+                                    );
+                                  }
+                                },
                                 onAccountTap: () => showAccountPickerSheet(
                                   context,
                                   appState: widget.appState,
@@ -1028,6 +1050,43 @@ class _HomeScreenState extends State<HomeScreen> {
                                   onSelectUnified: _enableUnifiedInbox,
                                   onSelectAccount: _disableUnifiedInbox,
                                 ),
+                                onCompose: () => showComposeSheet(
+                                  context,
+                                  provider: provider,
+                                  accent: widget.accent,
+                                  currentUserEmail: account.email,
+                                ),
+                                onOutboxTap: () => _openOutbox(listProvider),
+                                onRefreshTap: () => _runRefresh(listProvider),
+                                onSettingsTap: () =>
+                                    setState(() => _showSettings = true),
+                                outboxCount: listProvider.outboxCount,
+                                outboxSelected:
+                                    listProvider.selectedFolderPath ==
+                                    kOutboxFolderPath,
+                                isRefreshing: _isRefreshing,
+                                railOpen: _compactRailOpen,
+                                railExpanded: _compactRailExpanded,
+                                onRailToggle: (open) {
+                                  setState(() {
+                                    _compactRailOpen = open;
+                                    if (!open) {
+                                      _compactRailExpanded = false;
+                                    }
+                                  });
+                                },
+                                onRailExpand: () {
+                                  setState(() {
+                                    _compactRailOpen = true;
+                                    _compactRailExpanded = true;
+                                  });
+                                },
+                                onRailCollapse: () {
+                                  setState(() {
+                                    _compactRailOpen = true;
+                                    _compactRailExpanded = false;
+                                  });
+                                },
                                 searchFocusNode: _searchFocusNode,
                                 threadListFocusNode: _threadListFocusNode,
                                 listCurrentUserEmail: listCurrentUserEmail,
