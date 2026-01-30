@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/account_models.dart';
@@ -403,6 +404,9 @@ class CompactLayout extends StatelessWidget {
     required this.outboxSelected,
     required this.railOpen,
     required this.onRailToggle,
+    required this.railExpanded,
+    required this.onRailExpand,
+    required this.onRailCollapse,
     required this.searchFocusNode,
     required this.threadListFocusNode,
     required this.listCurrentUserEmail,
@@ -425,6 +429,9 @@ class CompactLayout extends StatelessWidget {
   final bool outboxSelected;
   final bool railOpen;
   final ValueChanged<bool> onRailToggle;
+  final bool railExpanded;
+  final VoidCallback onRailExpand;
+  final VoidCallback onRailCollapse;
   final FocusNode searchFocusNode;
   final FocusNode threadListFocusNode;
   final String listCurrentUserEmail;
@@ -433,18 +440,22 @@ class CompactLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
+    final isMac = defaultTargetPlatform == TargetPlatform.macOS;
+    final topPadding =
+        topInset + context.space(isMac ? 22 : 6);
     final pinnedFolderItems = pinnedItems(
       provider.folderSections,
       context.tidingsSettings.pinnedFolderPaths,
     );
     final railWidth = context.space(72);
+    final panelWidth = context.space(260);
 
     return Column(
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(
             context.gutter(16),
-            topInset + context.space(6),
+            topPadding,
             context.gutter(16),
             context.space(8),
           ),
@@ -452,7 +463,13 @@ class CompactLayout extends StatelessWidget {
             children: [
               IconButton(
                 tooltip: 'Folders',
-                onPressed: () => onRailToggle(!railOpen),
+                onPressed: () {
+                  if (railOpen) {
+                    onRailToggle(false);
+                  } else {
+                    onRailCollapse();
+                  }
+                },
                 icon: const Icon(Icons.menu_rounded),
               ),
               SizedBox(width: context.space(8)),
@@ -548,22 +565,46 @@ class CompactLayout extends StatelessWidget {
                 bottom: 0,
                 left: railOpen
                     ? context.space(8)
-                    : -railWidth - context.space(16),
+                    : -(railExpanded ? panelWidth : railWidth) -
+                        context.space(16),
                 child: SizedBox(
-                  width: railWidth,
-                  child: SidebarRail(
-                    account: account,
-                    accent: accent,
-                    mailboxItems: mailboxItems(provider.folderSections),
-                    pinnedItems: pinnedFolderItems,
-                    selectedIndex: selectedFolderIndex,
-                    onSelected: (index) {
-                      onFolderSelected(index);
-                      onRailToggle(false);
-                    },
-                    onExpand: () => onRailToggle(false),
-                    onAccountTap: onAccountTap,
-                    onCompose: onCompose,
+                  width: railExpanded ? panelWidth : railWidth,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 160),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    child: railExpanded
+                        ? SidebarPanel(
+                            key: const ValueKey('compact-panel'),
+                            account: account,
+                            accent: accent,
+                            provider: provider,
+                            sections: provider.folderSections,
+                            selectedIndex: selectedFolderIndex,
+                            onSelected: (index) {
+                              onFolderSelected(index);
+                              onRailToggle(false);
+                            },
+                            onSettingsTap: onSettingsTap,
+                            onCollapse: onRailCollapse,
+                            onAccountTap: onAccountTap,
+                            onCompose: onCompose,
+                          )
+                        : SidebarRail(
+                            key: const ValueKey('compact-rail'),
+                            account: account,
+                            accent: accent,
+                            mailboxItems: mailboxItems(provider.folderSections),
+                            pinnedItems: pinnedFolderItems,
+                            selectedIndex: selectedFolderIndex,
+                            onSelected: (index) {
+                              onFolderSelected(index);
+                              onRailToggle(false);
+                            },
+                            onExpand: onRailExpand,
+                            onAccountTap: onAccountTap,
+                            onCompose: onCompose,
+                          ),
                   ),
                 ),
               ),

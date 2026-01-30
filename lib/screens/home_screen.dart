@@ -76,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
   );
   bool _isUnifiedInbox = false;
   bool _compactRailOpen = false;
+  bool _compactRailExpanded = false;
 
   @override
   void initState() {
@@ -1052,8 +1053,26 @@ class _HomeScreenState extends State<HomeScreen> {
                                     listProvider.selectedFolderPath ==
                                     kOutboxFolderPath,
                                 railOpen: _compactRailOpen,
+                                railExpanded: _compactRailExpanded,
                                 onRailToggle: (open) {
-                                  setState(() => _compactRailOpen = open);
+                                  setState(() {
+                                    _compactRailOpen = open;
+                                    if (!open) {
+                                      _compactRailExpanded = false;
+                                    }
+                                  });
+                                },
+                                onRailExpand: () {
+                                  setState(() {
+                                    _compactRailOpen = true;
+                                    _compactRailExpanded = true;
+                                  });
+                                },
+                                onRailCollapse: () {
+                                  setState(() {
+                                    _compactRailOpen = true;
+                                    _compactRailExpanded = false;
+                                  });
                                 },
                                 searchFocusNode: _searchFocusNode,
                                 threadListFocusNode: _threadListFocusNode,
