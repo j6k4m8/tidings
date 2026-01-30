@@ -551,7 +551,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _toast('No thread selected.');
       return;
     }
-    if (_resolveScope() == _HomeScope.list) {
+    final isWide = MediaQuery.of(context).size.width >= 1024;
+    final detailOpen = isWide && _threadPanelOpen && !_showSettings;
+    if (!detailOpen) {
       await _openReplyFromList(provider, account, thread, mode);
       return;
     }
