@@ -298,9 +298,12 @@ class _ComposeSheetState extends State<ComposeSheet> {
                     label: 'Undo',
                     onPressed: () async {
                       final item = queued;
+                      final messenger = ScaffoldMessenger.of(context);
+                      final hostContext =
+                          widget.hostContext ?? messenger.context;
                       final undone =
                           await widget.provider.cancelSend(item.id);
-                      if (!messenger.mounted) {
+                      if (!context.mounted || !hostContext.mounted) {
                         return;
                       }
                       if (!undone) {
@@ -309,8 +312,6 @@ class _ComposeSheetState extends State<ComposeSheet> {
                         );
                         return;
                       }
-                      final hostContext =
-                          widget.hostContext ?? messenger.context;
                       await _reopenFromUndo(hostContext, item);
                     },
                   ),

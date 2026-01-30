@@ -340,6 +340,7 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                 final canUndo = outboxId != null &&
                                     message.sendStatus ==
                                         MessageSendStatus.queued;
+                                final undoId = canUndo ? outboxId : null;
                                 return MessageCard(
                                   key: ValueKey(message.id),
                                   message: message,
@@ -356,9 +357,9 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                       index == widget.selectedMessageIndex,
                                   onSelected: () =>
                                       widget.onMessageSelected(index),
-                                  onUndoSend: canUndo
-                                      ? () => _undoSend(outboxId!)
-                                      : null,
+                                  onUndoSend: undoId == null
+                                      ? null
+                                      : () => _undoSend(undoId),
                                 );
                               },
                             ),
