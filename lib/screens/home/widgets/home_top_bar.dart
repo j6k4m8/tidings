@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/color_tokens.dart';
 import '../../../theme/glass.dart';
+import 'refresh_button.dart';
 import '../../../state/tidings_settings.dart';
 
 class HomeTopBar extends StatelessWidget {
@@ -12,6 +13,7 @@ class HomeTopBar extends StatelessWidget {
     required this.onSettingsTap,
     required this.onOutboxTap,
     required this.onRefreshTap,
+    required this.isRefreshing,
     required this.outboxCount,
     required this.outboxSelected,
   });
@@ -21,6 +23,7 @@ class HomeTopBar extends StatelessWidget {
   final VoidCallback onSettingsTap;
   final VoidCallback onOutboxTap;
   final VoidCallback onRefreshTap;
+  final bool isRefreshing;
   final int outboxCount;
   final bool outboxSelected;
 
@@ -112,10 +115,9 @@ class HomeTopBar extends StatelessWidget {
                   selected: outboxSelected,
                   onTap: onOutboxTap,
                 ),
-                IconButton(
-                  tooltip: 'Refresh',
+                RefreshIconButton(
+                  isRefreshing: isRefreshing,
                   onPressed: onRefreshTap,
-                  icon: const Icon(Icons.refresh_rounded),
                 ),
                 IconButton(
                   tooltip: 'Settings',

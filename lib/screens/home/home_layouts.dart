@@ -14,6 +14,7 @@ import 'thread_detail.dart';
 import 'thread_list.dart';
 import '../settings/settings_screen.dart';
 import 'widgets/home_top_bar.dart';
+import 'widgets/refresh_button.dart';
 import 'widgets/sidebar_panel.dart';
 import 'widgets/sidebar_rail.dart';
 import 'widgets/thread_panel_handles.dart';
@@ -41,6 +42,7 @@ class WideLayout extends StatelessWidget {
     required this.navIndex,
     required this.onNavSelected,
     required this.onSettingsTap,
+    required this.isRefreshing,
     required this.onSettingsClose,
     required this.showSettings,
     required this.threadFocused,
@@ -81,6 +83,7 @@ class WideLayout extends StatelessWidget {
   final int navIndex;
   final ValueChanged<int> onNavSelected;
   final VoidCallback onSettingsTap;
+  final bool isRefreshing;
   final VoidCallback onSettingsClose;
   final bool showSettings;
   final bool threadFocused;
@@ -128,6 +131,7 @@ class WideLayout extends StatelessWidget {
           onSettingsTap: onSettingsTap,
           onOutboxTap: onOutboxTap,
           onRefreshTap: onRefreshTap,
+          isRefreshing: isRefreshing,
           outboxCount: outboxCount,
           outboxSelected: outboxSelected,
         ),
@@ -402,6 +406,7 @@ class CompactLayout extends StatelessWidget {
     required this.onSettingsTap,
     required this.outboxCount,
     required this.outboxSelected,
+    required this.isRefreshing,
     required this.railOpen,
     required this.onRailToggle,
     required this.railExpanded,
@@ -427,6 +432,7 @@ class CompactLayout extends StatelessWidget {
   final VoidCallback onSettingsTap;
   final int outboxCount;
   final bool outboxSelected;
+  final bool isRefreshing;
   final bool railOpen;
   final ValueChanged<bool> onRailToggle;
   final bool railExpanded;
@@ -486,10 +492,9 @@ class CompactLayout extends StatelessWidget {
                 selected: outboxSelected,
                 onTap: onOutboxTap,
               ),
-              IconButton(
-                tooltip: 'Refresh',
+              RefreshIconButton(
+                isRefreshing: isRefreshing,
                 onPressed: onRefreshTap,
-                icon: const Icon(Icons.refresh_rounded),
               ),
               IconButton(
                 tooltip: 'Settings',
