@@ -12,8 +12,6 @@ import 'home_utils.dart';
 import 'thread_detail.dart';
 import 'thread_list.dart';
 import '../settings/settings_screen.dart';
-import 'widgets/compact_header.dart';
-import 'widgets/folder_list.dart';
 import 'widgets/home_top_bar.dart';
 import 'widgets/sidebar_panel.dart';
 import 'widgets/sidebar_rail.dart';
@@ -397,6 +395,14 @@ class CompactLayout extends StatelessWidget {
     required this.selectedFolderIndex,
     required this.onFolderSelected,
     required this.onAccountTap,
+    required this.onCompose,
+    required this.onOutboxTap,
+    required this.onRefreshTap,
+    required this.onSettingsTap,
+    required this.outboxCount,
+    required this.outboxSelected,
+    required this.railOpen,
+    required this.onRailToggle,
     required this.searchFocusNode,
     required this.threadListFocusNode,
     required this.listCurrentUserEmail,
@@ -411,6 +417,14 @@ class CompactLayout extends StatelessWidget {
   final int selectedFolderIndex;
   final ValueChanged<int> onFolderSelected;
   final VoidCallback onAccountTap;
+  final VoidCallback onCompose;
+  final VoidCallback onOutboxTap;
+  final VoidCallback onRefreshTap;
+  final VoidCallback onSettingsTap;
+  final int outboxCount;
+  final bool outboxSelected;
+  final bool railOpen;
+  final ValueChanged<bool> onRailToggle;
   final FocusNode searchFocusNode;
   final FocusNode threadListFocusNode;
   final String listCurrentUserEmail;
@@ -418,99 +432,194 @@ class CompactLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    final topInset = MediaQuery.of(context).padding.top;
+    final pinnedFolderItems = pinnedItems(
+      provider.folderSections,
+      context.tidingsSettings.pinnedFolderPaths,
+    );
+    final railWidth = context.space(72);
+
+    return Column(
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(
             context.gutter(16),
-            context.space(12),
+            topInset + context.space(6),
             context.gutter(16),
-            0,
+            context.space(8),
           ),
-          child: PageReveal(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CompactHeader(
-                  account: account,
+          child: Row(
+            children: [
+              IconButton(
+                tooltip: 'Folders',
+                onPressed: () => onRailToggle(!railOpen),
+                icon: const Icon(Icons.menu_rounded),
+              ),
+              SizedBox(width: context.space(8)),
+              Expanded(
+                child: ThreadSearchRow(
                   accent: accent,
-                  provider: provider,
-                  sections: provider.folderSections,
-                  selectedFolderIndex: selectedFolderIndex,
-                  onFolderSelected: onFolderSelected,
-                  onAccountTap: onAccountTap,
+                  focusNode: searchFocusNode,
                 ),
-                SizedBox(height: context.space(16)),
-                ThreadSearchRow(accent: accent, focusNode: searchFocusNode),
-                SizedBox(height: context.space(8)),
-                Expanded(
-                  child: Listener(
-                    onPointerDown: (_) => threadListFocusNode.requestFocus(),
-                    child: Focus(
-                      focusNode: threadListFocusNode,
-                      child: ThreadListPanel(
-                        accent: accent,
-                        provider: provider,
-                        selectedIndex: selectedThreadIndex,
-                        onSelected: (index) {
-                          onThreadSelected(index);
-                          final thread = provider.threads[index];
-                          final currentUserEmail =
-                              currentUserEmailForThread(thread);
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => ThreadScreen(
-                                accent: accent,
-                                thread: thread,
-                                provider: provider,
-                                currentUserEmail: currentUserEmail,
-                              ),
+              ),
+              SizedBox(width: context.space(8)),
+              _CompactOutboxButton(
+                count: outboxCount,
+                accent: accent,
+                selected: outboxSelected,
+                onTap: onOutboxTap,
+              ),
+              IconButton(
+                tooltip: 'Refresh',
+                onPressed: onRefreshTap,
+                icon: const Icon(Icons.refresh_rounded),
+              ),
+              IconButton(
+                tooltip: 'Settings',
+                onPressed: onSettingsTap,
+                icon: const Icon(Icons.settings_rounded),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Stack(
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  context.gutter(16),
+                  0,
+                  context.gutter(16),
+                  0,
+                ),
+                child: PageReveal(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Listener(
+                          onPointerDown: (_) =>
+                              threadListFocusNode.requestFocus(),
+                          child: Focus(
+                            focusNode: threadListFocusNode,
+                            child: ThreadListPanel(
+                              accent: accent,
+                              provider: provider,
+                              selectedIndex: selectedThreadIndex,
+                              onSelected: (index) {
+                                onThreadSelected(index);
+                                final thread = provider.threads[index];
+                                final currentUserEmail =
+                                    currentUserEmailForThread(thread);
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => ThreadScreen(
+                                      accent: accent,
+                                      thread: thread,
+                                      provider: provider,
+                                      currentUserEmail: currentUserEmail,
+                                    ),
+                                  ),
+                                );
+                              },
+                              isCompact: true,
+                              currentUserEmail: listCurrentUserEmail,
+                              searchFocusNode: searchFocusNode,
                             ),
-                          );
-                        },
-                        isCompact: true,
-                        currentUserEmail: listCurrentUserEmail,
-                        searchFocusNode: searchFocusNode,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
-              ],
+              ),
+              if (railOpen)
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => onRailToggle(false),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                top: 0,
+                bottom: 0,
+                left: railOpen
+                    ? context.space(8)
+                    : -railWidth - context.space(16),
+                child: SizedBox(
+                  width: railWidth,
+                  child: SidebarRail(
+                    account: account,
+                    accent: accent,
+                    mailboxItems: mailboxItems(provider.folderSections),
+                    pinnedItems: pinnedFolderItems,
+                    selectedIndex: selectedFolderIndex,
+                    onSelected: (index) {
+                      onFolderSelected(index);
+                      onRailToggle(false);
+                    },
+                    onExpand: () => onRailToggle(false),
+                    onAccountTap: onAccountTap,
+                    onCompose: onCompose,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactOutboxButton extends StatelessWidget {
+  const _CompactOutboxButton({
+    required this.count,
+    required this.accent,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final int count;
+  final Color accent;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = count > 99 ? '99+' : count.toString();
+    final badgeVisible = count > 0;
+    final iconColor = selected ? accent.withValues(alpha: 0.9) : null;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          tooltip: badgeVisible ? 'Outbox ($label)' : 'Outbox',
+          onPressed: onTap,
+          icon: Icon(Icons.outbox_rounded, color: iconColor),
+        ),
+        if (badgeVisible)
+          Positioned(
+            right: 6,
+            top: 6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: accent,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
             ),
           ),
-        ),
-        Positioned(
-          top: 0,
-          bottom: 0,
-          left: 0,
-          width: context.space(18),
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onHorizontalDragEnd: (details) {
-              final velocity = details.primaryVelocity ?? 0;
-              if (velocity > 300) {
-                showFolderSheet(
-                  context,
-                  accent: accent,
-                  provider: provider,
-                  sections: provider.folderSections,
-                  selectedFolderIndex: selectedFolderIndex,
-                  onFolderSelected: onFolderSelected,
-                );
-              }
-            },
-            onTap: () {
-              showFolderSheet(
-                context,
-                accent: accent,
-                provider: provider,
-                sections: provider.folderSections,
-                selectedFolderIndex: selectedFolderIndex,
-                onFolderSelected: onFolderSelected,
-              );
-            },
-          ),
-        ),
       ],
     );
   }

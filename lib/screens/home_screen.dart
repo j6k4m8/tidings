@@ -75,6 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
     appState: widget.appState,
   );
   bool _isUnifiedInbox = false;
+  bool _compactRailOpen = false;
 
   @override
   void initState() {
@@ -1017,8 +1018,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                   _threadListFocusNode.requestFocus();
                                 },
                                 selectedFolderIndex: effectiveFolderIndex,
-                                onFolderSelected: (index) =>
-                                    _handleFolderSelected(listProvider, index),
+                                onFolderSelected: (index) {
+                                  _handleFolderSelected(listProvider, index);
+                                  if (_compactRailOpen) {
+                                    setState(
+                                      () => _compactRailOpen = false,
+                                    );
+                                  }
+                                },
                                 onAccountTap: () => showAccountPickerSheet(
                                   context,
                                   appState: widget.appState,
@@ -1028,6 +1035,26 @@ class _HomeScreenState extends State<HomeScreen> {
                                   onSelectUnified: _enableUnifiedInbox,
                                   onSelectAccount: _disableUnifiedInbox,
                                 ),
+                                onCompose: () => showComposeSheet(
+                                  context,
+                                  provider: provider,
+                                  accent: widget.accent,
+                                  currentUserEmail: account.email,
+                                ),
+                                onOutboxTap: () => _openOutbox(listProvider),
+                                onRefreshTap: () async {
+                                  await listProvider.refresh();
+                                },
+                                onSettingsTap: () =>
+                                    setState(() => _showSettings = true),
+                                outboxCount: listProvider.outboxCount,
+                                outboxSelected:
+                                    listProvider.selectedFolderPath ==
+                                    kOutboxFolderPath,
+                                railOpen: _compactRailOpen,
+                                onRailToggle: (open) {
+                                  setState(() => _compactRailOpen = open);
+                                },
                                 searchFocusNode: _searchFocusNode,
                                 threadListFocusNode: _threadListFocusNode,
                                 listCurrentUserEmail: listCurrentUserEmail,
