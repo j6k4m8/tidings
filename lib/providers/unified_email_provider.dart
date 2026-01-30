@@ -191,6 +191,10 @@ class UnifiedEmailProvider extends EmailProvider {
     return ref?.provider;
   }
 
+  EmailProvider? providerForAccount(String accountId) {
+    return _providers[accountId];
+  }
+
   String? accountEmailForThread(String threadId) {
     final account = accountForThread(threadId);
     return account?.email;

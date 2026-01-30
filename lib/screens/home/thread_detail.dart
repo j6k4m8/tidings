@@ -5,10 +5,14 @@ import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
+import '../../providers/unified_email_provider.dart';
+import '../../state/send_queue.dart';
 import '../../state/tidings_settings.dart';
 import '../../theme/color_tokens.dart';
 import '../../widgets/key_hint.dart';
 import '../../widgets/tidings_background.dart';
+import '../compose/compose_sheet.dart';
+import '../compose/compose_utils.dart';
 import '../compose/inline_reply_composer.dart';
 import 'provider_body.dart';
 
@@ -119,19 +123,78 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
     return message.id.substring(prefix.length);
   }
 
+  EmailProvider? _providerForOutboxItem(OutboxItem item) {
+    final provider = widget.provider;
+    if (provider is UnifiedEmailProvider) {
+      return provider.providerForAccount(item.accountKey);
+    }
+    return provider;
+  }
+
+  EmailThread? _threadForOutboxItem(
+    EmailProvider provider,
+    OutboxItem item,
+  ) {
+    final threadId = item.threadId;
+    if (threadId == null || threadId.isEmpty) {
+      return null;
+    }
+    for (final thread in provider.threads) {
+      if (thread.id == threadId) {
+        return thread;
+      }
+    }
+    return null;
+  }
+
   Future<void> _undoSend(String outboxId) async {
     final messenger = ScaffoldMessenger.of(context);
+    await OutboxStore.instance.ensureLoaded();
+    final item = OutboxStore.instance.findById(outboxId);
+    if (item == null) {
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Unable to undo')),
+        );
+      }
+      return;
+    }
+    final provider = _providerForOutboxItem(item);
+    if (provider == null) {
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Unable to undo')),
+        );
+      }
+      return;
+    }
     var undone = false;
     try {
-      undone = await widget.provider.cancelSend(outboxId);
+      undone = await provider.cancelSend(outboxId);
     } catch (_) {
       undone = false;
     }
     if (!mounted) {
       return;
     }
-    messenger.showSnackBar(
-      SnackBar(content: Text(undone ? 'Undone' : 'Unable to undo')),
+    if (!undone) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Unable to undo')),
+      );
+      return;
+    }
+    final thread = _threadForOutboxItem(provider, item);
+    await showComposeSheet(
+      messenger.context,
+      provider: provider,
+      accent: widget.accent,
+      thread: thread,
+      currentUserEmail: widget.currentUserEmail,
+      initialTo: item.toLine,
+      initialCc: item.ccLine,
+      initialBcc: item.bccLine,
+      initialSubject: item.subject,
+      initialDelta: deltaFromPlainText(item.bodyText),
     );
   }
 

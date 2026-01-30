@@ -239,17 +239,29 @@ class _ComposeSheetState extends State<ComposeSheet> {
                 : SnackBarAction(
                     label: 'Undo',
                     onPressed: () async {
+                      final item = queued;
                       final undone =
-                          await widget.provider.cancelSend(queued.id);
+                          await widget.provider.cancelSend(item.id);
                       if (!messenger.mounted) {
                         return;
                       }
-                      messenger.showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            undone ? 'Undone' : 'Unable to undo',
-                          ),
-                        ),
+                      if (!undone) {
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text('Unable to undo')),
+                        );
+                        return;
+                      }
+                      await showComposeSheet(
+                        messenger.context,
+                        provider: widget.provider,
+                        accent: widget.accent,
+                        thread: widget.thread,
+                        currentUserEmail: widget.currentUserEmail,
+                        initialTo: item.toLine,
+                        initialCc: item.ccLine,
+                        initialBcc: item.bccLine,
+                        initialSubject: item.subject,
+                        initialDelta: deltaFromPlainText(item.bodyText),
                       );
                     },
                   ),

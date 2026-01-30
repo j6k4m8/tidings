@@ -378,7 +378,7 @@ class SendQueue {
     return item;
   }
 
-  Future<bool> cancel(String id) async {
+  Future<bool> cancel(String id, {bool saveToDrafts = false}) async {
     await initialize();
     final items = _store.itemsForAccount(accountKey);
     OutboxItem? item;
@@ -399,9 +399,11 @@ class SendQueue {
         item.nextAttemptAt!.isBefore(now)) {
       return false;
     }
-    try {
-      await saveDraft(item);
-    } catch (_) {}
+    if (saveToDrafts) {
+      try {
+        await saveDraft(item);
+      } catch (_) {}
+    }
     await _store.removeItem(accountKey, item.id);
     onChanged();
     _scheduleNextAttempt();
