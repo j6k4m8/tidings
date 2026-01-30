@@ -1030,6 +1030,24 @@ class ThreadScreen extends StatefulWidget {
 
 class _ThreadScreenState extends State<ThreadScreen> {
   final InlineReplyController _replyController = InlineReplyController();
+  final FocusNode _shortcutFocusNode =
+      FocusNode(debugLabel: 'ThreadScreenShortcuts');
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _shortcutFocusNode.requestFocus();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _shortcutFocusNode.dispose();
+    super.dispose();
+  }
 
   bool _isTextInputFocused() {
     final focus = FocusManager.instance.primaryFocus;
@@ -1119,36 +1137,42 @@ class _ThreadScreenState extends State<ThreadScreen> {
             },
           ),
         },
-        child: Scaffold(
-          body: AnnotatedRegion<SystemUiOverlayStyle>(
-            value: SystemUiOverlayStyle(
-              statusBarColor: Colors.transparent,
-              statusBarIconBrightness: isDark
-                  ? Brightness.light
-                  : Brightness.dark,
-              statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
-            ),
-            child: TidingsBackground(
-              accent: widget.accent,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    context.gutter(16),
-                    MediaQuery.of(context).padding.top + context.space(12),
-                    context.gutter(16),
-                    context.gutter(16),
-                  ),
-                  child: CurrentThreadPanel(
-                    accent: widget.accent,
-                    thread: widget.thread,
-                    provider: widget.provider,
-                    isCompact: true,
-                    currentUserEmail: widget.currentUserEmail,
-                    selectedMessageIndex: selectedMessageIndex,
-                    onMessageSelected: (_) {},
-                    isFocused: true,
-                    replyController: _replyController,
+        child: Focus(
+          autofocus: true,
+          canRequestFocus: true,
+          focusNode: _shortcutFocusNode,
+          child: Scaffold(
+            body: AnnotatedRegion<SystemUiOverlayStyle>(
+              value: SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                statusBarIconBrightness: isDark
+                    ? Brightness.light
+                    : Brightness.dark,
+                statusBarBrightness:
+                    isDark ? Brightness.dark : Brightness.light,
+              ),
+              child: TidingsBackground(
+                accent: widget.accent,
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      context.gutter(16),
+                      MediaQuery.of(context).padding.top + context.space(12),
+                      context.gutter(16),
+                      context.gutter(16),
+                    ),
+                    child: CurrentThreadPanel(
+                      accent: widget.accent,
+                      thread: widget.thread,
+                      provider: widget.provider,
+                      isCompact: true,
+                      currentUserEmail: widget.currentUserEmail,
+                      selectedMessageIndex: selectedMessageIndex,
+                      onMessageSelected: (_) {},
+                      isFocused: true,
+                      replyController: _replyController,
+                    ),
                   ),
                 ),
               ),
