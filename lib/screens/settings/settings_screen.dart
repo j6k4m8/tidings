@@ -348,6 +348,16 @@ class _ThreadsSettings extends StatelessWidget {
             onChanged: settings.setTintThreadListByAccountAccent,
           ),
         ),
+        SizedBox(height: context.space(16)),
+        SettingRow(
+          title: 'Show account label in list',
+          subtitle: 'Display the account on each unified thread.',
+          trailing: AccentSwitch(
+            accent: accent,
+            value: settings.showThreadAccountPill,
+            onChanged: settings.setShowThreadAccountPill,
+          ),
+        ),
         SizedBox(height: context.space(24)),
         SettingsSubheader(title: 'MESSAGE PREVIEW'),
         SizedBox(height: context.space(12)),

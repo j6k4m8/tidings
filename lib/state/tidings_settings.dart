@@ -20,6 +20,7 @@ class TidingsSettings extends ChangeNotifier {
   bool _showFolderLabels = true;
   bool _showFolderUnreadCounts = true;
   bool _tintThreadListByAccountAccent = true;
+  bool _showThreadAccountPill = true;
   bool _sidebarCollapsed = false;
   double _threadPanelFraction = 0.58;
   final Set<String> _pinnedFolderPaths = {};
@@ -39,6 +40,7 @@ class TidingsSettings extends ChangeNotifier {
   bool get showFolderLabels => _showFolderLabels;
   bool get showFolderUnreadCounts => _showFolderUnreadCounts;
   bool get tintThreadListByAccountAccent => _tintThreadListByAccountAccent;
+  bool get showThreadAccountPill => _showThreadAccountPill;
   bool get sidebarCollapsed => _sidebarCollapsed;
   double get threadPanelFraction => _threadPanelFraction;
   Set<String> get pinnedFolderPaths => Set.unmodifiable(_pinnedFolderPaths);
@@ -117,6 +119,10 @@ class TidingsSettings extends ChangeNotifier {
     _tintThreadListByAccountAccent = _boolFromStorage(
       settings['tintThreadListByAccountAccent'],
       _tintThreadListByAccountAccent,
+    );
+    _showThreadAccountPill = _boolFromStorage(
+      settings['showThreadAccountPill'],
+      _showThreadAccountPill,
     );
     _sidebarCollapsed =
         _boolFromStorage(settings['sidebarCollapsed'], _sidebarCollapsed);
@@ -201,6 +207,7 @@ class TidingsSettings extends ChangeNotifier {
       'showFolderLabels': _showFolderLabels,
       'showFolderUnreadCounts': _showFolderUnreadCounts,
       'tintThreadListByAccountAccent': _tintThreadListByAccountAccent,
+      'showThreadAccountPill': _showThreadAccountPill,
       'sidebarCollapsed': _sidebarCollapsed,
       'threadPanelFraction': _threadPanelFraction,
       'pinnedFolderPaths': pinned,
@@ -422,6 +429,15 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _tintThreadListByAccountAccent = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setShowThreadAccountPill(bool value) {
+    if (_showThreadAccountPill == value) {
+      return;
+    }
+    _showThreadAccountPill = value;
     unawaited(_persist());
     notifyListeners();
   }
