@@ -2,6 +2,18 @@ import 'package:dart_quill_delta/dart_quill_delta.dart';
 
 import '../../models/email_models.dart';
 
+class QuotedContent {
+  const QuotedContent({
+    required this.plainText,
+    required this.html,
+  });
+
+  final String plainText;
+  final String html;
+
+  bool get isEmpty => plainText.trim().isEmpty;
+}
+
 String replySubject(String subject) {
   final trimmed = subject.trim();
   if (trimmed.toLowerCase().startsWith('re:')) {
@@ -17,6 +29,99 @@ String forwardSubject(String subject) {
     return trimmed;
   }
   return trimmed.isEmpty ? 'Fwd:' : 'Fwd: $trimmed';
+}
+
+QuotedContent? buildQuotedContent(
+  EmailMessage? message, {
+  required bool isForward,
+}) {
+  if (message == null) {
+    return null;
+  }
+  final body = message.bodyPlainText.trim();
+  if (body.isEmpty) {
+    return null;
+  }
+  if (isForward) {
+    final headerLines = <String>[
+      '---------- Forwarded message ----------',
+      'From: ${message.from.displayName}',
+      'Date: ${message.time}',
+      'Subject: ${message.subject}',
+      'To: ${message.toSummary}',
+    ];
+    final plain = [
+      headerLines.join('\n'),
+      '',
+      body,
+    ].join('\n');
+    final html = [
+      _linesToHtml(headerLines),
+      _plainToHtml(body),
+    ].join();
+    return QuotedContent(plainText: plain, html: html);
+  }
+
+  final header = 'On ${message.time}, ${message.from.displayName} wrote:';
+  final quotedBody = _quoteLines(body);
+  final plain = '$header\n$quotedBody';
+  final html = [
+    '<p>${_escapeHtml(header)}</p>',
+    '<blockquote>${_plainToHtml(body)}</blockquote>',
+  ].join();
+  return QuotedContent(plainText: plain, html: html);
+}
+
+String appendQuotedPlain(String body, QuotedContent? quote) {
+  if (quote == null || quote.isEmpty) {
+    return body;
+  }
+  final trimmed = body.trimRight();
+  if (trimmed.isEmpty) {
+    return quote.plainText;
+  }
+  return '$trimmed\n\n${quote.plainText}';
+}
+
+String appendQuotedHtml(String html, QuotedContent? quote) {
+  if (quote == null || quote.isEmpty) {
+    return html;
+  }
+  final trimmed = html.trim();
+  if (trimmed.isEmpty) {
+    return quote.html;
+  }
+  return '$trimmed<br><br>${quote.html}';
+}
+
+String _quoteLines(String text) {
+  return text
+      .split('\n')
+      .map((line) => '> $line')
+      .join('\n')
+      .trimRight();
+}
+
+String _plainToHtml(String text) {
+  final lines = text.split('\n');
+  final buffer = StringBuffer();
+  for (final line in lines) {
+    buffer.write('<p>${_escapeHtml(line)}</p>');
+  }
+  return buffer.toString();
+}
+
+String _linesToHtml(List<String> lines) {
+  return lines.map((line) => '<p>${_escapeHtml(line)}</p>').join();
+}
+
+String _escapeHtml(String input) {
+  return input
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
 }
 
 String replyRecipients(

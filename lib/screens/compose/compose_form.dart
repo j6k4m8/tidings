@@ -33,6 +33,9 @@ class ComposeForm extends StatelessWidget {
     this.toolbarSize,
     this.toolbarSectionSpacing,
     this.toolbarMultiRowsDisplay,
+    this.quotedText,
+    this.quotedTooltip = 'Show quoted',
+    this.showQuotedInitially = false,
     this.footer,
     this.errorText,
     this.errorLabel,
@@ -65,6 +68,9 @@ class ComposeForm extends StatelessWidget {
   final double? toolbarSize;
   final double? toolbarSectionSpacing;
   final bool? toolbarMultiRowsDisplay;
+  final String? quotedText;
+  final String quotedTooltip;
+  final bool showQuotedInitially;
   final Widget? footer;
   final String? errorText;
   final String? errorLabel;
@@ -103,6 +109,9 @@ class ComposeForm extends StatelessWidget {
           toolbarSize: toolbarSize,
           toolbarSectionSpacing: toolbarSectionSpacing,
           toolbarMultiRowsDisplay: toolbarMultiRowsDisplay,
+          quotedText: quotedText,
+          quotedTooltip: quotedTooltip,
+          showQuotedInitially: showQuotedInitially,
         ),
         if (footer != null) ...[
           SizedBox(height: context.space(12)),

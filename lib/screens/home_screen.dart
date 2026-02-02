@@ -619,6 +619,10 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         break;
     }
+    final quoted = buildQuotedContent(
+      latest,
+      isForward: mode == ReplyMode.forward,
+    );
     await showComposeSheet(
       context,
       provider: provider,
@@ -627,6 +631,7 @@ class _HomeScreenState extends State<HomeScreen> {
       currentUserEmail: currentUserEmail,
       initialTo: to,
       initialSubject: subject,
+      quotedContent: quoted,
     );
   }
 

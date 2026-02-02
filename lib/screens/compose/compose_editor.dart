@@ -41,6 +41,9 @@ class ComposeEditor extends StatefulWidget {
     this.toolbarSize,
     this.toolbarSectionSpacing,
     this.toolbarMultiRowsDisplay,
+    this.quotedText,
+    this.quotedTooltip = 'Show quoted',
+    this.showQuotedInitially = false,
   });
 
   final QuillController controller;
@@ -71,6 +74,9 @@ class ComposeEditor extends StatefulWidget {
   final double? toolbarSize;
   final double? toolbarSectionSpacing;
   final bool? toolbarMultiRowsDisplay;
+  final String? quotedText;
+  final String quotedTooltip;
+  final bool showQuotedInitially;
 
   @override
   State<ComposeEditor> createState() => _ComposeEditorState();
@@ -84,6 +90,7 @@ class _ComposeEditorState extends State<ComposeEditor> {
   late bool _ownsEditorFocusNode;
   late bool _ownsToFocusNode;
   bool _showToolbar = false;
+  bool _showQuoted = false;
 
   DefaultStyles _editorStyles(BuildContext context) {
     final styles = DefaultStyles.getInstance(context);
@@ -142,6 +149,7 @@ class _ComposeEditorState extends State<ComposeEditor> {
     _ownsToFocusNode = widget.toFocusNode == null;
     _ownsSubjectFocusNode = widget.subjectFocusNode == null;
     _ownsEditorFocusNode = widget.editorFocusNode == null;
+    _showQuoted = widget.showQuotedInitially;
   }
 
   @override
@@ -167,6 +175,14 @@ class _ComposeEditorState extends State<ComposeEditor> {
       }
       _editorFocusNode = widget.editorFocusNode ?? FocusNode();
       _ownsEditorFocusNode = widget.editorFocusNode == null;
+    }
+    if (oldWidget.quotedText != widget.quotedText) {
+      final nextText = widget.quotedText?.trim();
+      if (nextText == null || nextText.isEmpty) {
+        _showQuoted = false;
+      } else if (_showQuoted == false && widget.showQuotedInitially) {
+        _showQuoted = true;
+      }
     }
   }
 
@@ -462,6 +478,70 @@ class _ComposeEditorState extends State<ComposeEditor> {
               ),
             ),
           ),
+          if (widget.quotedText != null &&
+              widget.quotedText!.trim().isNotEmpty) ...[
+            SizedBox(height: context.space(8)),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Tooltip(
+                message:
+                    _showQuoted ? 'Hide quoted' : widget.quotedTooltip,
+                child: TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _showQuoted = !_showQuoted;
+                    });
+                  },
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(0, 0),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: Text(
+                    _showQuoted ? 'Hide quoted' : '...',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: ColorTokens.textSecondary(context),
+                        ),
+                  ),
+                ),
+              ),
+            ),
+            if (_showQuoted) ...[
+              SizedBox(height: context.space(6)),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(context.space(10)),
+                decoration: BoxDecoration(
+                  color: ColorTokens.cardFill(context, 0.08),
+                  borderRadius: BorderRadius.circular(context.radius(12)),
+                  border: Border.all(
+                    color: ColorTokens.border(context, 0.18),
+                  ),
+                ),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: context.space(180),
+                  ),
+                  child: Scrollbar(
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      child: SelectableText(
+                        widget.quotedText!,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(
+                              color: ColorTokens.textSecondary(context),
+                              height: 1.4,
+                            ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
         ],
       ),
     );
