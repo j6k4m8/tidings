@@ -25,20 +25,9 @@
 -   [x] Multi-account setup flow (mock provider first, then IMAP/SMTP creds, then Gmail OAuth).
 -   [ ] Unified inbox with per-account filtering and accent color mapping.
 -   [x] Threading engine (RFC 5322 References/In-Reply-To; subject fallback).
--   [ ] chat-style editor (threaded compose, inline reply, rich shortcuts).
+-   [x] chat-style editor (threaded compose, inline reply, rich shortcuts).
+-   [ ] reply to non-last message in thread.
 -   [x] Send/Reply/Forward with correct headers and threading preservation.
-
-## Data Model and API
-
--   [ ] Define message model (raw RFC 5322, parsed headers, body parts, flags).
--   [ ] Define thread model and caching strategy.
--   [ ] Define account + mailbox models (capabilities, folder mappings).
--   [ ] Create backend interface for:
-    -   [ ] Fetching messages/threads (mock first, then IMAP, then Gmail).
-    -   [ ] Sending messages (mock first, then IMAP/SMTP, then Gmail).
-    -   [ ] Flag/move/delete operations (mock first, then IMAP, then Gmail).
-    -   [ ] Queueing offline operations.
-    -   [ ] Optional filesystem sync (Maildir read/write).
 
 ## Testing
 
@@ -51,16 +40,9 @@
 -   [ ] Integration test for send/reply flow with a test IMAP server.
 -   [ ] Integration test for Gmail send/reply flow (mocked or sandboxed account).
 
-## Docs
-
--   [ ] Architecture overview: server-first sync, offline queue, Maildir optional storage.
--   [ ] Developer setup guide (mock provider first, then IMAP test server, then Gmail OAuth setup).
--   [ ] Shortcut reference for keyboard-first workflows.
--   [ ] Theming guide (tokens, typography, accent mapping).
-
 ## Backlog
 
--   [ ] Persist UI settings (theme mode, palette source, layout density, corner radius).
+-   [x] Persist UI settings (theme mode, palette source, layout density, corner radius).
 -   [ ] Add font choices UI and wire font assets into the build.
 
 ## MVP Release Checklist

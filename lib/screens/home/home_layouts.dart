@@ -61,6 +61,7 @@ class WideLayout extends StatelessWidget {
     required this.replyController,
     required this.selectedMessageIndex,
     required this.onMessageSelected,
+    this.onReplyFocusChange,
   });
 
   final AppState appState;
@@ -102,6 +103,7 @@ class WideLayout extends StatelessWidget {
   final InlineReplyController replyController;
   final int selectedMessageIndex;
   final ValueChanged<int> onMessageSelected;
+  final ValueChanged<bool>? onReplyFocusChange;
 
   @override
   Widget build(BuildContext context) {
@@ -369,6 +371,8 @@ class WideLayout extends StatelessWidget {
                                                       threadDetailFocusNode,
                                                   scrollController:
                                                       threadDetailScrollController,
+                                                  onReplyFocusChange:
+                                                      onReplyFocusChange,
                                                 ),
                                               ),
                                             ),

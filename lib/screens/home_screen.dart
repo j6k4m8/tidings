@@ -79,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isRefreshing = false;
   bool _compactRailOpen = false;
   bool _compactRailExpanded = false;
+  bool _inlineReplyFocused = false;
 
   @override
   void initState() {
@@ -160,6 +161,15 @@ class _HomeScreenState extends State<HomeScreen> {
     if (FocusManager.instance.primaryFocus == null) {
       _rootFocusNode.requestFocus();
     }
+  }
+
+  void _handleInlineReplyFocusChange(bool hasFocus) {
+    if (_inlineReplyFocused == hasFocus) {
+      return;
+    }
+    setState(() {
+      _inlineReplyFocused = hasFocus;
+    });
   }
 
   void _handleSettingsChange() {
@@ -341,7 +351,8 @@ class _HomeScreenState extends State<HomeScreen> {
       return true;
     }
     return context.findAncestorWidgetOfExactType<EditableText>() != null ||
-        context.findAncestorWidgetOfExactType<QuillEditor>() != null;
+        context.findAncestorWidgetOfExactType<QuillEditor>() != null ||
+        context.findAncestorWidgetOfExactType<InlineReplyComposer>() != null;
   }
 
   bool _isShortcutRecorderFocused() {
@@ -854,7 +865,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, _) {
         final settings = context.tidingsSettings;
         final isRecordingShortcut = _isShortcutRecorderFocused();
-        final allowGlobal = !_isTextInputFocused();
+        final allowGlobal = !_isTextInputFocused() && !_inlineReplyFocused;
         final scope = _resolveScope();
         final threadFocused = scope != _HomeScope.list;
         final listCurrentUserEmail = _isUnifiedInbox ? '' : account.email;
@@ -1045,6 +1056,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 searchFocusNode: _searchFocusNode,
                                 replyController: _inlineReplyController,
+                                onReplyFocusChange:
+                                    _handleInlineReplyFocusChange,
                                 listCurrentUserEmail: listCurrentUserEmail,
                                 detailCurrentUserEmail: detailCurrentUserEmail,
                                 selectedMessageIndex: selectedMessageIndex,
