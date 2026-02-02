@@ -50,6 +50,7 @@ class _BlurIntent extends Intent {
 enum _HomeScope { list, detail, editor }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const double _wideLayoutBreakpoint = 500;
   static final _escapeKey = LogicalKeySet(LogicalKeyboardKey.escape);
   int _selectedThreadIndex = 0;
   int _selectedFolderIndex = 0;
@@ -269,9 +270,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _handleFolderSelected(EmailProvider provider, int index) {
     final path = _folderPathForIndex(provider.folderSections, index);
-    if (_isUnifiedInbox &&
-        path != kOutboxFolderPath &&
-        path != 'INBOX') {
+    if (_isUnifiedInbox && path != kOutboxFolderPath && path != 'INBOX') {
       return;
     }
     setState(() {
@@ -289,8 +288,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openOutbox(EmailProvider provider) {
-    final index =
-        _folderIndexForPath(provider.folderSections, kOutboxFolderPath);
+    final index = _folderIndexForPath(
+      provider.folderSections,
+      kOutboxFolderPath,
+    );
     setState(() {
       if (index != null) {
         _selectedFolderIndex = index;
@@ -562,7 +563,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _toast('No thread selected.');
       return;
     }
-    final isWide = MediaQuery.of(context).size.width >= 1024;
+    final isWide = MediaQuery.of(context).size.width >= _wideLayoutBreakpoint;
     final detailOpen = isWide && _threadPanelOpen && !_showSettings;
     if (!detailOpen) {
       await _openReplyFromList(provider, account, thread, mode);
@@ -829,7 +830,7 @@ class _HomeScreenState extends State<HomeScreen> {
         await _inlineReplyController.send();
         break;
       case ShortcutAction.toggleSidebar:
-        if (MediaQuery.of(context).size.width < 1024) {
+        if (MediaQuery.of(context).size.width < _wideLayoutBreakpoint) {
           return;
         }
         setState(() {
@@ -898,7 +899,7 @@ class _HomeScreenState extends State<HomeScreen> {
               autofocus: true,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= 1024;
+                  final isWide = constraints.maxWidth >= _wideLayoutBreakpoint;
                   final showSettings = _showSettings;
                   final effectiveFolderIndex =
                       _folderIndexForPath(
@@ -1113,9 +1114,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 onFolderSelected: (index) {
                                   _handleFolderSelected(listProvider, index);
                                   if (_compactRailOpen) {
-                                    setState(
-                                      () => _compactRailOpen = false,
-                                    );
+                                    setState(() => _compactRailOpen = false);
                                   }
                                 },
                                 onAccountTap: () => showAccountPickerSheet(
