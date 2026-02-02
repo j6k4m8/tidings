@@ -77,13 +77,16 @@ class _TidingsAppState extends State<TidingsApp> {
                         ? Brightness.dark
                         : Brightness.light);
               final accent = resolveAccent(baseAccent, brightness);
-              final home = snapshot.connectionState != ConnectionState.done
+              final ready = snapshot.connectionState == ConnectionState.done;
+              final home = !ready
                   ? _BootSplash(accent: accent)
                   : _appState.hasAccounts
                   ? HomeScreen(appState: _appState, accent: accent)
                   : OnboardingScreen(appState: _appState, accent: accent);
               final homeKey = ValueKey<String>(
-                '${accent.toARGB32()}-${brightness.name}-${_settings.paletteSource.name}-${accentAccountId ?? 'selected'}',
+                !ready
+                    ? 'boot'
+                    : (_appState.hasAccounts ? 'home' : 'onboarding'),
               );
               return MaterialApp(
                 title: 'Tidings',
