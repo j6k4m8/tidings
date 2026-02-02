@@ -227,6 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _threadPanelOpen = true;
       _showSettings = false;
     });
+    await _unifiedProvider.initialize();
     _syncAccentWithSelection(_unifiedProvider);
   }
 

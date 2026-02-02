@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
+import '../../providers/unified_email_provider.dart';
 import '../../state/tidings_settings.dart';
 import '../../theme/account_accent.dart';
 import 'home_utils.dart';
@@ -139,6 +140,56 @@ class ThreadListPanel extends StatelessWidget {
         final status = provider.status;
         final threads = provider.threads;
         final entries = _buildThreadEntries(threads);
+        final tintByAccount =
+            context.tidingsSettings.tintThreadListByAccountAccent;
+        final showAccountPill = context.tidingsSettings.showThreadAccountPill;
+
+        Color? tintForThread(EmailThread thread) {
+          if (!tintByAccount) {
+            return null;
+          }
+          var tint = accent;
+          if (provider is UnifiedEmailProvider) {
+            final account =
+                (provider as UnifiedEmailProvider).accountForThread(thread.id);
+            if (account != null) {
+              final baseAccent = account.accentColorValue == null
+                  ? accentFromAccount(account.id)
+                  : Color(account.accentColorValue!);
+              tint = resolveAccent(
+                baseAccent,
+                Theme.of(context).brightness,
+              );
+            }
+          }
+          return tint;
+        }
+
+        ThreadAccountInfo? accountInfoForThread(EmailThread thread) {
+          if (!showAccountPill || provider is! UnifiedEmailProvider) {
+            return null;
+          }
+          final account =
+              (provider as UnifiedEmailProvider).accountForThread(thread.id);
+          if (account == null) {
+            return null;
+          }
+          final label = account.displayName.trim().isNotEmpty
+              ? account.displayName
+              : account.email;
+          final baseAccent = account.accentColorValue == null
+              ? accentFromAccount(account.id)
+              : Color(account.accentColorValue!);
+          final resolved = resolveAccent(
+            baseAccent,
+            Theme.of(context).brightness,
+          );
+          return ThreadAccountInfo(
+            label: label,
+            email: account.email,
+            accent: resolved,
+          );
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -196,6 +247,8 @@ class ThreadListPanel extends StatelessWidget {
                             participants: participants,
                             latestMessage: latestMessage,
                             accent: accent,
+                            backgroundTint: tintForThread(thread),
+                            accountInfo: accountInfoForThread(thread),
                             selected: selected,
                             onTap: () => onSelected(entry.index ?? 0),
                           ),
@@ -225,6 +278,8 @@ class ThreadTile extends StatefulWidget {
     required this.participants,
     required this.latestMessage,
     required this.accent,
+    this.backgroundTint,
+    this.accountInfo,
     required this.selected,
     required this.onTap,
   });
@@ -233,6 +288,8 @@ class ThreadTile extends StatefulWidget {
   final List<EmailAddress> participants;
   final EmailMessage? latestMessage;
   final Color accent;
+  final Color? backgroundTint;
+  final ThreadAccountInfo? accountInfo;
   final bool selected;
   final VoidCallback onTap;
 
@@ -266,13 +323,12 @@ class _ThreadTileState extends State<ThreadTile> {
     final latestMessage = widget.latestMessage;
     final isUnread = widget.thread.unread || (latestMessage?.isUnread ?? false);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tintFill = widget.backgroundTint == null
+        ? Colors.transparent
+        : widget.backgroundTint!.withValues(alpha: isDark ? 0.06 : 0.04);
     final baseFill = widget.selected
         ? widget.accent.withValues(alpha: 0.12)
-        : (_hovered || _pressed)
-            ? (isDark
-                ? Colors.white.withValues(alpha: 0.08)
-                : Colors.black.withValues(alpha: 0.04))
-            : Colors.transparent;
+        : tintFill;
     final hoverOverlay = isDark
         ? Colors.white.withValues(alpha: _pressed ? 0.1 : 0.06)
         : Colors.black.withValues(alpha: _pressed ? 0.08 : 0.04);
@@ -305,6 +361,9 @@ class _ThreadTileState extends State<ThreadTile> {
       widget.participants,
       latestSender,
     );
+    final accountInfo = widget.accountInfo;
+    final accountAccent = accountInfo?.accent ?? widget.accent;
+    final accountTokens = accentTokensFor(context, accountAccent);
     final snippet = latestMessage?.bodyPlainText ?? '';
     final subjectSnippet = subject.isEmpty
         ? snippet
@@ -402,37 +461,74 @@ class _ThreadTileState extends State<ThreadTile> {
                                   ),
                                 ),
                                 SizedBox(width: context.space(8)),
-                                SizedBox(
-                                  width: context.space(100),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      if (widget.thread.starred) ...[
-                                        Icon(
-                                          Icons.star_rounded,
-                                          color: widget.accent,
-                                          size: 16,
-                                        ),
-                                        SizedBox(width: context.space(4)),
-                                      ],
-                                      Flexible(
-                                        child: Text(
-                                          displayTime,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          softWrap: false,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .labelSmall
-                                              ?.copyWith(
-                                                color: scheme.onSurface
-                                                    .withValues(alpha: 0.55),
-                                                letterSpacing: -0.3,
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (widget.thread.starred) ...[
+                                      Icon(
+                                        Icons.star_rounded,
+                                        color: widget.accent,
+                                        size: 16,
+                                      ),
+                                      SizedBox(width: context.space(4)),
+                                    ],
+                                    if (accountInfo != null) ...[
+                                      Tooltip(
+                                        message: accountInfo.email,
+                                        child: Container(
+                                          constraints: BoxConstraints(
+                                            maxWidth: context.space(120),
+                                          ),
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: context.space(6),
+                                            vertical: context.space(2),
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: accountAccent.withValues(
+                                              alpha: isDark ? 0.16 : 0.12,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              context.radius(999),
+                                            ),
+                                            border: Border.all(
+                                              color: accountAccent.withValues(
+                                                alpha: isDark ? 0.28 : 0.22,
                                               ),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            accountInfo.label,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall
+                                                ?.copyWith(
+                                                  color:
+                                                      accountTokens.onSurface,
+                                                  letterSpacing: -0.2,
+                                                ),
+                                          ),
                                         ),
                                       ),
+                                      SizedBox(width: context.space(6)),
                                     ],
-                                  ),
+                                    Text(
+                                      displayTime,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      softWrap: false,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelSmall
+                                          ?.copyWith(
+                                            color: scheme.onSurface.withValues(
+                                              alpha: 0.55,
+                                            ),
+                                            letterSpacing: -0.3,
+                                          ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -524,6 +620,18 @@ class _SenderStack extends StatelessWidget {
       },
     );
   }
+}
+
+class ThreadAccountInfo {
+  const ThreadAccountInfo({
+    required this.label,
+    required this.email,
+    required this.accent,
+  });
+
+  final String label;
+  final String email;
+  final Color accent;
 }
 
 List<EmailAddress> _orderedParticipants(

@@ -14,7 +14,13 @@ class UnifiedEmailProvider extends EmailProvider {
     _defaultAccountId = appState.selectedAccount?.id;
     appState.addListener(_handleAppStateChanged);
     _syncProviders();
-    unawaited(_outboxStore.ensureLoaded().then((_) => notifyListeners()));
+    unawaited(
+      _outboxStore.ensureLoaded().then((_) {
+        if (!_disposed) {
+          notifyListeners();
+        }
+      }),
+    );
   }
 
   final AppState appState;
@@ -24,6 +30,7 @@ class UnifiedEmailProvider extends EmailProvider {
   final OutboxStore _outboxStore = OutboxStore.instance;
   String _selectedFolderPath = 'INBOX';
   String? _defaultAccountId;
+  bool _disposed = false;
 
   @override
   ProviderStatus get status {
@@ -32,10 +39,12 @@ class UnifiedEmailProvider extends EmailProvider {
     }
     var hasLoading = false;
     var hasReady = false;
+    var hasError = false;
     for (final provider in _providers.values) {
       switch (provider.status) {
         case ProviderStatus.error:
-          return ProviderStatus.error;
+          hasError = true;
+          break;
         case ProviderStatus.loading:
           hasLoading = true;
           break;
@@ -46,11 +55,14 @@ class UnifiedEmailProvider extends EmailProvider {
           break;
       }
     }
+    if (hasReady) {
+      return ProviderStatus.ready;
+    }
     if (hasLoading) {
       return ProviderStatus.loading;
     }
-    if (hasReady) {
-      return ProviderStatus.ready;
+    if (hasError) {
+      return ProviderStatus.error;
     }
     return ProviderStatus.idle;
   }
@@ -58,6 +70,9 @@ class UnifiedEmailProvider extends EmailProvider {
   @override
   String? get errorMessage {
     if (_selectedFolderPath == kOutboxFolderPath) {
+      return null;
+    }
+    if (status != ProviderStatus.error) {
       return null;
     }
     for (final provider in _providers.values) {
@@ -302,6 +317,7 @@ class UnifiedEmailProvider extends EmailProvider {
 
   @override
   void dispose() {
+    _disposed = true;
     for (final provider in _providers.values) {
       provider.removeListener(_handleProviderChanged);
     }
@@ -310,12 +326,18 @@ class UnifiedEmailProvider extends EmailProvider {
   }
 
   void _handleAppStateChanged() {
+    if (_disposed) {
+      return;
+    }
     _defaultAccountId = appState.selectedAccount?.id;
     _syncProviders();
     notifyListeners();
   }
 
   void _handleProviderChanged() {
+    if (_disposed) {
+      return;
+    }
     notifyListeners();
   }
 
@@ -350,6 +372,9 @@ class UnifiedEmailProvider extends EmailProvider {
       }
       for (final thread in provider.threads) {
         final unifiedId = _unifiedThreadId(account.id, thread.id);
+        final resolvedReceivedAt =
+            thread.receivedAt ??
+            provider.latestMessageForThread(thread.id)?.receivedAt;
         _threadRefs[unifiedId] = _ThreadRef(
           account: account,
           provider: provider,
@@ -363,7 +388,7 @@ class UnifiedEmailProvider extends EmailProvider {
             time: thread.time,
             unread: thread.unread,
             starred: thread.starred,
-            receivedAt: thread.receivedAt,
+            receivedAt: resolvedReceivedAt,
           ),
         );
       }
