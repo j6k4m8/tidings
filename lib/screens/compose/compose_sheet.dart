@@ -23,6 +23,7 @@ Future<void> showComposeSheet(
   String? initialBcc,
   String? initialSubject,
   Delta? initialDelta,
+  QuotedContent? quotedContent,
 }) {
   final isCompact = MediaQuery.of(context).size.width < 720;
   if (isCompact) {
@@ -41,6 +42,7 @@ Future<void> showComposeSheet(
         initialBcc: initialBcc,
         initialSubject: initialSubject,
         initialDelta: initialDelta,
+        quotedContent: quotedContent,
         isSheet: true,
         allowPopOut: true,
       ),
@@ -65,6 +67,7 @@ Future<void> showComposeSheet(
           initialBcc: initialBcc,
           initialSubject: initialSubject,
           initialDelta: initialDelta,
+          quotedContent: quotedContent,
           isSheet: false,
           allowPopOut: false,
         ),
@@ -85,6 +88,7 @@ Future<void> showComposeWindow(
   String? initialBcc,
   String? initialSubject,
   Delta? initialDelta,
+  QuotedContent? quotedContent,
 }) {
   return Navigator.of(context).push(
     MaterialPageRoute(
@@ -99,6 +103,7 @@ Future<void> showComposeWindow(
         initialBcc: initialBcc,
         initialSubject: initialSubject,
         initialDelta: initialDelta,
+        quotedContent: quotedContent,
       ),
     ),
   );
@@ -117,6 +122,7 @@ class ComposeSheet extends StatefulWidget {
     this.initialBcc,
     this.initialSubject,
     this.initialDelta,
+    this.quotedContent,
     required this.isSheet,
     required this.allowPopOut,
   });
@@ -131,6 +137,7 @@ class ComposeSheet extends StatefulWidget {
   final String? initialBcc;
   final String? initialSubject;
   final Delta? initialDelta;
+  final QuotedContent? quotedContent;
   final bool isSheet;
   final bool allowPopOut;
 
@@ -276,14 +283,17 @@ class _ComposeSheetState extends State<ComposeSheet> {
     final bcc = _bccController.text.trim();
 
     try {
+      final quoted = widget.quotedContent;
+      final bodyHtml = appendQuotedHtml(html, quoted);
+      final bodyText = appendQuotedPlain(plain, quoted);
       final queued = await widget.provider.sendMessage(
         thread: widget.thread,
         toLine: to,
         ccLine: cc,
         bccLine: bcc,
         subject: subject,
-        bodyHtml: html,
-        bodyText: plain,
+        bodyHtml: bodyHtml,
+        bodyText: bodyText,
       );
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
@@ -405,6 +415,7 @@ class _ComposeSheetState extends State<ComposeSheet> {
       initialBcc: bcc,
       initialSubject: subject,
       initialDelta: delta,
+      quotedContent: widget.quotedContent,
     );
   }
 
@@ -465,6 +476,8 @@ class _ComposeSheetState extends State<ComposeSheet> {
                 toFocusNode: _toFocusNode,
                 showFields: true,
                 placeholder: 'Write a message...',
+                quotedText: widget.quotedContent?.plainText,
+                quotedTooltip: 'Show quoted',
                 footer: Row(
                   children: [
                     const Spacer(),
@@ -510,6 +523,7 @@ class _ComposeScreen extends StatelessWidget {
     this.initialBcc,
     this.initialSubject,
     this.initialDelta,
+    this.quotedContent,
   });
 
   final EmailProvider provider;
@@ -522,6 +536,7 @@ class _ComposeScreen extends StatelessWidget {
   final String? initialBcc;
   final String? initialSubject;
   final Delta? initialDelta;
+  final QuotedContent? quotedContent;
 
   @override
   Widget build(BuildContext context) {
@@ -545,6 +560,7 @@ class _ComposeScreen extends StatelessWidget {
                   initialBcc: initialBcc,
                   initialSubject: initialSubject,
                   initialDelta: initialDelta,
+                  quotedContent: quotedContent,
                   isSheet: false,
                   allowPopOut: false,
                 ),

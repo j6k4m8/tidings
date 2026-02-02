@@ -134,6 +134,7 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
   bool _isSending = false;
   String? _sendError;
   ReplyMode _replyMode = ReplyMode.reply;
+  QuotedContent? _quotedContent;
 
   @override
   void initState() {
@@ -185,6 +186,8 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
 
   void _applyMode(ReplyMode mode) {
     final latest = widget.provider.latestMessageForThread(widget.thread.id);
+    _quotedContent =
+        buildQuotedContent(latest, isForward: mode == ReplyMode.forward);
     if (mode == ReplyMode.forward) {
       _subjectController.text = forwardSubject(widget.thread.subject);
       _toController.text = '';
@@ -262,6 +265,9 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
       _sendError = null;
     });
     try {
+      final quoted = _quotedContent;
+      final bodyHtml = appendQuotedHtml(html, quoted);
+      final bodyText = appendQuotedPlain(plain, quoted);
       final queued = await widget.provider.sendMessage(
         thread: widget.thread,
         toLine: _toController.text.trim(),
@@ -270,8 +276,8 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
         subject: _subjectController.text.trim().isEmpty
             ? '(No subject)'
             : _subjectController.text.trim(),
-        bodyHtml: html,
-        bodyText: plain,
+        bodyHtml: bodyHtml,
+        bodyText: bodyText,
       );
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
@@ -527,6 +533,8 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
                           minEditorHeight: collapsedHeight,
                           maxEditorHeight: collapsedHeight,
                           editorFocusNode: _editorFocusNode,
+                          quotedText: _quotedContent?.plainText,
+                          quotedTooltip: 'Show quoted',
                           onEscape: () {
                             widget.parentFocusNode?.requestFocus();
                           },
@@ -605,6 +613,7 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
                           initialBcc: _bccController.text,
                           initialSubject: _subjectController.text,
                           initialDelta: _controller.document.toDelta(),
+                          quotedContent: _quotedContent,
                         );
                       },
                       icon: const Icon(Icons.open_in_new_rounded),
@@ -638,6 +647,8 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
                   maxEditorHeight: context.space(260),
                   editorFocusNode: _editorFocusNode,
                   showEditorBorder: true,
+                  quotedText: _quotedContent?.plainText,
+                  quotedTooltip: 'Show quoted',
                   onEscape: () {
                     widget.parentFocusNode?.requestFocus();
                   },
