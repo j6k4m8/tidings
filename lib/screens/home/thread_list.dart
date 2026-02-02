@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
+import '../../providers/unified_email_provider.dart';
 import '../../state/tidings_settings.dart';
 import '../../theme/account_accent.dart';
 import 'home_utils.dart';
@@ -139,6 +140,29 @@ class ThreadListPanel extends StatelessWidget {
         final status = provider.status;
         final threads = provider.threads;
         final entries = _buildThreadEntries(threads);
+        final tintByAccount =
+            context.tidingsSettings.tintThreadListByAccountAccent;
+
+        Color? tintForThread(EmailThread thread) {
+          if (!tintByAccount) {
+            return null;
+          }
+          var tint = accent;
+          if (provider is UnifiedEmailProvider) {
+            final account =
+                (provider as UnifiedEmailProvider).accountForThread(thread.id);
+            if (account != null) {
+              final baseAccent = account.accentColorValue == null
+                  ? accentFromAccount(account.id)
+                  : Color(account.accentColorValue!);
+              tint = resolveAccent(
+                baseAccent,
+                Theme.of(context).brightness,
+              );
+            }
+          }
+          return tint;
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -196,6 +220,7 @@ class ThreadListPanel extends StatelessWidget {
                             participants: participants,
                             latestMessage: latestMessage,
                             accent: accent,
+                            backgroundTint: tintForThread(thread),
                             selected: selected,
                             onTap: () => onSelected(entry.index ?? 0),
                           ),
@@ -225,6 +250,7 @@ class ThreadTile extends StatefulWidget {
     required this.participants,
     required this.latestMessage,
     required this.accent,
+    this.backgroundTint,
     required this.selected,
     required this.onTap,
   });
@@ -233,6 +259,7 @@ class ThreadTile extends StatefulWidget {
   final List<EmailAddress> participants;
   final EmailMessage? latestMessage;
   final Color accent;
+  final Color? backgroundTint;
   final bool selected;
   final VoidCallback onTap;
 
@@ -266,13 +293,12 @@ class _ThreadTileState extends State<ThreadTile> {
     final latestMessage = widget.latestMessage;
     final isUnread = widget.thread.unread || (latestMessage?.isUnread ?? false);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tintFill = widget.backgroundTint == null
+        ? Colors.transparent
+        : widget.backgroundTint!.withValues(alpha: isDark ? 0.06 : 0.04);
     final baseFill = widget.selected
         ? widget.accent.withValues(alpha: 0.12)
-        : (_hovered || _pressed)
-            ? (isDark
-                ? Colors.white.withValues(alpha: 0.08)
-                : Colors.black.withValues(alpha: 0.04))
-            : Colors.transparent;
+        : tintFill;
     final hoverOverlay = isDark
         ? Colors.white.withValues(alpha: _pressed ? 0.1 : 0.06)
         : Colors.black.withValues(alpha: _pressed ? 0.08 : 0.04);

@@ -338,6 +338,16 @@ class _ThreadsSettings extends StatelessWidget {
             onChanged: settings.setHideSelfInThreadList,
           ),
         ),
+        SizedBox(height: context.space(16)),
+        SettingRow(
+          title: 'Tint thread list by account',
+          subtitle: 'Use a subtle account accent behind each thread.',
+          trailing: AccentSwitch(
+            accent: accent,
+            value: settings.tintThreadListByAccountAccent,
+            onChanged: settings.setTintThreadListByAccountAccent,
+          ),
+        ),
         SizedBox(height: context.space(24)),
         SettingsSubheader(title: 'MESSAGE PREVIEW'),
         SizedBox(height: context.space(12)),

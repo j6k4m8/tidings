@@ -19,6 +19,7 @@ class TidingsSettings extends ChangeNotifier {
   int _collapsedMaxLines = 6;
   bool _showFolderLabels = true;
   bool _showFolderUnreadCounts = true;
+  bool _tintThreadListByAccountAccent = true;
   bool _sidebarCollapsed = false;
   double _threadPanelFraction = 0.58;
   final Set<String> _pinnedFolderPaths = {};
@@ -37,6 +38,7 @@ class TidingsSettings extends ChangeNotifier {
   int get collapsedMaxLines => _collapsedMaxLines;
   bool get showFolderLabels => _showFolderLabels;
   bool get showFolderUnreadCounts => _showFolderUnreadCounts;
+  bool get tintThreadListByAccountAccent => _tintThreadListByAccountAccent;
   bool get sidebarCollapsed => _sidebarCollapsed;
   double get threadPanelFraction => _threadPanelFraction;
   Set<String> get pinnedFolderPaths => Set.unmodifiable(_pinnedFolderPaths);
@@ -112,6 +114,10 @@ class TidingsSettings extends ChangeNotifier {
         _boolFromStorage(settings['showFolderLabels'], _showFolderLabels);
     _showFolderUnreadCounts =
         _boolFromStorage(settings['showFolderUnreadCounts'], _showFolderUnreadCounts);
+    _tintThreadListByAccountAccent = _boolFromStorage(
+      settings['tintThreadListByAccountAccent'],
+      _tintThreadListByAccountAccent,
+    );
     _sidebarCollapsed =
         _boolFromStorage(settings['sidebarCollapsed'], _sidebarCollapsed);
     _threadPanelFraction = _doubleFromStorage(
@@ -194,6 +200,7 @@ class TidingsSettings extends ChangeNotifier {
       'collapsedMaxLines': _collapsedMaxLines,
       'showFolderLabels': _showFolderLabels,
       'showFolderUnreadCounts': _showFolderUnreadCounts,
+      'tintThreadListByAccountAccent': _tintThreadListByAccountAccent,
       'sidebarCollapsed': _sidebarCollapsed,
       'threadPanelFraction': _threadPanelFraction,
       'pinnedFolderPaths': pinned,
@@ -406,6 +413,15 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _showFolderUnreadCounts = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setTintThreadListByAccountAccent(bool value) {
+    if (_tintThreadListByAccountAccent == value) {
+      return;
+    }
+    _tintThreadListByAccountAccent = value;
     unawaited(_persist());
     notifyListeners();
   }
