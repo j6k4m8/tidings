@@ -104,6 +104,7 @@ class InlineReplyComposer extends StatefulWidget {
     required this.currentUserEmail,
     this.parentFocusNode,
     this.controller,
+    this.onFocusChange,
   });
 
   final Color accent;
@@ -112,6 +113,7 @@ class InlineReplyComposer extends StatefulWidget {
   final String currentUserEmail;
   final FocusNode? parentFocusNode;
   final InlineReplyController? controller;
+  final ValueChanged<bool>? onFocusChange;
 
   @override
   State<InlineReplyComposer> createState() => _InlineReplyComposerState();
@@ -122,6 +124,8 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
       LogicalKeySet(LogicalKeyboardKey.escape);
   late final QuillController _controller;
   final FocusNode _editorFocusNode = FocusNode();
+  final FocusNode _focusScopeNode =
+      FocusNode(debugLabel: 'InlineReplyFocus');
   final TextEditingController _toController = TextEditingController();
   final TextEditingController _ccController = TextEditingController();
   final TextEditingController _bccController = TextEditingController();
@@ -233,11 +237,13 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
   void dispose() {
     _controller.dispose();
     _editorFocusNode.dispose();
+    _focusScopeNode.dispose();
     _toController.dispose();
     _ccController.dispose();
     _bccController.dispose();
     _subjectController.dispose();
     widget.controller?.detach(widget.thread.id);
+    widget.onFocusChange?.call(false);
     super.dispose();
   }
 
@@ -407,31 +413,36 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
     final expandedMinHeight = context.space(140);
     final replyLabel = _replyLabel();
     final placeholder = _placeholderForMode();
-    return Shortcuts(
-      shortcuts: {_escapeKey: const _EscapeIntent()},
-      child: Actions(
-        actions: {
-          _EscapeIntent: CallbackAction<_EscapeIntent>(
-            onInvoke: (intent) {
-              if (_editorFocusNode.hasFocus) {
-                _editorFocusNode.unfocus();
-              } else {
-                FocusManager.instance.primaryFocus?.unfocus();
-              }
-              widget.parentFocusNode?.requestFocus();
-              return null;
-            },
-          ),
-        },
-        child: Container(
-          padding: EdgeInsets.all(context.space(12)),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(context.radius(20)),
-            border: Border.all(color: ColorTokens.border(context, 0.18)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+    return Focus(
+      focusNode: _focusScopeNode,
+      onFocusChange: (hasFocus) {
+        widget.onFocusChange?.call(hasFocus);
+      },
+      child: Shortcuts(
+        shortcuts: {_escapeKey: const _EscapeIntent()},
+        child: Actions(
+          actions: {
+            _EscapeIntent: CallbackAction<_EscapeIntent>(
+              onInvoke: (intent) {
+                if (_editorFocusNode.hasFocus) {
+                  _editorFocusNode.unfocus();
+                } else {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                }
+                widget.parentFocusNode?.requestFocus();
+                return null;
+              },
+            ),
+          },
+          child: Container(
+            padding: EdgeInsets.all(context.space(12)),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(context.radius(20)),
+              border: Border.all(color: ColorTokens.border(context, 0.18)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               if (!_showDetails) ...[
                 Row(
                   children: [
@@ -646,41 +657,42 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
                   ),
                 ),
               ],
-          if (errorText != null) ...[
-            SizedBox(height: context.space(8)),
-            Row(
-              children: [
-                Text(
-                  'Send error',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              if (errorText != null) ...[
+                SizedBox(height: context.space(8)),
+                Row(
+                  children: [
+                    Text(
+                      'Send error',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: Colors.redAccent,
+                          ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: errorText));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Error copied.')),
+                        );
+                      },
+                      icon: const Icon(Icons.copy_rounded, size: 18),
+                      tooltip: 'Copy error',
+                    ),
+                  ],
+                ),
+                SelectableText(
+                  errorText,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Colors.redAccent,
                       ),
                 ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: errorText));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Error copied.')),
-                    );
-                  },
-                  icon: const Icon(Icons.copy_rounded, size: 18),
-                  tooltip: 'Copy error',
-                ),
               ],
-            ),
-            SelectableText(
-              errorText,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.redAccent,
-                  ),
-            ),
-          ],
             ],
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }
 

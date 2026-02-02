@@ -32,6 +32,7 @@ class CurrentThreadPanel extends StatefulWidget {
     this.scrollController,
     this.parentFocusNode,
     this.replyController,
+    this.onReplyFocusChange,
   });
 
   final Color accent;
@@ -45,6 +46,7 @@ class CurrentThreadPanel extends StatefulWidget {
   final ScrollController? scrollController;
   final FocusNode? parentFocusNode;
   final InlineReplyController? replyController;
+  final ValueChanged<bool>? onReplyFocusChange;
 
   @override
   State<CurrentThreadPanel> createState() => _CurrentThreadPanelState();
@@ -375,6 +377,7 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                           currentUserEmail: widget.currentUserEmail,
                           parentFocusNode: widget.parentFocusNode,
                           controller: widget.replyController,
+                          onFocusChange: widget.onReplyFocusChange,
                         ),
                       ],
                     ),
@@ -988,6 +991,7 @@ class ComposeBar extends StatelessWidget {
     required this.currentUserEmail,
     this.parentFocusNode,
     this.controller,
+    this.onFocusChange,
   });
 
   final Color accent;
@@ -996,6 +1000,7 @@ class ComposeBar extends StatelessWidget {
   final String currentUserEmail;
   final FocusNode? parentFocusNode;
   final InlineReplyController? controller;
+  final ValueChanged<bool>? onFocusChange;
 
   @override
   Widget build(BuildContext context) {
@@ -1006,6 +1011,7 @@ class ComposeBar extends StatelessWidget {
       currentUserEmail: currentUserEmail,
       parentFocusNode: parentFocusNode,
       controller: controller,
+      onFocusChange: onFocusChange,
     );
   }
 }
@@ -1030,6 +1036,7 @@ class ThreadScreen extends StatefulWidget {
 
 class _ThreadScreenState extends State<ThreadScreen> {
   final InlineReplyController _replyController = InlineReplyController();
+  bool _inlineReplyFocused = false;
   final FocusNode _shortcutFocusNode =
       FocusNode(debugLabel: 'ThreadScreenShortcuts');
 
@@ -1063,7 +1070,8 @@ class _ThreadScreenState extends State<ThreadScreen> {
       return true;
     }
     return context.findAncestorWidgetOfExactType<EditableText>() != null ||
-        context.findAncestorWidgetOfExactType<QuillEditor>() != null;
+        context.findAncestorWidgetOfExactType<QuillEditor>() != null ||
+        context.findAncestorWidgetOfExactType<InlineReplyComposer>() != null;
   }
 
   Map<LogicalKeySet, Intent> _shortcutMap(
@@ -1111,13 +1119,22 @@ class _ThreadScreenState extends State<ThreadScreen> {
     });
   }
 
+  void _handleInlineReplyFocusChange(bool hasFocus) {
+    if (_inlineReplyFocused == hasFocus) {
+      return;
+    }
+    setState(() {
+      _inlineReplyFocused = hasFocus;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final messages = widget.provider.messagesForThread(widget.thread.id);
     final selectedMessageIndex = messages.isEmpty ? 0 : messages.length - 1;
     final settings = context.tidingsSettings;
-    final allowGlobal = !_isTextInputFocused();
+    final allowGlobal = !_isTextInputFocused() && !_inlineReplyFocused;
     return Shortcuts(
       shortcuts: _shortcutMap(settings, allowGlobal: allowGlobal),
       child: Actions(
@@ -1172,6 +1189,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
                       onMessageSelected: (_) {},
                       isFocused: true,
                       replyController: _replyController,
+                      onReplyFocusChange: _handleInlineReplyFocusChange,
                     ),
                   ),
                 ),
