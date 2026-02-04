@@ -515,6 +515,35 @@ class ImapSmtpEmailProvider extends EmailProvider {
     return null;
   }
 
+  @override
+  Future<String?> setThreadUnread(EmailThread thread, bool isUnread) async {
+    if (_selectedFolderPath == kOutboxFolderPath) {
+      return 'Cannot mark outbox messages.';
+    }
+    final ids = messagesForThread(thread.id)
+        .map((message) => int.tryParse(message.id))
+        .whereType<int>()
+        .toList();
+    if (ids.isEmpty) {
+      return 'No messages to update.';
+    }
+    await _ensureConnected();
+    final client = _client;
+    if (client == null) {
+      return 'IMAP client not connected.';
+    }
+    await client.selectMailboxByPath(_currentMailboxPath);
+    final sequence = MessageSequence.fromIds(ids, isUid: true);
+    await client.uidStore(
+      sequence,
+      [MessageFlags.seen],
+      action: isUnread ? StoreAction.remove : StoreAction.add,
+    );
+    _updateThreadReadState(thread.id, isUnread);
+    notifyListeners();
+    return null;
+  }
+
   Future<T> _withTimeout<T>(
     Future<T> future,
     Duration timeout,
@@ -555,6 +584,81 @@ class ImapSmtpEmailProvider extends EmailProvider {
     _folderCache[_currentMailboxPath] = _FolderCacheEntry(
       data: _MailboxData(threads: nextThreads, messages: nextMessages),
       fetchedAt: entry.fetchedAt,
+    );
+  }
+
+  void _updateThreadReadState(String threadId, bool isUnread) {
+    final index = _threads.indexWhere((thread) => thread.id == threadId);
+    if (index != -1) {
+      final current = _threads[index];
+      _threads[index] = EmailThread(
+        id: current.id,
+        subject: current.subject,
+        participants: current.participants,
+        time: current.time,
+        unread: isUnread,
+        starred: current.starred,
+        receivedAt: current.receivedAt,
+      );
+    }
+    final messages = _messages[threadId];
+    if (messages != null) {
+      _messages[threadId] = messages
+          .map((message) => _copyMessageWithUnread(message, isUnread))
+          .toList();
+    }
+    final entry = _folderCache[_currentMailboxPath];
+    if (entry == null) {
+      return;
+    }
+    final updatedThreads = entry.data.threads
+        .map(
+          (thread) => thread.id == threadId
+              ? EmailThread(
+                  id: thread.id,
+                  subject: thread.subject,
+                  participants: thread.participants,
+                  time: thread.time,
+                  unread: isUnread,
+                  starred: thread.starred,
+                  receivedAt: thread.receivedAt,
+                )
+              : thread,
+        )
+        .toList();
+    final updatedMessages = Map<String, List<EmailMessage>>.from(
+      entry.data.messages,
+    );
+    final cachedMessages = updatedMessages[threadId];
+    if (cachedMessages != null) {
+      updatedMessages[threadId] = cachedMessages
+          .map((message) => _copyMessageWithUnread(message, isUnread))
+          .toList();
+    }
+    _folderCache[_currentMailboxPath] = _FolderCacheEntry(
+      data: _MailboxData(threads: updatedThreads, messages: updatedMessages),
+      fetchedAt: entry.fetchedAt,
+    );
+  }
+
+  EmailMessage _copyMessageWithUnread(EmailMessage message, bool isUnread) {
+    return EmailMessage(
+      id: message.id,
+      threadId: message.threadId,
+      subject: message.subject,
+      from: message.from,
+      to: message.to,
+      cc: message.cc,
+      bcc: message.bcc,
+      time: message.time,
+      isMe: message.isMe,
+      isUnread: isUnread,
+      bodyText: message.bodyText,
+      bodyHtml: message.bodyHtml,
+      receivedAt: message.receivedAt,
+      messageId: message.messageId,
+      inReplyTo: message.inReplyTo,
+      sendStatus: message.sendStatus,
     );
   }
 

@@ -87,6 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _lastAccountId = widget.appState.selectedAccount?.id;
     widget.appState.addListener(_handleAppStateChange);
+    widget.appState.setMenuActionHandler(_handleMenuAction);
     FocusManager.instance.addListener(_handleGlobalFocusChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -110,6 +111,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     widget.appState.removeListener(_handleAppStateChange);
+    widget.appState.setMenuActionHandler(null);
+    widget.appState.updateMenuSelection(hasSelection: false, isUnread: false);
     FocusManager.instance.removeListener(_handleGlobalFocusChange);
     _settings?.removeListener(_handleSettingsChange);
     _searchFocusNode.dispose();
@@ -433,6 +436,29 @@ class _HomeScreenState extends State<HomeScreen> {
     return shortcuts;
   }
 
+  void _scheduleMenuSelectionUpdate(EmailProvider provider) {
+    final thread = _currentThread(provider);
+    final latest = thread == null
+        ? null
+        : provider.latestMessageForThread(thread.id);
+    final hasSelection = thread != null;
+    final isUnread =
+        thread != null && (thread.unread || (latest?.isUnread ?? false));
+    if (widget.appState.menuHasThreadSelection == hasSelection &&
+        widget.appState.menuThreadUnread == isUnread) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      widget.appState.updateMenuSelection(
+        hasSelection: hasSelection,
+        isUnread: isUnread,
+      );
+    });
+  }
+
   EmailThread? _currentThread(EmailProvider provider) {
     final threads = provider.threads;
     if (threads.isEmpty) {
@@ -503,6 +529,23 @@ class _HomeScreenState extends State<HomeScreen> {
     if (scope == _HomeScope.list) {
       _navigateSelection(provider, delta);
     }
+  }
+
+  Future<void> _toggleReadForSelected(EmailProvider provider) async {
+    final thread = _currentThread(provider);
+    if (thread == null) {
+      _toast('No thread selected.');
+      return;
+    }
+    final latest = provider.latestMessageForThread(thread.id);
+    final isUnread = thread.unread || (latest?.isUnread ?? false);
+    final error = await provider.setThreadUnread(thread, !isUnread);
+    if (error != null) {
+      _toast(error);
+      return;
+    }
+    _toast(isUnread ? 'Marked as read.' : 'Marked as unread.');
+    _scheduleMenuSelectionUpdate(provider);
   }
 
   void _focusThreadDetail() {
@@ -697,6 +740,14 @@ class _HomeScreenState extends State<HomeScreen> {
             _handleShortcut(ShortcutAction.archive, provider, account),
       ),
       CommandPaletteItem(
+        id: 'toggle-read',
+        title: 'Mark read/unread',
+        subtitle: 'Toggle the selected thread read state',
+        shortcutLabel: settings.shortcutLabel(ShortcutAction.toggleRead),
+        onSelected: () =>
+            _handleShortcut(ShortcutAction.toggleRead, provider, account),
+      ),
+      CommandPaletteItem(
         id: 'go-to',
         title: 'Go to folder',
         subtitle: 'Jump to any folder',
@@ -814,6 +865,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case ShortcutAction.archive:
         await _archiveSelectedThread(provider);
         break;
+      case ShortcutAction.toggleRead:
+        await _toggleReadForSelected(provider);
+        break;
       case ShortcutAction.commandPalette:
         await _showCommandPalette(provider, account);
         break;
@@ -859,6 +913,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _handleMenuAction(ShortcutAction action) {
+    final account = widget.appState.selectedAccount;
+    final provider =
+        _isUnifiedInbox ? _unifiedProvider : widget.appState.currentProvider;
+    if (account == null || provider == null) {
+      return;
+    }
+    _handleShortcut(action, provider, account);
+  }
+
   @override
   Widget build(BuildContext context) {
     final account = widget.appState.selectedAccount;
@@ -867,6 +931,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return const SizedBox.shrink();
     }
     final listProvider = _isUnifiedInbox ? _unifiedProvider : provider;
+    _scheduleMenuSelectionUpdate(listProvider);
     return AnimatedBuilder(
       animation: FocusManager.instance,
       builder: (context, _) {

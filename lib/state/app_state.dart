@@ -10,6 +10,7 @@ import '../models/account_models.dart';
 import '../providers/email_provider.dart';
 import '../providers/imap_smtp_email_provider.dart';
 import '../providers/mock_email_provider.dart';
+import 'shortcut_definitions.dart';
 import 'config_store.dart';
 
 class AppState extends ChangeNotifier {
@@ -19,6 +20,9 @@ class AppState extends ChangeNotifier {
   int _selectedAccountIndex = 0;
   bool _hasInitialized = false;
   String? _accentAccountId;
+  bool _menuHasThreadSelection = false;
+  bool _menuThreadUnread = false;
+  void Function(ShortcutAction action)? _menuActionHandler;
 
   List<EmailAccount> get accounts => List.unmodifiable(_accounts);
 
@@ -40,6 +44,33 @@ class AppState extends ChangeNotifier {
   }
 
   String? get accentAccountId => _accentAccountId;
+
+  bool get menuHasThreadSelection => _menuHasThreadSelection;
+
+  bool get menuThreadUnread => _menuThreadUnread;
+
+  bool get hasMenuActionHandler => _menuActionHandler != null;
+
+  void setMenuActionHandler(void Function(ShortcutAction action)? handler) {
+    _menuActionHandler = handler;
+  }
+
+  void triggerMenuAction(ShortcutAction action) {
+    _menuActionHandler?.call(action);
+  }
+
+  void updateMenuSelection({
+    required bool hasSelection,
+    required bool isUnread,
+  }) {
+    if (_menuHasThreadSelection == hasSelection &&
+        _menuThreadUnread == isUnread) {
+      return;
+    }
+    _menuHasThreadSelection = hasSelection;
+    _menuThreadUnread = isUnread;
+    notifyListeners();
+  }
 
   void setAccentAccountId(String? accountId) {
     if (_accentAccountId == accountId) {

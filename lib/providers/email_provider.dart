@@ -48,5 +48,7 @@ abstract class EmailProvider extends ChangeNotifier {
     required String bodyText,
   });
 
+  Future<String?> setThreadUnread(EmailThread thread, bool isUnread);
+
   Future<String?> archiveThread(EmailThread thread);
 }

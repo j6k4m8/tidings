@@ -58,6 +58,7 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
   bool _ownsScrollController = false;
   bool _showEscHint = false;
   bool _wasFocused = false;
+  static const int _headerSnippetMaxLength = 72;
 
   void _configureScrollController() {
     final external = widget.scrollController;
@@ -109,6 +110,41 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
     });
   }
 
+  String _participantHeadline(EmailThread thread) {
+    final participants = thread.participants;
+    if (participants.isEmpty) {
+      return 'Unknown sender';
+    }
+    if (participants.length == 1) {
+      return participants.first.displayName;
+    }
+    if (participants.length == 2) {
+      return '${participants[0].displayName} & ${participants[1].displayName}';
+    }
+    return '${participants.first.displayName} & ${participants.length - 1} others';
+  }
+
+  String _cleanSnippet(String text, int maxLength) {
+    final collapsed = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (collapsed.isEmpty) {
+      return '';
+    }
+    if (collapsed.length <= maxLength) {
+      return collapsed;
+    }
+    return '${collapsed.substring(0, maxLength).trimRight()}...';
+  }
+
+  String _buildHeaderSnippet(EmailThread thread, EmailMessage? latest) {
+    final headline = _participantHeadline(thread);
+    final subject = thread.subject.isEmpty ? 'No subject' : thread.subject;
+    final snippet = _cleanSnippet(latest?.bodyPlainText ?? '', _headerSnippetMaxLength);
+    if (snippet.isEmpty) {
+      return '$headline: $subject';
+    }
+    return '$headline: $subject - $snippet';
+  }
+
   bool _isExpanded(String messageId, bool defaultExpanded) {
     return _expandedState[messageId] ?? defaultExpanded;
   }
@@ -149,6 +185,26 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
       }
     }
     return null;
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _toggleThreadRead() async {
+    final messages = widget.provider.messagesForThread(widget.thread.id);
+    final hasUnreadMessage = messages.any((message) => message.isUnread);
+    final isUnread =
+        messages.isNotEmpty ? hasUnreadMessage : widget.thread.unread;
+    final error = await widget.provider.setThreadUnread(
+      widget.thread,
+      !isUnread,
+    );
+    if (error != null) {
+      _toast(error);
+      return;
+    }
+    _toast(isUnread ? 'Marked as read.' : 'Marked as unread.');
   }
 
   Future<void> _undoSend(String outboxId) async {
@@ -238,6 +294,13 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
       animation: widget.provider,
       builder: (context, _) {
         final messages = widget.provider.messagesForThread(widget.thread.id);
+        final latestMessage = messages.isNotEmpty
+            ? messages.last
+            : widget.provider.latestMessageForThread(widget.thread.id);
+        final hasUnreadMessage = messages.any((message) => message.isUnread);
+        final threadIsUnread =
+            messages.isNotEmpty ? hasUnreadMessage : widget.thread.unread;
+        final headerSnippet = _buildHeaderSnippet(widget.thread, latestMessage);
         return Stack(
           children: [
             // Outline border when focused
@@ -308,7 +371,9 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                         ),
                         SizedBox(height: context.space(4)),
                         Text(
-                          widget.thread.participantSummary,
+                          headerSnippet,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Theme.of(
                               context,
@@ -349,6 +414,7 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                   key: ValueKey(message.id),
                                   message: message,
                                   accent: widget.accent,
+                                  threadIsUnread: threadIsUnread,
                                   expanded: _isExpanded(
                                     message.id,
                                     defaultExpanded,
@@ -361,6 +427,7 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                       index == widget.selectedMessageIndex,
                                   onSelected: () =>
                                       widget.onMessageSelected(index),
+                                  onToggleRead: _toggleThreadRead,
                                   onUndoSend: undoId == null
                                       ? null
                                       : () => _undoSend(undoId),
@@ -416,19 +483,23 @@ class MessageCard extends StatelessWidget {
     super.key,
     required this.message,
     required this.accent,
+    required this.threadIsUnread,
     required this.expanded,
     required this.onToggleExpanded,
     required this.isSelected,
     this.onSelected,
+    this.onToggleRead,
     this.onUndoSend,
   });
 
   final EmailMessage message;
   final Color accent;
+  final bool threadIsUnread;
   final bool expanded;
   final VoidCallback onToggleExpanded;
   final bool isSelected;
   final VoidCallback? onSelected;
+  final VoidCallback? onToggleRead;
   final VoidCallback? onUndoSend;
 
   static const int _collapsedCharLimit = 420;
@@ -674,6 +745,9 @@ class MessageCard extends StatelessWidget {
     final showSubject = !settings.hideThreadSubjects;
     final collapseMode = settings.messageCollapseMode;
     final maxLines = settings.collapsedMaxLines;
+    final toggleReadLabel = threadIsUnread ? 'Mark as Read' : 'Mark as Unread';
+    final toggleReadHint =
+        settings.shortcutLabel(ShortcutAction.toggleRead, includeSecondary: false);
     final cardRadius = context.radius(12);
     final bodyText = message.bodyPlainText;
     final bodyHtml = message.bodyHtml;
@@ -754,6 +828,8 @@ class MessageCard extends StatelessWidget {
                         onSelected: (value) {
                           if (value == 'toggle') {
                             onToggleExpanded();
+                          } else if (value == 'toggle-read') {
+                            onToggleRead?.call();
                           } else if (value == 'metadata') {
                             _showMetadataDialog(context);
                           }
@@ -762,6 +838,17 @@ class MessageCard extends StatelessWidget {
                           PopupMenuItem(
                             value: 'toggle',
                             child: Text(expanded ? 'Collapse' : 'Expand'),
+                          ),
+                          PopupMenuItem(
+                            value: 'toggle-read',
+                            enabled: onToggleRead != null,
+                            child: Row(
+                              children: [
+                                Expanded(child: Text(toggleReadLabel)),
+                                SizedBox(width: context.space(8)),
+                                KeyHint(keyLabel: toggleReadHint, small: true),
+                              ],
+                            ),
                           ),
                           const PopupMenuItem(
                             value: 'metadata',
@@ -1102,6 +1189,10 @@ class _ThreadScreenState extends State<ThreadScreen> {
       ShortcutAction.forward,
       const _ReplyIntent(ReplyMode.forward),
     );
+    addShortcut(
+      ShortcutAction.toggleRead,
+      const _ToggleReadIntent(),
+    );
     shortcuts[LogicalKeySet(LogicalKeyboardKey.escape)] = const _PopIntent();
     return shortcuts;
   }
@@ -1117,6 +1208,26 @@ class _ThreadScreenState extends State<ThreadScreen> {
       _replyController.setModeForThread(threadId, mode);
       _replyController.focusEditorForThread(threadId);
     });
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _toggleThreadRead() async {
+    final messages = widget.provider.messagesForThread(widget.thread.id);
+    final hasUnreadMessage = messages.any((message) => message.isUnread);
+    final isUnread =
+        messages.isNotEmpty ? hasUnreadMessage : widget.thread.unread;
+    final error = await widget.provider.setThreadUnread(
+      widget.thread,
+      !isUnread,
+    );
+    if (error != null) {
+      _toast(error);
+      return;
+    }
+    _toast(isUnread ? 'Marked as read.' : 'Marked as unread.');
   }
 
   void _handleInlineReplyFocusChange(bool hasFocus) {
@@ -1150,6 +1261,12 @@ class _ThreadScreenState extends State<ThreadScreen> {
           _ReplyIntent: CallbackAction<_ReplyIntent>(
             onInvoke: (intent) {
               _triggerReply(intent.mode);
+              return null;
+            },
+          ),
+          _ToggleReadIntent: CallbackAction<_ToggleReadIntent>(
+            onInvoke: (intent) {
+              _toggleThreadRead();
               return null;
             },
           ),
@@ -1210,4 +1327,8 @@ class _ReplyIntent extends Intent {
   const _ReplyIntent(this.mode);
 
   final ReplyMode mode;
+}
+
+class _ToggleReadIntent extends Intent {
+  const _ToggleReadIntent();
 }

@@ -307,6 +307,18 @@ class UnifiedEmailProvider extends EmailProvider {
   }
 
   @override
+  Future<String?> setThreadUnread(EmailThread thread, bool isUnread) async {
+    if (_selectedFolderPath == kOutboxFolderPath) {
+      return 'Cannot mark outbox messages.';
+    }
+    final ref = _threadRefs[thread.id] ?? _rebuildThreadRef(thread.id);
+    if (ref == null) {
+      return 'Thread not found.';
+    }
+    return ref.provider.setThreadUnread(ref.thread, isUnread);
+  }
+
+  @override
   Future<String?> archiveThread(EmailThread thread) async {
     final ref = _threadRefs[thread.id] ?? _rebuildThreadRef(thread.id);
     if (ref == null) {

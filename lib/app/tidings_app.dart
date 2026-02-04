@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
@@ -6,6 +7,7 @@ import '../screens/home_screen.dart';
 import '../screens/onboarding_screen.dart';
 import '../models/account_models.dart';
 import '../state/app_state.dart';
+import '../state/shortcut_definitions.dart';
 import '../state/tidings_settings.dart';
 import '../theme/account_accent.dart';
 import '../theme/theme_palette.dart';
@@ -23,6 +25,82 @@ class _TidingsAppState extends State<TidingsApp> {
   late final TidingsSettings _settings = TidingsSettings();
   late final AppState _appState = AppState();
   late final Future<void> _initFuture = _appState.initialize();
+
+  List<PlatformMenuItem> _buildMenuBar() {
+    final appMenuItems = <PlatformMenuItem>[];
+    if (PlatformProvidedMenuItem.hasMenu(PlatformProvidedMenuItemType.about)) {
+      appMenuItems.add(
+        const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.about),
+      );
+    }
+    if (PlatformProvidedMenuItem.hasMenu(PlatformProvidedMenuItemType.quit)) {
+      appMenuItems.add(
+        const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.quit),
+      );
+    }
+    const editMenu = PlatformMenu(
+      label: 'Edit',
+      menus: [
+        PlatformMenuItem(label: 'Undo'),
+        PlatformMenuItem(label: 'Redo'),
+        PlatformMenuItemGroup(
+          members: [
+            PlatformMenuItem(label: 'Cut'),
+            PlatformMenuItem(label: 'Copy'),
+            PlatformMenuItem(label: 'Paste'),
+            PlatformMenuItem(label: 'Select All'),
+          ],
+        ),
+      ],
+    );
+    final canInvoke = _appState.hasMenuActionHandler;
+    final hasSelection = _appState.menuHasThreadSelection;
+    final isUnread = _appState.menuThreadUnread;
+    final canThreadAction = canInvoke && hasSelection;
+    final markLabel = isUnread ? 'Mark as Read' : 'Mark as Unread';
+    final messageMenu = PlatformMenu(
+      label: 'Message',
+      menus: [
+        PlatformMenuItem(
+          label: 'Reply',
+          onSelected: canThreadAction
+              ? () => _appState.triggerMenuAction(ShortcutAction.reply)
+              : null,
+        ),
+        PlatformMenuItem(
+          label: 'Reply All',
+          onSelected: canThreadAction
+              ? () => _appState.triggerMenuAction(ShortcutAction.replyAll)
+              : null,
+        ),
+        PlatformMenuItem(
+          label: 'Forward',
+          onSelected: canThreadAction
+              ? () => _appState.triggerMenuAction(ShortcutAction.forward)
+              : null,
+        ),
+        PlatformMenuItemGroup(
+          members: [
+            PlatformMenuItem(
+              label: markLabel,
+              onSelected: canThreadAction
+                  ? () => _appState.triggerMenuAction(ShortcutAction.toggleRead)
+                  : null,
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.keyU,
+                meta: true,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+    return [
+      PlatformMenu(label: 'Tidings', menus: appMenuItems),
+      editMenu,
+      messageMenu,
+    ];
+  }
 
   @override
   void initState() {
@@ -88,36 +166,39 @@ class _TidingsAppState extends State<TidingsApp> {
                     ? 'boot'
                     : (_appState.hasAccounts ? 'home' : 'onboarding'),
               );
-              return MaterialApp(
-                title: 'Tidings',
-                debugShowCheckedModeBanner: false,
-                localizationsDelegates: const [
-                  FlutterQuillLocalizations.delegate,
-                  GlobalMaterialLocalizations.delegate,
-                  GlobalWidgetsLocalizations.delegate,
-                  GlobalCupertinoLocalizations.delegate,
-                ],
-                supportedLocales: FlutterQuillLocalizations.supportedLocales,
-                themeMode: _settings.themeMode,
-                theme: TidingsTheme.lightTheme(
-                  accentColor: resolveAccent(baseAccent, Brightness.light),
-                  paletteSource: _settings.paletteSource,
-                  cornerRadiusScale: _settings.cornerRadiusScale,
-                  fontScale: 1.0,
-                ),
-                darkTheme: TidingsTheme.darkTheme(
-                  accentColor: resolveAccent(baseAccent, Brightness.dark),
-                  paletteSource: _settings.paletteSource,
-                  cornerRadiusScale: _settings.cornerRadiusScale,
-                  fontScale: 1.0,
-                ),
-                home: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, animation) =>
-                      FadeTransition(opacity: animation, child: child),
-                  child: KeyedSubtree(key: homeKey, child: home),
+              return PlatformMenuBar(
+                menus: _buildMenuBar(),
+                child: MaterialApp(
+                  title: 'Tidings',
+                  debugShowCheckedModeBanner: false,
+                  localizationsDelegates: const [
+                    FlutterQuillLocalizations.delegate,
+                    GlobalMaterialLocalizations.delegate,
+                    GlobalWidgetsLocalizations.delegate,
+                    GlobalCupertinoLocalizations.delegate,
+                  ],
+                  supportedLocales: FlutterQuillLocalizations.supportedLocales,
+                  themeMode: _settings.themeMode,
+                  theme: TidingsTheme.lightTheme(
+                    accentColor: resolveAccent(baseAccent, Brightness.light),
+                    paletteSource: _settings.paletteSource,
+                    cornerRadiusScale: _settings.cornerRadiusScale,
+                    fontScale: 1.0,
+                  ),
+                  darkTheme: TidingsTheme.darkTheme(
+                    accentColor: resolveAccent(baseAccent, Brightness.dark),
+                    paletteSource: _settings.paletteSource,
+                    cornerRadiusScale: _settings.cornerRadiusScale,
+                    fontScale: 1.0,
+                  ),
+                  home: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) =>
+                        FadeTransition(opacity: animation, child: child),
+                    child: KeyedSubtree(key: homeKey, child: home),
+                  ),
                 ),
               );
             },

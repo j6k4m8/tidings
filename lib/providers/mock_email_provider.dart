@@ -694,6 +694,56 @@ class MockEmailProvider extends EmailProvider {
   }
 
   @override
+  Future<String?> setThreadUnread(EmailThread thread, bool isUnread) async {
+    if (thread.id.startsWith('outbox-')) {
+      return 'Cannot mark outbox messages.';
+    }
+    final index = _threads.indexWhere((item) => item.id == thread.id);
+    if (index == -1) {
+      return 'Thread not found.';
+    }
+    final current = _threads[index];
+    _threads[index] = EmailThread(
+      id: current.id,
+      subject: current.subject,
+      participants: current.participants,
+      time: current.time,
+      unread: isUnread,
+      starred: current.starred,
+      receivedAt: current.receivedAt,
+    );
+    final messages = _messages[thread.id];
+    if (messages != null) {
+      _messages[thread.id] = messages
+          .map((message) => _copyMessageWithUnread(message, isUnread))
+          .toList();
+    }
+    notifyListeners();
+    return null;
+  }
+
+  EmailMessage _copyMessageWithUnread(EmailMessage message, bool isUnread) {
+    return EmailMessage(
+      id: message.id,
+      threadId: message.threadId,
+      subject: message.subject,
+      from: message.from,
+      to: message.to,
+      cc: message.cc,
+      bcc: message.bcc,
+      time: message.time,
+      isMe: message.isMe,
+      isUnread: isUnread,
+      bodyText: message.bodyText,
+      bodyHtml: message.bodyHtml,
+      receivedAt: message.receivedAt,
+      messageId: message.messageId,
+      inReplyTo: message.inReplyTo,
+      sendStatus: message.sendStatus,
+    );
+  }
+
+  @override
   Future<String?> archiveThread(EmailThread thread) async {
     final index = _threads.indexWhere((item) => item.id == thread.id);
     if (index == -1) {
