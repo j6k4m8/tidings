@@ -19,7 +19,7 @@ More screenshots in [docs/Screenshots.md](docs/Screenshots.md)!
 
 > [!WARNING]
 >
-> This project is in early development. Expect bugs, crashes, and missing features, maybe don't use it for important messages yet! Seeking motivated folks to contribute and play-test!
+> This project is in early development. **While you CAN use it as an email client today,** expect bugs, crashes, and missing features, maybe don't use it for important messages yet! Seeking motivated folks to contribute and play-test!
 
 ## Features
 
