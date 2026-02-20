@@ -784,5 +784,3 @@ class _ThreadSectionHeader extends StatelessWidget {
     );
   }
 }
-
-// Uses shared home utils.

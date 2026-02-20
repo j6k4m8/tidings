@@ -51,6 +51,10 @@ class ImapSmtpEmailProvider extends EmailProvider {
   bool _crossFolderThreadingEnabled = false;
   Duration _inboxRefreshInterval = const Duration(minutes: 5);
   Timer? _inboxRefreshTimer;
+  // Set whenever a local mutation (move/archive) patches the cache directly.
+  // A background fetch that completes *before* this timestamp is discarded so
+  // it cannot resurrect threads we've already removed locally.
+  DateTime? _lastMutationAt;
   late final SendQueue _sendQueue;
 
   @override
@@ -516,6 +520,74 @@ class ImapSmtpEmailProvider extends EmailProvider {
   }
 
   @override
+  Future<String?> moveToFolder(
+    EmailThread thread,
+    String targetPath, {
+    EmailMessage? singleMessage,
+  }) async {
+    final allMessages = messagesForThread(thread.id);
+    final toMove = singleMessage != null ? [singleMessage] : allMessages;
+    final ids = toMove
+        .map((m) => int.tryParse(m.id))
+        .whereType<int>()
+        .toList();
+    if (ids.isEmpty) {
+      return 'No messages to move.';
+    }
+    await _ensureConnected();
+    final client = _client;
+    if (client == null) {
+      return 'IMAP client not connected.';
+    }
+    await client.selectMailboxByPath(_currentMailboxPath);
+    final sequence = MessageSequence.fromIds(ids, isUid: true);
+    if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
+      await client.uidMove(sequence, targetMailboxPath: targetPath);
+    } else {
+      await client.uidCopy(sequence, targetMailboxPath: targetPath);
+      await client.uidStore(
+        sequence,
+        [MessageFlags.deleted],
+        action: StoreAction.add,
+      );
+      await client.expunge();
+    }
+    if (singleMessage == null) {
+      _removeThreadFromCache(thread.id);
+    } else {
+      _removeSingleMessageFromCache(thread.id, singleMessage.id);
+    }
+    notifyListeners();
+    return null;
+  }
+
+  void _removeSingleMessageFromCache(String threadId, String messageId) {
+    final messages = _messages[threadId];
+    if (messages == null) {
+      return;
+    }
+    final remaining =
+        messages.where((m) => m.id != messageId).toList();
+    if (remaining.isEmpty) {
+      _removeThreadFromCache(threadId); // also sets _lastMutationAt
+      return;
+    }
+    _lastMutationAt = DateTime.now();
+    _messages[threadId] = remaining;
+    final entry = _folderCache[_currentMailboxPath];
+    if (entry == null) {
+      return;
+    }
+    final nextMessages = Map<String, List<EmailMessage>>.from(
+      entry.data.messages,
+    )..[threadId] = remaining;
+    _folderCache[_currentMailboxPath] = _FolderCacheEntry(
+      data: _MailboxData(threads: entry.data.threads, messages: nextMessages),
+      fetchedAt: DateTime.now(),
+    );
+  }
+
+  @override
   Future<String?> setThreadUnread(EmailThread thread, bool isUnread) async {
     if (_selectedFolderPath == kOutboxFolderPath) {
       return 'Cannot mark outbox messages.';
@@ -570,6 +642,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
   }
 
   void _removeThreadFromCache(String threadId) {
+    _lastMutationAt = DateTime.now();
     _threads.removeWhere((thread) => thread.id == threadId);
     _messages.remove(threadId);
     final entry = _folderCache[_currentMailboxPath];
@@ -583,7 +656,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
     )..remove(threadId);
     _folderCache[_currentMailboxPath] = _FolderCacheEntry(
       data: _MailboxData(threads: nextThreads, messages: nextMessages),
-      fetchedAt: entry.fetchedAt,
+      fetchedAt: DateTime.now(),
     );
   }
 
@@ -780,185 +853,259 @@ class ImapSmtpEmailProvider extends EmailProvider {
     }
   }
 
-  Future<_MailboxData> _fetchMailboxData(String path) async {
-    final client = _client;
-    if (client == null) {
-      throw StateError('IMAP client not connected.');
-    }
-    final mailbox = await client.selectMailboxByPath(path);
-    if (mailbox.messagesExists <= 0) {
-      return const _MailboxData(threads: [], messages: {});
-    }
-    final end = mailbox.messagesExists;
-    final start = end > 50 ? end - 49 : 1;
-    final fetchResult = await client.fetchMessages(
-      MessageSequence.fromRange(start, end),
-      '(FLAGS ENVELOPE BODYSTRUCTURE BODY.PEEK[])',
-    );
-    final messagesByThread = <String, List<EmailMessage>>{};
-    var index = 0;
-    for (final message in fetchResult.messages) {
-      final envelope = message.envelope;
-      if (envelope == null) {
-        continue;
-      }
-      final subject = envelope.subject ?? '(No subject)';
-      final messageId = envelope.messageId;
-      final inReplyTo = envelope.inReplyTo;
-      final fromAddress = envelope.from?.isNotEmpty == true
-          ? envelope.from!.first
-          : null;
-      final from = EmailAddress(
-        name: fromAddress?.personalName ?? 'Unknown',
-        email: fromAddress?.email ?? '',
-      );
-      final to =
-          envelope.to
-              ?.map(
-                (recipient) => EmailAddress(
-                  name: recipient.personalName ?? '',
-                  email: recipient.email,
-                ),
-              )
-              .toList() ??
-          const [];
-      final cc =
-          envelope.cc
-              ?.map(
-                (recipient) => EmailAddress(
-                  name: recipient.personalName ?? '',
-                  email: recipient.email,
-                ),
-              )
-              .toList() ??
-          const [];
-      final bcc =
-          envelope.bcc
-              ?.map(
-                (recipient) => EmailAddress(
-                  name: recipient.personalName ?? '',
-                  email: recipient.email,
-                ),
-              )
-              .toList() ??
-          const [];
-      final timestamp = envelope.date?.toLocal();
-      final timeLabel = timestamp == null ? '' : _formatTime(timestamp);
-      final isUnread = !(message.flags?.contains(MessageFlags.seen) ?? false);
-      final threadId = _resolveThreadId(
-        subject: subject,
-        messageId: messageId,
-        inReplyTo: inReplyTo,
-      );
-      var bodyText = message.decodeTextPlainPart();
-      var bodyHtml = message.decodeTextHtmlPart();
+  // ---------------------------------------------------------------------------
+  // Two-phase fetch helpers
+  // ---------------------------------------------------------------------------
 
-      // Helper to check if text looks like HTML
-      bool looksLikeHtml(String? text) {
-        if (text == null || text.isEmpty) return false;
-        return text.contains('<html') ||
-            text.contains('<body') ||
-            text.contains('<div') ||
-            text.contains('<table') ||
-            text.contains('<p>') ||
-            text.contains('<br') ||
-            text.contains('<!DOCTYPE') ||
-            text.contains('<span') ||
-            text.contains('<td');
-      }
+  // Returns true if [text] looks like HTML markup.
+  bool _looksLikeHtml(String? text) {
+    if (text == null || text.isEmpty) return false;
+    return text.contains('<html') ||
+        text.contains('<body') ||
+        text.contains('<div') ||
+        text.contains('<table') ||
+        text.contains('<p>') ||
+        text.contains('<br') ||
+        text.contains('<!DOCTYPE') ||
+        text.contains('<span') ||
+        text.contains('<td');
+  }
 
-      // Fix: If bodyText contains HTML, move it to bodyHtml
-      if (bodyText != null && bodyText.isNotEmpty && looksLikeHtml(bodyText)) {
-        if (bodyHtml == null || bodyHtml.isEmpty) {
-          bodyHtml = bodyText;
+  // Extracts body text / HTML from a fully-fetched MimeMessage.
+  (String? bodyText, String? bodyHtml) _decodeBodies(MimeMessage message) {
+    var bodyText = message.decodeTextPlainPart();
+    var bodyHtml = message.decodeTextHtmlPart();
+
+    if (bodyText != null && bodyText.isNotEmpty && _looksLikeHtml(bodyText)) {
+      bodyHtml ??= bodyText;
+      bodyText = null;
+    }
+
+    if (bodyHtml == null || bodyHtml.isEmpty) {
+      final contentText = message.decodeContentText();
+      if (contentText != null && contentText.isNotEmpty) {
+        if (_looksLikeHtml(contentText)) {
+          bodyHtml = contentText;
+        } else if (bodyText == null || bodyText.isEmpty) {
+          bodyText = contentText;
         }
-        bodyText = null; // Clear it since it's actually HTML
       }
-
-      // Fallback: if no HTML part found, try alternative methods
       if (bodyHtml == null || bodyHtml.isEmpty) {
-        // Try decoding content directly
-        final contentText = message.decodeContentText();
-        if (contentText != null && contentText.isNotEmpty) {
-          // Check if it looks like HTML
-          if (looksLikeHtml(contentText)) {
-            bodyHtml = contentText;
-          } else if (bodyText == null || bodyText.isEmpty) {
-            // Use as plain text fallback
-            bodyText = contentText;
-          }
-        }
-
-        // Try finding HTML in body parts
-        if (bodyHtml == null || bodyHtml.isEmpty) {
-          for (final part in message.allPartsFlat) {
-            final mediaType = part.mediaType;
-            if (mediaType.sub == MediaSubtype.textHtml) {
-              final decoded = part.decodeContentText();
-              if (decoded != null && decoded.isNotEmpty) {
-                bodyHtml = decoded;
-                break;
-              }
+        for (final part in message.allPartsFlat) {
+          if (part.mediaType.sub == MediaSubtype.textHtml) {
+            final decoded = part.decodeContentText();
+            if (decoded != null && decoded.isNotEmpty) {
+              bodyHtml = decoded;
+              break;
             }
           }
         }
       }
-      final messageModel = EmailMessage(
-        id: message.uid?.toString() ?? '${message.sequenceId}',
-        threadId: threadId,
-        subject: subject,
-        from: from,
-        to: to,
-        cc: cc,
-        bcc: bcc,
-        time: timeLabel,
-        bodyText: bodyText,
-        bodyHtml: bodyHtml,
-        isMe: from.email == email,
-        isUnread: isUnread,
-        receivedAt: timestamp,
-        messageId: messageId,
-        inReplyTo: inReplyTo,
-      );
-      messagesByThread.putIfAbsent(threadId, () => []).add(messageModel);
-      index += 1;
-      if (index % 5 == 0) {
-        await Future<void>.delayed(Duration.zero);
-      }
     }
+    return (bodyText, bodyHtml);
+  }
 
+  // Builds an EmailMessage from a MimeMessage that has at least ENVELOPE+FLAGS.
+  // Pass [includeBody]=false for the fast header-only phase.
+  EmailMessage _buildEmailMessage(
+    MimeMessage message, {
+    required bool includeBody,
+  }) {
+    final envelope = message.envelope!;
+    final subject = envelope.subject ?? '(No subject)';
+    final messageId = envelope.messageId;
+    final inReplyTo = envelope.inReplyTo;
+    final fromAddress =
+        envelope.from?.isNotEmpty == true ? envelope.from!.first : null;
+    final from = EmailAddress(
+      name: fromAddress?.personalName ?? 'Unknown',
+      email: fromAddress?.email ?? '',
+    );
+    final to =
+        envelope.to
+            ?.map(
+              (r) => EmailAddress(name: r.personalName ?? '', email: r.email),
+            )
+            .toList() ??
+        const [];
+    final cc =
+        envelope.cc
+            ?.map(
+              (r) => EmailAddress(name: r.personalName ?? '', email: r.email),
+            )
+            .toList() ??
+        const [];
+    final bcc =
+        envelope.bcc
+            ?.map(
+              (r) => EmailAddress(name: r.personalName ?? '', email: r.email),
+            )
+            .toList() ??
+        const [];
+    final timestamp = envelope.date?.toLocal();
+    final timeLabel = timestamp == null ? '' : _formatTime(timestamp);
+    final isUnread = !(message.flags?.contains(MessageFlags.seen) ?? false);
+    final threadId = _resolveThreadId(
+      subject: subject,
+      messageId: messageId,
+      inReplyTo: inReplyTo,
+    );
+    final (bodyText, bodyHtml) =
+        includeBody ? _decodeBodies(message) : (null, null);
+    return EmailMessage(
+      id: message.uid?.toString() ?? '${message.sequenceId}',
+      threadId: threadId,
+      subject: subject,
+      from: from,
+      to: to,
+      cc: cc,
+      bcc: bcc,
+      time: timeLabel,
+      bodyText: bodyText,
+      bodyHtml: bodyHtml,
+      isMe: from.email == email,
+      isUnread: isUnread,
+      receivedAt: timestamp,
+      messageId: messageId,
+      inReplyTo: inReplyTo,
+    );
+  }
+
+  // Assembles threads from a messagesByThread map.
+  List<EmailThread> _buildThreads(
+    Map<String, List<EmailMessage>> messagesByThread,
+  ) {
     final threads = <EmailThread>[];
     for (final entry in messagesByThread.entries) {
       final messages = entry.value;
-      if (messages.isEmpty) {
-        continue;
-      }
+      if (messages.isEmpty) continue;
       messages.sort((a, b) {
         final aTime = a.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         final bTime = b.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         return aTime.compareTo(bTime);
       });
       final latest = messages.last;
-      final participants = {latest.from, ...latest.to}.toList();
       threads.add(
         EmailThread(
           id: entry.key,
           subject: latest.subject,
-          participants: participants,
+          participants: {latest.from, ...latest.to}.toList(),
           time: latest.time,
-          unread: messages.any((message) => message.isUnread),
+          unread: messages.any((m) => m.isUnread),
           starred: false,
           receivedAt: latest.receivedAt,
         ),
       );
     }
-
     threads.sort((a, b) {
       final aTime = a.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
       final bTime = b.receivedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
       return bTime.compareTo(aTime);
     });
-    return _MailboxData(threads: threads, messages: messagesByThread);
+    return threads;
+  }
+
+  // Phase 1: fetch headers only — returns quickly, no body decoding.
+  Future<({_MailboxData data, MessageSequence uidSequence})>
+  _fetchHeaders(String path) async {
+    final client = _client;
+    if (client == null) throw StateError('IMAP client not connected.');
+    final mailbox = await client.selectMailboxByPath(path);
+    if (mailbox.messagesExists <= 0) {
+      return (
+        data: const _MailboxData(threads: [], messages: {}),
+        uidSequence: MessageSequence(),
+      );
+    }
+    final end = mailbox.messagesExists;
+    final start = end > 50 ? end - 49 : 1;
+    final fetchResult = await client.fetchMessages(
+      MessageSequence.fromRange(start, end),
+      '(UID FLAGS ENVELOPE)',
+    );
+    final messagesByThread = <String, List<EmailMessage>>{};
+    final uids = <int>[];
+    for (final message in fetchResult.messages) {
+      if (message.envelope == null) continue;
+      final uid = message.uid;
+      if (uid != null) uids.add(uid);
+      messagesByThread
+          .putIfAbsent(
+            _resolveThreadId(
+              subject: message.envelope!.subject ?? '(No subject)',
+              messageId: message.envelope!.messageId,
+              inReplyTo: message.envelope!.inReplyTo,
+            ),
+            () => [],
+          )
+          .add(_buildEmailMessage(message, includeBody: false));
+    }
+    return (
+      data: _MailboxData(
+        threads: _buildThreads(messagesByThread),
+        messages: messagesByThread,
+      ),
+      uidSequence: uids.isEmpty
+          ? MessageSequence()
+          : MessageSequence.fromIds(uids, isUid: true),
+    );
+  }
+
+  // Phase 2: fetch full bodies for the UIDs returned by phase 1.
+  // Returns updated _MailboxData with bodies filled in, or null on empty/error.
+  Future<_MailboxData?> _fetchBodies(
+    _MailboxData headerData,
+    MessageSequence uidSequence,
+  ) async {
+    final client = _client;
+    if (client == null) throw StateError('IMAP client not connected.');
+    if (uidSequence.isEmpty) return null;
+    final fetchResult = await client.uidFetchMessages(
+      uidSequence,
+      '(UID FLAGS BODYSTRUCTURE BODY.PEEK[])',
+    );
+    // Build a UID→header-message lookup so we can copy envelope fields.
+    final headerById = <String, EmailMessage>{};
+    for (final msgs in headerData.messages.values) {
+      for (final m in msgs) {
+        headerById[m.id] = m;
+      }
+    }
+    final messagesByThread =
+        Map<String, List<EmailMessage>>.from(headerData.messages).map(
+          (k, v) => MapEntry(k, List<EmailMessage>.from(v)),
+        );
+    for (final message in fetchResult.messages) {
+      final uid = message.uid?.toString() ?? '${message.sequenceId}';
+      final header = headerById[uid];
+      if (header == null) continue;
+      final (bodyText, bodyHtml) = _decodeBodies(message);
+      final updated = EmailMessage(
+        id: header.id,
+        threadId: header.threadId,
+        subject: header.subject,
+        from: header.from,
+        to: header.to,
+        cc: header.cc,
+        bcc: header.bcc,
+        time: header.time,
+        bodyText: bodyText,
+        bodyHtml: bodyHtml,
+        isMe: header.isMe,
+        isUnread: header.isUnread,
+        receivedAt: header.receivedAt,
+        messageId: header.messageId,
+        inReplyTo: header.inReplyTo,
+      );
+      final list = messagesByThread[header.threadId];
+      if (list == null) continue;
+      final idx = list.indexWhere((m) => m.id == uid);
+      if (idx >= 0) list[idx] = updated;
+    }
+    return _MailboxData(
+      threads: headerData.threads,
+      messages: messagesByThread,
+    );
   }
 
   void _applyMailboxData(_MailboxData data) {
@@ -986,15 +1133,23 @@ class ImapSmtpEmailProvider extends EmailProvider {
     int token, {
     required bool showErrors,
   }) async {
-    try {
-      final data = await _fetchMailboxData(path);
-      if (_loadTokens[path] != token) {
+    // Snapshot the mutation clock so we can detect mid-fetch local mutations.
+    final mutationAtStart = _lastMutationAt;
+
+    void applyData(_MailboxData data, {required bool updateCache}) {
+      if (_loadTokens[path] != token) return;
+      final mutated = _lastMutationAt != mutationAtStart;
+      if (mutated) {
+        _status = ProviderStatus.ready;
+        notifyListeners();
         return;
       }
-      _folderCache[path] = _FolderCacheEntry(
-        data: data,
-        fetchedAt: DateTime.now(),
-      );
+      if (updateCache) {
+        _folderCache[path] = _FolderCacheEntry(
+          data: data,
+          fetchedAt: DateTime.now(),
+        );
+      }
       if (path == _currentMailboxPath) {
         _threads
           ..clear()
@@ -1005,10 +1160,21 @@ class ImapSmtpEmailProvider extends EmailProvider {
         _status = ProviderStatus.ready;
         notifyListeners();
       }
-    } catch (error) {
-      if (_loadTokens[path] != token) {
-        return;
+    }
+
+    try {
+      // --- Phase 1: headers only (fast) — paints thread list immediately ---
+      final (:data, :uidSequence) = await _fetchHeaders(path);
+      applyData(data, updateCache: false);
+
+      // --- Phase 2: bodies (slow) — infills content without blocking UI ---
+      if (_loadTokens[path] != token) return;
+      final fullData = await _fetchBodies(data, uidSequence);
+      if (fullData != null) {
+        applyData(fullData, updateCache: true);
       }
+    } catch (error) {
+      if (_loadTokens[path] != token) return;
       if (showErrors && path == _currentMailboxPath) {
         _status = ProviderStatus.error;
         _errorMessage = error.toString();
@@ -1021,13 +1187,22 @@ class ImapSmtpEmailProvider extends EmailProvider {
     }
   }
 
+  // Used for initial load — same two-phase approach so the UI paints fast.
   Future<void> _loadMailboxAndCache(String path) async {
-    final data = await _fetchMailboxData(path);
+    final (:data, :uidSequence) = await _fetchHeaders(path);
     _folderCache[path] = _FolderCacheEntry(
       data: data,
       fetchedAt: DateTime.now(),
     );
     _applyMailboxData(data);
+    final fullData = await _fetchBodies(data, uidSequence);
+    if (fullData != null) {
+      _folderCache[path] = _FolderCacheEntry(
+        data: fullData,
+        fetchedAt: DateTime.now(),
+      );
+      _applyMailboxData(fullData);
+    }
   }
 
   List<MailAddress> _parseRecipients(String raw) {

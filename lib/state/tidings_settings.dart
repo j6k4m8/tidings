@@ -23,6 +23,8 @@ class TidingsSettings extends ChangeNotifier {
   bool _showThreadAccountPill = true;
   bool _sidebarCollapsed = false;
   double _threadPanelFraction = 0.58;
+  bool _moveEntireThreadByDefault = true;
+  bool _showMessageFolderSource = false;
   final Set<String> _pinnedFolderPaths = {};
   final Map<ShortcutAction, KeyboardShortcut> _shortcutPrimary = {};
   final Map<ShortcutAction, KeyboardShortcut?> _shortcutSecondary = {};
@@ -43,6 +45,8 @@ class TidingsSettings extends ChangeNotifier {
   bool get showThreadAccountPill => _showThreadAccountPill;
   bool get sidebarCollapsed => _sidebarCollapsed;
   double get threadPanelFraction => _threadPanelFraction;
+  bool get moveEntireThreadByDefault => _moveEntireThreadByDefault;
+  bool get showMessageFolderSource => _showMessageFolderSource;
   Set<String> get pinnedFolderPaths => Set.unmodifiable(_pinnedFolderPaths);
 
   double get densityScale => _layoutDensity.scale;
@@ -130,6 +134,14 @@ class TidingsSettings extends ChangeNotifier {
       settings['threadPanelFraction'],
       _threadPanelFraction,
     ).clamp(0.3, 0.8);
+    _moveEntireThreadByDefault = _boolFromStorage(
+      settings['moveEntireThreadByDefault'],
+      _moveEntireThreadByDefault,
+    );
+    _showMessageFolderSource = _boolFromStorage(
+      settings['showMessageFolderSource'],
+      _showMessageFolderSource,
+    );
     _pinnedFolderPaths
       ..clear()
       ..addAll(_stringListFromStorage(settings['pinnedFolderPaths']));
@@ -210,6 +222,8 @@ class TidingsSettings extends ChangeNotifier {
       'showThreadAccountPill': _showThreadAccountPill,
       'sidebarCollapsed': _sidebarCollapsed,
       'threadPanelFraction': _threadPanelFraction,
+      'moveEntireThreadByDefault': _moveEntireThreadByDefault,
+      'showMessageFolderSource': _showMessageFolderSource,
       'pinnedFolderPaths': pinned,
       'shortcuts': {
         'primary': primary,
@@ -457,6 +471,24 @@ class TidingsSettings extends ChangeNotifier {
       return;
     }
     _threadPanelFraction = clamped;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setMoveEntireThreadByDefault(bool value) {
+    if (_moveEntireThreadByDefault == value) {
+      return;
+    }
+    _moveEntireThreadByDefault = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setShowMessageFolderSource(bool value) {
+    if (_showMessageFolderSource == value) {
+      return;
+    }
+    _showMessageFolderSource = value;
     unawaited(_persist());
     notifyListeners();
   }

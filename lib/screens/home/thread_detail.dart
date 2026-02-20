@@ -16,6 +16,7 @@ import '../../widgets/tidings_background.dart';
 import '../compose/compose_sheet.dart';
 import '../compose/compose_utils.dart';
 import '../compose/inline_reply_composer.dart';
+import '../keyboard/move_to_folder_dialog.dart';
 import 'provider_body.dart';
 
 class CurrentThreadPanel extends StatefulWidget {
@@ -191,6 +192,12 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  String _subjectLabel(String subject, {int maxLen = 30}) {
+    final s = subject.trim();
+    if (s.isEmpty) return '"(No subject)"';
+    return s.length <= maxLen ? '"$s"' : '"${s.substring(0, maxLen)}…"';
+  }
+
   Future<void> _toggleThreadRead() async {
     final messages = widget.provider.messagesForThread(widget.thread.id);
     final hasUnreadMessage = messages.any((message) => message.isUnread);
@@ -284,6 +291,54 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
     });
   }
 
+  Future<void> _handleMoveToFolder({EmailMessage? singleMessage}) async {
+    final settings = context.tidingsSettings;
+    // Resolve the real provider (not unified wrapper) so we get same-account
+    // folders only.
+    final provider = widget.provider;
+    final realProvider = provider is UnifiedEmailProvider
+        ? provider.providerForThread(widget.thread.id) ?? provider
+        : provider;
+    final messages = provider.messagesForThread(widget.thread.id);
+    final entries = buildMoveToFolderEntries(
+      realProvider.folderSections,
+      currentFolderPath: provider.selectedFolderPath,
+    );
+    if (!mounted) {
+      return;
+    }
+    final result = await showMoveToFolderDialog(
+      context,
+      accent: widget.accent,
+      entries: entries,
+      messageCount: messages.length,
+      defaultMoveEntireThread: singleMessage == null
+          ? true
+          : settings.moveEntireThreadByDefault,
+      // Only show the thread toggle when acting on a single message inside a
+      // multi-message thread — otherwise the choice is meaningless.
+      showThreadToggle: singleMessage != null && messages.length > 1,
+    );
+    if (result == null || !mounted) {
+      return;
+    }
+    final effectiveSingleMessage =
+        result.moveEntireThread ? null : singleMessage;
+    final error = await provider.moveToFolder(
+      widget.thread,
+      result.folderPath,
+      singleMessage: effectiveSingleMessage,
+    );
+    if (!mounted) {
+      return;
+    }
+    if (error != null) {
+      _toast('Move failed: $error');
+      return;
+    }
+    _toast('Moved ${_subjectLabel(widget.thread.subject)}');
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = context.tidingsSettings;
@@ -354,6 +409,8 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                     _expandAll(messages);
                                   case 'collapse_all':
                                     _collapseAll(messages);
+                                  case 'move_to_folder':
+                                    _handleMoveToFolder();
                                 }
                               },
                               itemBuilder: (context) => [
@@ -364,6 +421,10 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                 const PopupMenuItem(
                                   value: 'collapse_all',
                                   child: Text('Collapse all'),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'move_to_folder',
+                                  child: Text('Move to folder…'),
                                 ),
                               ],
                             ),
@@ -431,6 +492,12 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                   onUndoSend: undoId == null
                                       ? null
                                       : () => _undoSend(undoId),
+                                  onMoveToFolder: () =>
+                                      _handleMoveToFolder(singleMessage: message),
+                                  showFolderSource:
+                                      settings.showMessageFolderSource,
+                                  currentFolderPath:
+                                      widget.provider.selectedFolderPath,
                                 );
                               },
                             ),
@@ -490,6 +557,9 @@ class MessageCard extends StatelessWidget {
     this.onSelected,
     this.onToggleRead,
     this.onUndoSend,
+    this.onMoveToFolder,
+    this.showFolderSource = false,
+    this.currentFolderPath,
   });
 
   final EmailMessage message;
@@ -501,6 +571,9 @@ class MessageCard extends StatelessWidget {
   final VoidCallback? onSelected;
   final VoidCallback? onToggleRead;
   final VoidCallback? onUndoSend;
+  final VoidCallback? onMoveToFolder;
+  final bool showFolderSource;
+  final String? currentFolderPath;
 
   static const int _collapsedCharLimit = 420;
 
@@ -814,6 +887,13 @@ class MessageCard extends StatelessWidget {
                                     status: message.sendStatus!,
                                     accent: accent,
                                   ),
+                                if (showFolderSource &&
+                                    message.folderPath != null &&
+                                    message.folderPath!.isNotEmpty &&
+                                    message.folderPath != currentFolderPath)
+                                  _FolderSourceChip(
+                                    folderPath: message.folderPath!,
+                                  ),
                               ],
                             );
                           },
@@ -830,6 +910,8 @@ class MessageCard extends StatelessWidget {
                             onToggleExpanded();
                           } else if (value == 'toggle-read') {
                             onToggleRead?.call();
+                          } else if (value == 'move') {
+                            onMoveToFolder?.call();
                           } else if (value == 'metadata') {
                             _showMetadataDialog(context);
                           }
@@ -849,6 +931,11 @@ class MessageCard extends StatelessWidget {
                                 KeyHint(keyLabel: toggleReadHint, small: true),
                               ],
                             ),
+                          ),
+                          PopupMenuItem(
+                            value: 'move',
+                            enabled: onMoveToFolder != null,
+                            child: const Text('Move to folder…'),
                           ),
                           const PopupMenuItem(
                             value: 'metadata',
@@ -1064,6 +1151,53 @@ class _SendStatusChip extends StatelessWidget {
               color: scheme.onSurface.withValues(alpha: 0.7),
               fontWeight: FontWeight.w600,
             ),
+      ),
+    );
+  }
+}
+
+class _FolderSourceChip extends StatelessWidget {
+  const _FolderSourceChip({required this.folderPath});
+
+  final String folderPath;
+
+  /// Returns the last path segment as a human-friendly display name.
+  String get _displayName {
+    final parts = folderPath.split('/');
+    return parts.last.isEmpty ? folderPath : parts.last;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = scheme.onSurface;
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: context.space(6),
+        vertical: context.space(2),
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.1 : 0.07),
+        borderRadius: BorderRadius.circular(context.radius(999)),
+        border: Border.all(color: color.withValues(alpha: isDark ? 0.2 : 0.15)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.folder_outlined,
+            size: 11,
+            color: color.withValues(alpha: 0.55),
+          ),
+          SizedBox(width: context.space(3)),
+          Text(
+            _displayName,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: color.withValues(alpha: 0.6),
+                ),
+          ),
+        ],
       ),
     );
   }

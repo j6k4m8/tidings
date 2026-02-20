@@ -436,6 +436,28 @@ class _FoldersSettings extends StatelessWidget {
             onChanged: settings.setShowFolderUnreadCounts,
           ),
         ),
+        SizedBox(height: context.space(16)),
+        SettingRow(
+          title: 'Move entire thread by default',
+          subtitle:
+              'Pre-select "Move entire thread" in the Move to Folder dialog.',
+          trailing: AccentSwitch(
+            accent: accent,
+            value: settings.moveEntireThreadByDefault,
+            onChanged: settings.setMoveEntireThreadByDefault,
+          ),
+        ),
+        SizedBox(height: context.space(16)),
+        SettingRow(
+          title: 'Show message folder source',
+          subtitle:
+              'Display a folder badge on messages that live in a different folder from the current view.',
+          trailing: AccentSwitch(
+            accent: accent,
+            value: settings.showMessageFolderSource,
+            onChanged: settings.setShowMessageFolderSource,
+          ),
+        ),
       ],
     );
   }

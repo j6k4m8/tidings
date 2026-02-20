@@ -283,7 +283,6 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
         final messenger = ScaffoldMessenger.of(context);
         messenger.showSnackBar(
           SnackBar(
-            // TODO: Replace with "Sent (Click to undo)" when countdown UI ships.
             content: const Text('Sent'),
             duration: kUndoSendDelay,
             action: queued == null
@@ -715,17 +714,4 @@ enum ReplyMode {
   reply,
   replyAll,
   forward,
-}
-
-extension ReplyModeMeta on ReplyMode {
-  String get label {
-    switch (this) {
-      case ReplyMode.reply:
-        return 'Reply';
-      case ReplyMode.replyAll:
-        return 'Reply all';
-      case ReplyMode.forward:
-        return 'Forward';
-    }
-  }
 }

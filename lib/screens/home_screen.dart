@@ -23,6 +23,7 @@ import 'home/home_layouts.dart';
 import 'home/thread_detail.dart';
 import 'keyboard/command_palette.dart';
 import 'keyboard/go_to_dialog.dart';
+import 'keyboard/move_to_folder_dialog.dart';
 import 'keyboard/shortcuts_sheet.dart';
 import 'onboarding_screen.dart';
 import 'settings/settings_screen.dart';
@@ -394,6 +395,12 @@ class _HomeScreenState extends State<HomeScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  String _subjectLabel(String subject, {int maxLen = 30}) {
+    final s = subject.trim();
+    if (s.isEmpty) return '"(No subject)"';
+    return s.length <= maxLen ? '"$s"' : '"${s.substring(0, maxLen)}…"';
+  }
+
   Future<void> _runRefresh(EmailProvider provider) async {
     if (_isRefreshing) {
       return;
@@ -483,6 +490,18 @@ class _HomeScreenState extends State<HomeScreen> {
     _threadListFocusNode.requestFocus();
   }
 
+  // Call after a thread has been removed from the list (archive / move).
+  // Keeping the same index value advances to what was the next thread;
+  // if it was the last thread the selectedIndex() helper clamps it down.
+  void _advanceAfterRemoval(EmailProvider provider) {
+    setState(() {
+      // Index stays the same — the list is now one shorter so this naturally
+      // points at the successor.  selectedIndex() will clamp if needed.
+    });
+    _syncAccentWithSelection(provider);
+    _threadListFocusNode.requestFocus();
+  }
+
   int _selectedMessageIndexForThread(EmailThread thread, int messageCount) {
     if (messageCount <= 0) {
       return 0;
@@ -550,12 +569,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _focusThreadDetail() {
     FocusManager.instance.primaryFocus?.unfocus();
-    _threadDetailFocusNode.requestFocus();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _threadDetailFocusNode.requestFocus();
-      }
-    });
     Future.delayed(const Duration(milliseconds: 240), () {
       if (mounted) {
         _threadDetailFocusNode.requestFocus();
@@ -690,7 +703,54 @@ class _HomeScreenState extends State<HomeScreen> {
       _toast(error);
       return;
     }
-    _toast('Archived.');
+    _advanceAfterRemoval(provider);
+    _toast('Archived ${_subjectLabel(thread.subject)}');
+  }
+
+  Future<void> _moveSelectedThreadToFolder(
+    EmailProvider provider,
+    EmailAccount account,
+  ) async {
+    final thread = _currentThread(provider);
+    if (thread == null) {
+      _toast('No thread selected.');
+      return;
+    }
+    final settings = context.tidingsSettings;
+    // Resolve the real (single-account) provider for folder sections.
+    final realProvider = provider is UnifiedEmailProvider
+        ? provider.providerForThread(thread.id) ?? provider
+        : provider;
+    final entries = buildMoveToFolderEntries(
+      realProvider.folderSections,
+      currentFolderPath: provider.selectedFolderPath,
+    );
+    if (!mounted) {
+      return;
+    }
+    final messages = provider.messagesForThread(thread.id);
+    final result = await showMoveToFolderDialog(
+      context,
+      accent: widget.accent,
+      entries: entries,
+      messageCount: messages.length,
+      defaultMoveEntireThread: settings.moveEntireThreadByDefault,
+      // Folder-level action always moves the whole thread — no toggle needed.
+      showThreadToggle: false,
+    );
+    if (result == null || !mounted) {
+      return;
+    }
+    final error = await provider.moveToFolder(thread, result.folderPath);
+    if (!mounted) {
+      return;
+    }
+    if (error != null) {
+      _toast('Move failed: $error');
+      return;
+    }
+    _advanceAfterRemoval(provider);
+    _toast('Moved ${_subjectLabel(thread.subject)}');
   }
 
   Future<void> _showCommandPalette(
@@ -738,6 +798,14 @@ class _HomeScreenState extends State<HomeScreen> {
         shortcutLabel: settings.shortcutLabel(ShortcutAction.archive),
         onSelected: () =>
             _handleShortcut(ShortcutAction.archive, provider, account),
+      ),
+      CommandPaletteItem(
+        id: 'move-to-folder',
+        title: 'Move to folder',
+        subtitle: 'Move the selected thread to a folder',
+        shortcutLabel: settings.shortcutLabel(ShortcutAction.moveToFolder),
+        onSelected: () =>
+            _handleShortcut(ShortcutAction.moveToFolder, provider, account),
       ),
       CommandPaletteItem(
         id: 'toggle-read',
@@ -864,6 +932,9 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case ShortcutAction.archive:
         await _archiveSelectedThread(provider);
+        break;
+      case ShortcutAction.moveToFolder:
+        await _moveSelectedThreadToFolder(provider, account);
         break;
       case ShortcutAction.toggleRead:
         await _toggleReadForSelected(provider);
