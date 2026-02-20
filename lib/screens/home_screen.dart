@@ -550,12 +550,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _focusThreadDetail() {
     FocusManager.instance.primaryFocus?.unfocus();
-    _threadDetailFocusNode.requestFocus();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _threadDetailFocusNode.requestFocus();
-      }
-    });
     Future.delayed(const Duration(milliseconds: 240), () {
       if (mounted) {
         _threadDetailFocusNode.requestFocus();

@@ -24,9 +24,7 @@ class EmailAddress {
     return avatarInitial(displayName.isNotEmpty ? displayName : email);
   }
 
-  String get normalizedDisplayName {
-    return normalizeContactName(displayName);
-  }
+  String get normalizedDisplayName => displayName;
 }
 
 @immutable

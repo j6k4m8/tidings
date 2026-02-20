@@ -299,7 +299,6 @@ class _ComposeSheetState extends State<ComposeSheet> {
         final messenger = ScaffoldMessenger.of(context);
         messenger.showSnackBar(
           SnackBar(
-            // TODO: Replace with "Sent (Click to undo)" when countdown UI ships.
             content: const Text('Sent'),
             duration: kUndoSendDelay,
             action: queued == null
