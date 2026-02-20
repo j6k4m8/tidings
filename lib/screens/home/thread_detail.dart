@@ -309,6 +309,9 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
       defaultMoveEntireThread: singleMessage == null
           ? true
           : settings.moveEntireThreadByDefault,
+      // Only show the thread toggle when acting on a single message inside a
+      // multi-message thread — otherwise the choice is meaningless.
+      showThreadToggle: singleMessage != null && messages.length > 1,
     );
     if (result == null || !mounted) {
       return;

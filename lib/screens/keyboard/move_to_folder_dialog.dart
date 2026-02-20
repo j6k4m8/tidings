@@ -37,6 +37,10 @@ Future<MoveToFolderResult?> showMoveToFolderDialog(
   required List<MoveToFolderEntry> entries,
   required int messageCount,
   required bool defaultMoveEntireThread,
+  // Hide the "move entire thread" toggle when acting from the folder-level
+  // shortcut (always moves whole thread) or when the thread has only one
+  // message (toggle would be meaningless).
+  bool showThreadToggle = true,
 }) {
   return showDialog<MoveToFolderResult>(
     context: context,
@@ -46,6 +50,7 @@ Future<MoveToFolderResult?> showMoveToFolderDialog(
       entries: entries,
       messageCount: messageCount,
       defaultMoveEntireThread: defaultMoveEntireThread,
+      showThreadToggle: showThreadToggle,
     ),
   );
 }
@@ -56,12 +61,14 @@ class _MoveToFolderDialog extends StatefulWidget {
     required this.entries,
     required this.messageCount,
     required this.defaultMoveEntireThread,
+    required this.showThreadToggle,
   });
 
   final Color accent;
   final List<MoveToFolderEntry> entries;
   final int messageCount;
   final bool defaultMoveEntireThread;
+  final bool showThreadToggle;
 
   @override
   State<_MoveToFolderDialog> createState() => _MoveToFolderDialogState();
@@ -78,9 +85,7 @@ class _MoveToFolderDialogState extends State<_MoveToFolderDialog> {
     super.initState();
     _moveEntireThread = widget.defaultMoveEntireThread;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _focusNode.requestFocus();
-      }
+      if (mounted) _focusNode.requestFocus();
     });
   }
 
@@ -92,9 +97,7 @@ class _MoveToFolderDialogState extends State<_MoveToFolderDialog> {
   }
 
   void _moveSelection(int delta, int max) {
-    if (max <= 0) {
-      return;
-    }
+    if (max <= 0) return;
     setState(() {
       _selectedIndex = (_selectedIndex + delta).clamp(0, max - 1);
     });
@@ -111,6 +114,7 @@ class _MoveToFolderDialogState extends State<_MoveToFolderDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final filtered = widget.entries
         .where(
           (entry) => fuzzyMatch(
@@ -122,18 +126,14 @@ class _MoveToFolderDialogState extends State<_MoveToFolderDialog> {
     if (_selectedIndex >= filtered.length) {
       _selectedIndex = 0;
     }
-    final threadLabel = widget.messageCount == 1
-        ? 'Move entire thread (1 message)'
-        : 'Move entire thread (${widget.messageCount} messages)';
+
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
       child: Focus(
         autofocus: true,
         onKeyEvent: (node, event) {
-          if (event is! KeyDownEvent) {
-            return KeyEventResult.ignored;
-          }
+          if (event is! KeyDownEvent) return KeyEventResult.ignored;
           if (event.logicalKey == LogicalKeyboardKey.escape) {
             Navigator.of(context).maybePop();
             return KeyEventResult.handled;
@@ -154,137 +154,187 @@ class _MoveToFolderDialogState extends State<_MoveToFolderDialog> {
           return KeyEventResult.ignored;
         },
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
+          constraints: const BoxConstraints(maxWidth: 480),
           child: GlassPanel(
             borderRadius: BorderRadius.circular(20),
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.zero,
             variant: GlassVariant.sheet,
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      'Move to folder',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${filtered.length} folder${filtered.length == 1 ? '' : 's'}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: ColorTokens.textSecondary(context),
+                // ── Header ──────────────────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Move to folder',
+                        style:
+                            Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '·  ${filtered.length}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: ColorTokens.textSecondary(context),
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // ── Search ──────────────────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: GlassTextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    hintText: 'Search folders…',
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+
+                // ── Thread toggle (conditional) ──────────────────────────
+                if (widget.showThreadToggle) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 10, 0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.messageCount == 1
+                                ? 'Move entire thread'
+                                : 'Move entire thread  (${widget.messageCount} messages)',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: ColorTokens.textSecondary(context),
+                                    ),
                           ),
+                        ),
+                        const SizedBox(width: 8),
+                        AccentSwitch(
+                          accent: widget.accent,
+                          value: _moveEntireThread,
+                          onChanged: (v) =>
+                              setState(() => _moveEntireThread = v),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                GlassTextField(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  hintText: 'Search folders…',
-                  onChanged: (_) => setState(() {}),
-                ),
+                  ),
+                ],
+
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
+
+                // ── Divider ──────────────────────────────────────────────────
+                Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.07)
+                      : Colors.black.withValues(alpha: 0.07),
+                ),
+
+                // ── Folder list ──────────────────────────────────────────────
+                if (filtered.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32),
+                    child: Center(
                       child: Text(
-                        threadLabel,
+                        'No folders match',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: ColorTokens.textSecondary(context),
                             ),
                       ),
                     ),
-                    AccentSwitch(
-                      accent: widget.accent,
-                      value: _moveEntireThread,
-                      onChanged: (value) {
-                        setState(() => _moveEntireThread = value);
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (filtered.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Text(
-                      'No matches',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: ColorTokens.textSecondary(context),
-                          ),
-                    ),
                   )
                 else
-                  SizedBox(
-                    height: 320,
-                    child: ListView.separated(
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 340),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
                       itemCount: filtered.length,
-                      separatorBuilder: (context, index) =>
-                          const SizedBox(height: 6),
                       itemBuilder: (context, index) {
                         final entry = filtered[index];
                         final selected = index == _selectedIndex;
+                        // Only show the path subtitle when it differs from
+                        // the display name (avoids redundant "Drafts / Drafts").
+                        final showPath = entry.path != entry.displayName;
                         return InkWell(
                           onTap: () => _confirm(entry),
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
+                          borderRadius: BorderRadius.circular(10),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 120),
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
+                              horizontal: 10,
+                              vertical: 8,
                             ),
                             decoration: BoxDecoration(
                               color: selected
                                   ? widget.accent.withValues(alpha: 0.12)
                                   : Colors.transparent,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: selected
-                                    ? widget.accent.withValues(alpha: 0.25)
-                                    : Colors.transparent,
-                              ),
+                              borderRadius: BorderRadius.circular(10),
                             ),
                             child: Row(
                               children: [
+                                Icon(
+                                  Icons.folder_outlined,
+                                  size: 15,
+                                  color: selected
+                                      ? widget.accent
+                                      : ColorTokens.textSecondary(
+                                          context,
+                                          0.5,
+                                        ),
+                                ),
+                                const SizedBox(width: 10),
                                 Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        entry.displayName,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w600,
+                                  child: showPath
+                                      ? Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              entry.displayName,
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium,
                                             ),
-                                      ),
-                                      Padding(
-                                        padding:
-                                            const EdgeInsets.only(top: 4),
-                                        child: Text(
-                                          entry.path,
+                                            Text(
+                                              entry.path,
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall
+                                                  ?.copyWith(
+                                                    color:
+                                                        ColorTokens.textSecondary(
+                                                      context,
+                                                      0.5,
+                                                    ),
+                                                  ),
+                                            ),
+                                          ],
+                                        )
+                                      : Text(
+                                          entry.displayName,
                                           style: Theme.of(context)
                                               .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                color:
-                                                    ColorTokens.textSecondary(
-                                                  context,
-                                                ),
-                                              ),
+                                              .bodyMedium,
                                         ),
-                                      ),
-                                    ],
+                                ),
+                                if (selected)
+                                  Icon(
+                                    Icons.arrow_forward_rounded,
+                                    size: 14,
+                                    color:
+                                        widget.accent.withValues(alpha: 0.7),
                                   ),
-                                ),
-                                Icon(
-                                  Icons.drive_file_move_outlined,
-                                  size: 16,
-                                  color:
-                                      ColorTokens.textSecondary(context, 0.7),
-                                ),
                               ],
                             ),
                           ),
@@ -310,17 +360,10 @@ List<MoveToFolderEntry> buildMoveToFolderEntries(
   final entries = <MoveToFolderEntry>[];
   for (final section in sections) {
     for (final item in section.items) {
-      if (item.path == currentFolderPath) {
-        continue;
-      }
-      if (item.path == kOutboxFolderPath) {
-        continue;
-      }
+      if (item.path == currentFolderPath) continue;
+      if (item.path == kOutboxFolderPath) continue;
       entries.add(
-        MoveToFolderEntry(
-          path: item.path,
-          displayName: item.name,
-        ),
+        MoveToFolderEntry(path: item.path, displayName: item.name),
       );
     }
   }

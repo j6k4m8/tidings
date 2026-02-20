@@ -716,6 +716,8 @@ class _HomeScreenState extends State<HomeScreen> {
       entries: entries,
       messageCount: messages.length,
       defaultMoveEntireThread: settings.moveEntireThreadByDefault,
+      // Folder-level action always moves the whole thread — no toggle needed.
+      showThreadToggle: false,
     );
     if (result == null || !mounted) {
       return;
