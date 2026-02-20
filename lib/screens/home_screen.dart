@@ -23,6 +23,7 @@ import 'home/home_layouts.dart';
 import 'home/thread_detail.dart';
 import 'keyboard/command_palette.dart';
 import 'keyboard/go_to_dialog.dart';
+import 'keyboard/move_to_folder_dialog.dart';
 import 'keyboard/shortcuts_sheet.dart';
 import 'onboarding_screen.dart';
 import 'settings/settings_screen.dart';
@@ -687,6 +688,47 @@ class _HomeScreenState extends State<HomeScreen> {
     _toast('Archived.');
   }
 
+  Future<void> _moveSelectedThreadToFolder(
+    EmailProvider provider,
+    EmailAccount account,
+  ) async {
+    final thread = _currentThread(provider);
+    if (thread == null) {
+      _toast('No thread selected.');
+      return;
+    }
+    final settings = context.tidingsSettings;
+    // Resolve the real (single-account) provider for folder sections.
+    final realProvider = provider is UnifiedEmailProvider
+        ? provider.providerForThread(thread.id) ?? provider
+        : provider;
+    final entries = buildMoveToFolderEntries(
+      realProvider.folderSections,
+      currentFolderPath: provider.selectedFolderPath,
+    );
+    if (!mounted) {
+      return;
+    }
+    final messages = provider.messagesForThread(thread.id);
+    final result = await showMoveToFolderDialog(
+      context,
+      accent: widget.accent,
+      entries: entries,
+      messageCount: messages.length,
+      defaultMoveEntireThread: settings.moveEntireThreadByDefault,
+    );
+    if (result == null || !mounted) {
+      return;
+    }
+    final error = await provider.moveToFolder(thread, result.folderPath);
+    if (!mounted) {
+      return;
+    }
+    if (error != null) {
+      _toast('Move failed: $error');
+    }
+  }
+
   Future<void> _showCommandPalette(
     EmailProvider provider,
     EmailAccount account,
@@ -732,6 +774,14 @@ class _HomeScreenState extends State<HomeScreen> {
         shortcutLabel: settings.shortcutLabel(ShortcutAction.archive),
         onSelected: () =>
             _handleShortcut(ShortcutAction.archive, provider, account),
+      ),
+      CommandPaletteItem(
+        id: 'move-to-folder',
+        title: 'Move to folder',
+        subtitle: 'Move the selected thread to a folder',
+        shortcutLabel: settings.shortcutLabel(ShortcutAction.moveToFolder),
+        onSelected: () =>
+            _handleShortcut(ShortcutAction.moveToFolder, provider, account),
       ),
       CommandPaletteItem(
         id: 'toggle-read',
@@ -858,6 +908,9 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case ShortcutAction.archive:
         await _archiveSelectedThread(provider);
+        break;
+      case ShortcutAction.moveToFolder:
+        await _moveSelectedThreadToFolder(provider, account);
         break;
       case ShortcutAction.toggleRead:
         await _toggleReadForSelected(provider);

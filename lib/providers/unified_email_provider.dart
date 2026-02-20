@@ -328,6 +328,23 @@ class UnifiedEmailProvider extends EmailProvider {
   }
 
   @override
+  Future<String?> moveToFolder(
+    EmailThread thread,
+    String targetPath, {
+    EmailMessage? singleMessage,
+  }) async {
+    final ref = _threadRefs[thread.id] ?? _rebuildThreadRef(thread.id);
+    if (ref == null) {
+      return 'Thread not found.';
+    }
+    return ref.provider.moveToFolder(
+      ref.thread,
+      targetPath,
+      singleMessage: singleMessage,
+    );
+  }
+
+  @override
   void dispose() {
     _disposed = true;
     for (final provider in _providers.values) {

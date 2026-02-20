@@ -151,6 +151,10 @@ class MockEmailProvider extends EmailProvider {
 
   final List<EmailThread> _threads = _buildThreads();
   final Map<String, List<EmailMessage>> _messages = _buildMessages();
+  // Per-message folder overrides (threadId:messageId → folderPath).
+  // Used when a single message is moved independently of the rest of the thread.
+  final Map<String, String> _messageFolders = {};
+
   final Map<String, String> _threadFolders = Map<String, String>.from(
     _seedThreadFolders,
   );
@@ -752,6 +756,44 @@ class MockEmailProvider extends EmailProvider {
     _threads.removeAt(index);
     _messages.remove(thread.id);
     _threadFolders.remove(thread.id);
+    notifyListeners();
+    return null;
+  }
+
+  @override
+  Future<String?> moveToFolder(
+    EmailThread thread,
+    String targetPath, {
+    EmailMessage? singleMessage,
+  }) async {
+    final index = _threads.indexWhere((item) => item.id == thread.id);
+    if (index == -1) {
+      return 'Thread not found.';
+    }
+    if (singleMessage == null) {
+      // Move the whole thread.
+      _threadFolders[thread.id] = targetPath;
+      // Remove any per-message overrides for this thread.
+      _messageFolders.removeWhere(
+        (key, _) => key.startsWith('${thread.id}:'),
+      );
+    } else {
+      // Move only one message — record a per-message override.
+      _messageFolders['${thread.id}:${singleMessage.id}'] = targetPath;
+      // Check if all messages in the thread have been individually moved away
+      // from the current folder; if so, remove the thread from this view too.
+      final messages = _messages[thread.id] ?? [];
+      final currentFolder = _threadFolders[thread.id];
+      final allMoved = messages.every((m) {
+        final override = _messageFolders['${thread.id}:${m.id}'];
+        return override != null && override != currentFolder;
+      });
+      if (allMoved) {
+        _threads.removeAt(index);
+        _messages.remove(thread.id);
+        _threadFolders.remove(thread.id);
+      }
+    }
     notifyListeners();
     return null;
   }

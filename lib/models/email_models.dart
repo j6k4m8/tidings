@@ -78,6 +78,7 @@ class EmailMessage {
     this.messageId,
     this.inReplyTo,
     this.sendStatus,
+    this.folderPath,
   });
 
   final String id;
@@ -96,6 +97,8 @@ class EmailMessage {
   final String? messageId;
   final String? inReplyTo;
   final MessageSendStatus? sendStatus;
+  /// The IMAP folder path this message was loaded from.
+  final String? folderPath;
 
   String get toSummary {
     return to.map((recipient) => recipient.displayName).join(', ');
