@@ -395,6 +395,12 @@ class _HomeScreenState extends State<HomeScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  String _subjectLabel(String subject, {int maxLen = 30}) {
+    final s = subject.trim();
+    if (s.isEmpty) return '"(No subject)"';
+    return s.length <= maxLen ? '"$s"' : '"${s.substring(0, maxLen)}…"';
+  }
+
   Future<void> _runRefresh(EmailProvider provider) async {
     if (_isRefreshing) {
       return;
@@ -479,6 +485,18 @@ class _HomeScreenState extends State<HomeScreen> {
         0,
         threads.length - 1,
       );
+    });
+    _syncAccentWithSelection(provider);
+    _threadListFocusNode.requestFocus();
+  }
+
+  // Call after a thread has been removed from the list (archive / move).
+  // Keeping the same index value advances to what was the next thread;
+  // if it was the last thread the selectedIndex() helper clamps it down.
+  void _advanceAfterRemoval(EmailProvider provider) {
+    setState(() {
+      // Index stays the same — the list is now one shorter so this naturally
+      // points at the successor.  selectedIndex() will clamp if needed.
     });
     _syncAccentWithSelection(provider);
     _threadListFocusNode.requestFocus();
@@ -685,7 +703,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _toast(error);
       return;
     }
-    _toast('Archived.');
+    _advanceAfterRemoval(provider);
+    _toast('Archived ${_subjectLabel(thread.subject)}');
   }
 
   Future<void> _moveSelectedThreadToFolder(
@@ -728,7 +747,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (error != null) {
       _toast('Move failed: $error');
+      return;
     }
+    _advanceAfterRemoval(provider);
+    _toast('Moved ${_subjectLabel(thread.subject)}');
   }
 
   Future<void> _showCommandPalette(

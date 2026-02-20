@@ -40,6 +40,18 @@
 -   [ ] Integration test for send/reply flow with a test IMAP server.
 -   [ ] Integration test for Gmail send/reply flow (mocked or sandboxed account).
 
+## Undo for Archive / Move
+
+-   [ ] 5-second undo snackbar after archive or move-to-folder.
+
+IMAP has no native undo — an "undo" is simply a second `UID MOVE` in reverse, back to the original folder. This means:
+
+-   The source folder path and the moved UIDs must be captured at action time and held for the undo window.
+-   The move fires immediately on the server; the undo window is a grace period to trigger a reverse move, not a delayed commit. A concurrent client could act on the message during those 5 seconds.
+-   The optimistic UI (thread removed from cache immediately, `_lastMutationAt` blocking background refreshes from resurrecting it) must be mirrored for the undo: re-inserting the thread locally requires a symmetric `_reinsertThreadIntoCache` path and another `_lastMutationAt` bump, otherwise the next background fetch wipes the re-insertion before the reverse IMAP move completes.
+-   If the reverse move fails (network drop, UID no longer valid), the local re-insertion must be rolled back and an error shown — otherwise the UI shows a thread that doesn't exist on the server.
+-   Stacking undos (archive A, then archive B before A's window expires) requires a policy decision; simplest is one undo slot at a time, with a new action cancelling the previous opportunity.
+
 ## Backlog
 
 -   [x] Persist UI settings (theme mode, palette source, layout density, corner radius).

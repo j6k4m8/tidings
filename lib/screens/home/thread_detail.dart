@@ -192,6 +192,12 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  String _subjectLabel(String subject, {int maxLen = 30}) {
+    final s = subject.trim();
+    if (s.isEmpty) return '"(No subject)"';
+    return s.length <= maxLen ? '"$s"' : '"${s.substring(0, maxLen)}…"';
+  }
+
   Future<void> _toggleThreadRead() async {
     final messages = widget.provider.messagesForThread(widget.thread.id);
     final hasUnreadMessage = messages.any((message) => message.isUnread);
@@ -328,7 +334,9 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
     }
     if (error != null) {
       _toast('Move failed: $error');
+      return;
     }
+    _toast('Moved ${_subjectLabel(widget.thread.subject)}');
   }
 
   @override
