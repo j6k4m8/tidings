@@ -661,14 +661,19 @@ class _HomeScreenState extends State<HomeScreen> {
         to = '';
         break;
       case ReplyMode.reply:
-        final latestSender = latest?.from;
-        if (latestSender != null && latestSender.email != currentUserEmail) {
-          to = latestSender.email;
+        // Prefer Reply-To header over From — RFC 5322 §3.6.2.
+        final replyToAddresses = latest?.replyTo ?? const [];
+        final effectiveSender = replyToAddresses.isNotEmpty
+            ? replyToAddresses.first
+            : latest?.from;
+        if (effectiveSender != null &&
+            effectiveSender.email != currentUserEmail) {
+          to = effectiveSender.email;
         } else if (thread.participants.isNotEmpty) {
           to = thread.participants
               .firstWhere(
                 (participant) => participant.email != currentUserEmail,
-                orElse: () => latestSender ?? thread.participants.first,
+                orElse: () => effectiveSender ?? thread.participants.first,
               )
               .email;
         } else {

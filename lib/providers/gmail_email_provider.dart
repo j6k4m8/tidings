@@ -706,6 +706,7 @@ class GmailEmailProvider extends EmailProvider {
     final to = _parseAddressList(headers['to'] ?? '');
     final cc = _parseAddressList(headers['cc'] ?? '');
     final bcc = _parseAddressList(headers['bcc'] ?? '');
+    final replyTo = _parseAddressList(headers['reply-to'] ?? '');
     // internalDate is milliseconds since epoch as a string — always present and
     // unambiguous. Fall back to the Date header only if missing.
     DateTime? receivedAt;
@@ -734,6 +735,7 @@ class GmailEmailProvider extends EmailProvider {
       to: to,
       cc: cc,
       bcc: bcc,
+      replyTo: replyTo,
       time: timeLabel,
       isMe: from.email.toLowerCase() == email.toLowerCase(),
       isUnread: isUnread,
@@ -828,6 +830,7 @@ class GmailEmailProvider extends EmailProvider {
       to: m.to,
       cc: m.cc,
       bcc: m.bcc,
+      replyTo: m.replyTo,
       time: m.time,
       isMe: m.isMe,
       isUnread: isUnread,

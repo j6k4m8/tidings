@@ -7,6 +7,7 @@ import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
 import '../../state/send_queue.dart';
 import 'compose_form.dart';
+import '../../theme/color_tokens.dart';
 import '../../widgets/tidings_background.dart';
 import '../../widgets/paper_panel.dart';
 import 'compose_utils.dart';
@@ -424,6 +425,7 @@ class _ComposeSheetState extends State<ComposeSheet> {
     final isReply = widget.thread != null;
     final errorText = _sendError ?? _draftError;
     final surface = Theme.of(context).colorScheme.surface;
+    final dividerColor = ColorTokens.border(context, 0.12);
     final padding = widget.isSheet
         ? EdgeInsets.fromLTRB(16, 16, 16, 16 + insets.bottom)
         : EdgeInsets.only(bottom: insets.bottom);
@@ -432,80 +434,224 @@ class _ComposeSheetState extends State<ComposeSheet> {
         padding: padding,
         child: PaperPanel(
           borderRadius: BorderRadius.circular(24),
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.zero,
           fillColor: surface,
           elevated: true,
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Text(
-                    isReply ? 'Reply' : 'Compose',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: _isSaving ? null : _saveDraft,
-                    child: Text(
-                      _isSaving ? 'Saving...' : 'Close & Save Draft',
-                    ),
-                  ),
-                  if (widget.allowPopOut)
-                    IconButton(
-                      onPressed: _popOut,
-                      icon: const Icon(Icons.open_in_new_rounded),
-                      tooltip: 'Pop out',
-                    ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                    tooltip: 'Close',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              ComposeForm(
-                controller: _controller,
-                toController: _toController,
-                ccController: _ccController,
-                bccController: _bccController,
-                subjectController: _subjectController,
-                toFocusNode: _toFocusNode,
-                showFields: true,
-                placeholder: 'Write a message...',
-                quotedText: widget.quotedContent?.plainText,
-                quotedTooltip: 'Show quoted',
-                footer: Row(
+              // ── Header ──────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 8, 14),
+                child: Row(
                   children: [
+                    Text(
+                      isReply ? 'Reply' : 'Compose',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    const Spacer(),
+                    if (widget.allowPopOut)
+                      IconButton(
+                        onPressed: _popOut,
+                        icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                        tooltip: 'Pop out',
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    TextButton(
+                      onPressed: _isSaving ? null : _saveDraft,
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        textStyle: Theme.of(context).textTheme.labelMedium,
+                      ),
+                      child: Text(_isSaving ? 'Saving…' : 'Save draft'),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      tooltip: 'Discard',
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                ),
+              ),
+              Divider(height: 1, thickness: 1, color: dividerColor),
+              // ── Form ────────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: ComposeForm(
+                  controller: _controller,
+                  toController: _toController,
+                  ccController: _ccController,
+                  bccController: _bccController,
+                  subjectController: _subjectController,
+                  toFocusNode: _toFocusNode,
+                  showFields: true,
+                  showFormattingToggle: false,
+                  showEditorBorder: false,
+                  placeholder: 'Write a message…',
+                  minEditorHeight: 180,
+                  maxEditorHeight: 340,
+                  quotedText: widget.quotedContent?.plainText,
+                  quotedTooltip: 'Show quoted',
+                  errorText: errorText,
+                  errorLabel: _sendError != null ? 'Send error' : 'Draft error',
+                  onCopyError: errorText == null
+                      ? null
+                      : () {
+                          Clipboard.setData(ClipboardData(text: errorText));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Error copied.')),
+                          );
+                        },
+                ),
+              ),
+              // ── Footer ──────────────────────────────────────────────────
+              const SizedBox(height: 8),
+              Divider(height: 1, thickness: 1, color: dividerColor),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 16, 14),
+                child: Row(
+                  children: [
+                    _FormatBar(controller: _controller),
                     const Spacer(),
                     FilledButton.icon(
                       onPressed: _isSending ? null : _send,
-                      icon: const Icon(Icons.send_rounded),
+                      icon: const Icon(Icons.send_rounded, size: 15),
                       label: Text(
                         _isSending
-                            ? 'Sending...'
+                            ? 'Sending…'
                             : (_sendError == null ? 'Send' : 'Retry'),
+                      ),
+                      style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
                       ),
                     ),
                   ],
                 ),
-                errorText: errorText,
-                errorLabel: _sendError != null ? 'Send error' : 'Draft error',
-                onCopyError: errorText == null
-                    ? null
-                    : () {
-                        Clipboard.setData(ClipboardData(text: errorText));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Error copied.')),
-                        );
-                      },
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A compact formatting toolbar using direct QuillController calls —
+/// avoids the QuillSimpleToolbar mouse_tracker assertion bug.
+class _FormatBar extends StatefulWidget {
+  const _FormatBar({required this.controller});
+  final QuillController controller;
+
+  @override
+  State<_FormatBar> createState() => _FormatBarState();
+}
+
+class _FormatBarState extends State<_FormatBar> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onEditorChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _FormatBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onEditorChanged);
+      widget.controller.addListener(_onEditorChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onEditorChanged);
+    super.dispose();
+  }
+
+  void _onEditorChanged() {
+    if (mounted) setState(() {});
+  }
+
+  bool _isActive(String attribute) {
+    final style = widget.controller.getSelectionStyle();
+    return style.attributes.containsKey(attribute);
+  }
+
+  void _toggle(Attribute attr) {
+    final style = widget.controller.getSelectionStyle();
+    final isOn = style.attributes.containsKey(attr.key);
+    widget.controller.formatSelection(
+      isOn ? Attribute.clone(attr, null) : attr,
+    );
+  }
+
+  Widget _btn({
+    required IconData icon,
+    required String tooltip,
+    required String attrKey,
+    required Attribute attr,
+  }) {
+    final active = _isActive(attrKey);
+    final color = active
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).iconTheme.color?.withValues(alpha: 0.6);
+    return Tooltip(
+      message: tooltip,
+      // ExcludeFocus so keyboard focus never moves here via Tab/click.
+      child: ExcludeFocus(
+        child: Listener(
+          // onPointerDown fires before the focus system processes the tap,
+          // letting us toggle and re-claim focus before it moves away.
+          onPointerDown: (_) {
+            final prevFocus = FocusManager.instance.primaryFocus;
+            _toggle(attr);
+            // Restore on the same frame tick — no frame delay needed with Listener.
+            prevFocus?.requestFocus();
+          },
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+            child: Icon(icon, size: 16, color: color),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _btn(
+          icon: Icons.format_bold_rounded,
+          tooltip: 'Bold',
+          attrKey: Attribute.bold.key,
+          attr: Attribute.bold,
+        ),
+        _btn(
+          icon: Icons.format_italic_rounded,
+          tooltip: 'Italic',
+          attrKey: Attribute.italic.key,
+          attr: Attribute.italic,
+        ),
+        _btn(
+          icon: Icons.format_underline_rounded,
+          tooltip: 'Underline',
+          attrKey: Attribute.underline.key,
+          attr: Attribute.underline,
+        ),
+      ],
     );
   }
 }

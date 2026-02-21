@@ -828,25 +828,41 @@ class MessageCard extends StatelessWidget {
     final shouldClamp =
         !expanded && _isLongBody(bodyText, collapseMode, maxLines);
 
+    // Left border for "from me" messages: use a decoration border so it
+    // works naturally with border radius and doesn't overlap padded text.
+    final Border? isMeBorder = (!isSelected && message.isMe)
+        ? Border(
+            left: BorderSide(
+              color: accent.withValues(alpha: 0.35),
+              width: 2.5,
+            ),
+          )
+        : null;
+
     return GestureDetector(
       onTap: onSelected,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
-        padding: EdgeInsets.all(context.space(10)),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(cardRadius),
           border: isSelected
               ? Border.all(color: accent.withValues(alpha: 0.5), width: 1.5)
-              : null,
+              : isMeBorder,
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(cardRadius),
-          child: Stack(
+        child: Padding(
+          padding: EdgeInsetsDirectional.fromSTEB(
+            // Extra left padding when isMe so text doesn't sit on the border.
+            (!isSelected && message.isMe)
+                ? context.space(12)
+                : context.space(10),
+            context.space(10),
+            context.space(10),
+            context.space(10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
                   Row(
                     children: [
                       Expanded(
@@ -1107,20 +1123,8 @@ class MessageCard extends StatelessWidget {
                   ),
                 ],
               ),
-              if (!isSelected && message.isMe)
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 2,
-                    color: accent.withValues(alpha: 0.3),
-                  ),
-                ),
-            ],
           ),
         ),
-      ),
     );
   }
 }
