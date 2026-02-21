@@ -626,7 +626,18 @@ extension TidingsSettingsContext on BuildContext {
   double gutter(double value) => value * tidingsSettings.densityScale;
 
   double radius(double value) => value * tidingsSettings.cornerRadiusScale;
+
+  /// Whether the viewport is narrow enough to use compact (mobile-style) UI.
+  /// Below this threshold, sheets/dialogs switch to bottom-sheet presentation.
+  bool get isCompact => MediaQuery.sizeOf(this).width < kCompactBreakpoint;
 }
+
+/// Viewport-width below which the UI switches to compact (mobile) presentation.
+/// Sheets and dialogs become bottom sheets; the thread panel is full-screen.
+const double kCompactBreakpoint = 720.0;
+
+/// Viewport-width below which the wide sidebar layout collapses.
+const double kWideSidebarBreakpoint = 500.0;
 
 enum DateOrder {
   mdy,

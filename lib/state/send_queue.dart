@@ -82,6 +82,12 @@ class OutboxItem {
   final DateTime? nextAttemptAt;
   final String? lastError;
 
+  /// `null` when empty (providers store `null` for absent bodies).
+  String? get bodyTextOrNull => bodyText.isEmpty ? null : bodyText;
+
+  /// `null` when empty (providers store `null` for absent bodies).
+  String? get bodyHtmlOrNull => bodyHtml.isEmpty ? null : bodyHtml;
+
   OutboxItem copyWith({
     OutboxStatus? status,
     int? attempts,

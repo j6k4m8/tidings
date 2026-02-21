@@ -20,6 +20,8 @@ import 'compose/compose_utils.dart';
 import 'compose/inline_reply_composer.dart';
 import 'home/home_utils.dart';
 import 'home/home_layouts.dart';
+import '../utils/subject_utils.dart';
+import '../utils/reply_utils.dart';
 import 'home/thread_detail.dart';
 import 'keyboard/command_palette.dart';
 import 'keyboard/go_to_dialog.dart';
@@ -51,7 +53,6 @@ class _BlurIntent extends Intent {
 enum _HomeScope { list, detail, editor }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const double _wideLayoutBreakpoint = 500;
   static final _escapeKey = LogicalKeySet(LogicalKeyboardKey.escape);
   int _selectedThreadIndex = 0;
   int _selectedFolderIndex = 0;
@@ -380,12 +381,6 @@ class _HomeScreenState extends State<HomeScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  String _subjectLabel(String subject, {int maxLen = 30}) {
-    final s = subject.trim();
-    if (s.isEmpty) return '"(No subject)"';
-    return s.length <= maxLen ? '"$s"' : '"${s.substring(0, maxLen)}…"';
-  }
-
   Future<void> _runRefresh(EmailProvider provider) async {
     if (_isRefreshing) {
       return;
@@ -591,8 +586,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     final currentUserEmail = _currentUserEmailForThread(thread, account);
-    final isCompact = MediaQuery.of(context).size.width < 720;
-    if (isCompact) {
+    if (context.isCompact) {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => ThreadScreen(
@@ -625,7 +619,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _toast('No thread selected.');
       return;
     }
-    final isWide = MediaQuery.of(context).size.width >= _wideLayoutBreakpoint;
+    final isWide = MediaQuery.sizeOf(context).width >= kWideSidebarBreakpoint;
     final detailOpen = isWide && _threadPanelOpen && !_showSettings;
     if (!detailOpen) {
       await _openReplyFromList(provider, account, thread, mode);
@@ -667,23 +661,13 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case ReplyMode.reply:
         // Prefer Reply-To header over From — RFC 5322 §3.6.2.
-        final replyToAddresses = latest?.replyTo ?? const [];
-        final effectiveSender = replyToAddresses.isNotEmpty
-            ? replyToAddresses.first
-            : latest?.from;
-        if (effectiveSender != null &&
-            effectiveSender.email != currentUserEmail) {
-          to = effectiveSender.email;
-        } else if (thread.participants.isNotEmpty) {
-          to = thread.participants
-              .firstWhere(
-                (participant) => participant.email != currentUserEmail,
-                orElse: () => effectiveSender ?? thread.participants.first,
-              )
-              .email;
-        } else {
-          to = '';
-        }
+        final replyAddress = effectiveReplyTo(
+          replyToAddresses: latest?.replyTo ?? const [],
+          from: latest?.from,
+          participants: thread.participants,
+          currentUserEmail: currentUserEmail,
+        );
+        to = replyAddress?.email ?? '';
         break;
     }
     final quoted = buildQuotedContent(
@@ -715,7 +699,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     _advanceAfterRemoval(provider);
-    _toast('Archived ${_subjectLabel(thread.subject)}');
+    _toast('Archived ${subjectLabel(thread.subject)}');
   }
 
   Future<void> _moveSelectedThreadToFolder(
@@ -761,7 +745,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     _advanceAfterRemoval(provider);
-    _toast('Moved ${_subjectLabel(thread.subject)}');
+    _toast('Moved ${subjectLabel(thread.subject)}');
   }
 
   Future<void> _showCommandPalette(
@@ -972,7 +956,7 @@ class _HomeScreenState extends State<HomeScreen> {
         await _inlineReplyController.send();
         break;
       case ShortcutAction.toggleSidebar:
-        if (MediaQuery.of(context).size.width < _wideLayoutBreakpoint) {
+        if (MediaQuery.sizeOf(context).width < kWideSidebarBreakpoint) {
           return;
         }
         setState(() {
@@ -1052,7 +1036,7 @@ class _HomeScreenState extends State<HomeScreen> {
               autofocus: true,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= _wideLayoutBreakpoint;
+                  final isWide = constraints.maxWidth >= kWideSidebarBreakpoint;
                   final showSettings = _showSettings;
                   final effectiveFolderIndex =
                       _folderIndexForPath(

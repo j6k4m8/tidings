@@ -144,15 +144,16 @@ class ThreadListPanel extends StatelessWidget {
         final tintByAccount =
             context.tidingsSettings.tintThreadListByAccountAccent;
         final showAccountPill = context.tidingsSettings.showThreadAccountPill;
+        final unifiedProvider =
+            provider is UnifiedEmailProvider ? provider as UnifiedEmailProvider : null;
 
         Color? tintForThread(EmailThread thread) {
           if (!tintByAccount) {
             return null;
           }
           var tint = accent;
-          if (provider is UnifiedEmailProvider) {
-            final account =
-                (provider as UnifiedEmailProvider).accountForThread(thread.id);
+          if (unifiedProvider != null) {
+            final account = unifiedProvider.accountForThread(thread.id);
             if (account != null) {
               final baseAccent = account.accentColorValue == null
                   ? accentFromAccount(account.id)
@@ -167,11 +168,10 @@ class ThreadListPanel extends StatelessWidget {
         }
 
         ThreadAccountInfo? accountInfoForThread(EmailThread thread) {
-          if (!showAccountPill || provider is! UnifiedEmailProvider) {
+          if (!showAccountPill || unifiedProvider == null) {
             return null;
           }
-          final account =
-              (provider as UnifiedEmailProvider).accountForThread(thread.id);
+          final account = unifiedProvider.accountForThread(thread.id);
           if (account == null) {
             return null;
           }

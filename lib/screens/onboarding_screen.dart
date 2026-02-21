@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../models/account_models.dart';
 import '../state/app_state.dart';
+import '../state/tidings_settings.dart';
 import '../theme/color_tokens.dart';
 import '../theme/glass.dart';
 import '../widgets/forms/auth_fields.dart';
@@ -198,7 +199,7 @@ void showAccountSetupSheet(
   required AppState appState,
   required Color accent,
 }) {
-  final isCompact = MediaQuery.of(context).size.width < 720;
+  final isCompact = context.isCompact;
   if (isCompact) {
     showModalBottomSheet<void>(
       context: context,
@@ -258,7 +259,7 @@ void showAccountEditSheet(
   required EmailAccount account,
   required Color accent,
 }) {
-  final isCompact = MediaQuery.of(context).size.width < 720;
+  final isCompact = context.isCompact;
   if (isCompact) {
     showModalBottomSheet<void>(
       context: context,

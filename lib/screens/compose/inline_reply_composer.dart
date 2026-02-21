@@ -9,6 +9,7 @@ import '../../theme/color_tokens.dart';
 import '../../theme/glass.dart';
 import '../../state/tidings_settings.dart';
 import 'compose_editor.dart';
+import '../../utils/reply_utils.dart';
 import 'compose_form.dart';
 import 'compose_sheet.dart';
 import 'compose_utils.dart';
@@ -201,23 +202,13 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
     } else {
       _subjectController.text = replySubject(widget.thread.subject);
       // Prefer the Reply-To header over From — RFC 5322 §3.6.2.
-      final replyToAddresses = latest?.replyTo ?? const [];
-      final effectiveSender = replyToAddresses.isNotEmpty
-          ? replyToAddresses.first
-          : latest?.from;
-      if (effectiveSender != null &&
-          effectiveSender.email != widget.currentUserEmail) {
-        _toController.text = effectiveSender.email;
-      } else if (widget.thread.participants.isNotEmpty) {
-        _toController.text = widget.thread.participants
-            .firstWhere(
-              (participant) => participant.email != widget.currentUserEmail,
-              orElse: () => effectiveSender ?? widget.thread.participants.first,
-            )
-            .email;
-      } else {
-        _toController.text = '';
-      }
+      final replyAddress = effectiveReplyTo(
+        replyToAddresses: latest?.replyTo ?? const [],
+        from: latest?.from,
+        participants: widget.thread.participants,
+        currentUserEmail: widget.currentUserEmail,
+      );
+      _toController.text = replyAddress?.email ?? '';
     }
   }
 
