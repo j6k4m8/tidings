@@ -4,7 +4,7 @@
 
 -   [x] Start with a mock provider as the MVP source of truth while online; never finalize state locally without server ack.
 -   [x] Add IMAP provider after mock; keep server-first invariant unchanged.
--   [ ] Add Gmail provider, still server-first.
+-   [x] Add Gmail provider, still server-first.
 -   [ ] Choose local on-disk format for optional filesystem storage:
     -   [ ] Use Maildir (RFC 5322 raw message per file) with a metadata sidecar for UID/flags/account mapping; rationale: standard, CLI-editable, one-file-per-message, safe for concurrent updates.
     -   [ ] Specify folder layout for multi-account (per-account root with Maildir subfolders).
@@ -12,9 +12,9 @@
 
 ## Sync, Offline, and Queueing
 
--   [ ] Implement mock-provider sync with deterministic UID/UIDVALIDITY and flags to validate queue behavior.
--   [ ] Implement IMAP sync with UID/UIDVALIDITY tracking; prefer CONDSTORE/QRESYNC when available.
--   [ ] Implement Gmail sync layer after IMAP (provider adapter, server-first semantics).
+-   [x] Implement mock-provider sync with deterministic UID/UIDVALIDITY and flags to validate queue behavior.
+-   [x] Implement IMAP sync with UID/UIDVALIDITY tracking; prefer CONDSTORE/QRESYNC when available.
+-   [x] Implement Gmail sync layer after IMAP (provider adapter, server-first semantics).
 -   [ ] Define local cache schema (SQLite or embedded KV) for headers, thread links, and message bodies.
 -   [ ] Implement offline queue (append-only ops: send, move, flag, delete, draft update).
 -   [ ] Replay queue on reconnect with conflict handling (server wins; local rebase if possible).
@@ -23,22 +23,11 @@
 ## Core Email Features
 
 -   [x] Multi-account setup flow (mock provider first, then IMAP/SMTP creds, then Gmail OAuth).
--   [ ] Unified inbox with per-account filtering and accent color mapping.
+-   [x] Unified inbox with per-account filtering and accent color mapping.
 -   [x] Threading engine (RFC 5322 References/In-Reply-To; subject fallback).
 -   [x] chat-style editor (threaded compose, inline reply, rich shortcuts).
 -   [ ] reply to non-last message in thread.
 -   [x] Send/Reply/Forward with correct headers and threading preservation.
-
-## Testing
-
--   [x] Unit tests for mock provider sync logic (UID tracking, flags, offline replay).
--   [ ] Unit tests for IMAP sync logic (UID tracking, modseq, conflict handling).
--   [ ] Unit tests for Gmail provider adapter (label mapping, thread consistency).
--   [ ] Unit tests for offline queue replay (ordering, idempotency).
--   [ ] Unit tests for threading parser.
--   [ ] Golden UI tests for key layouts (light/dark, account accents).
--   [ ] Integration test for send/reply flow with a test IMAP server.
--   [ ] Integration test for Gmail send/reply flow (mocked or sandboxed account).
 
 ## Undo for Archive / Move
 

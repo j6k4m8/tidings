@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../theme/color_tokens.dart';
 import '../../theme/glass.dart';
 import '../../utils/fuzzy_match.dart';
 import '../../widgets/glass/glass_text_field.dart';
+import 'list_dialog_keys.dart';
 
 class GoToEntry {
   const GoToEntry({
@@ -99,31 +99,17 @@ class _GoToDialogState extends State<_GoToDialog> {
       insetPadding: const EdgeInsets.all(24),
       child: Focus(
         autofocus: true,
-        onKeyEvent: (node, event) {
-          if (event is! KeyDownEvent) {
-            return KeyEventResult.ignored;
-          }
-          if (event.logicalKey == LogicalKeyboardKey.escape) {
-            Navigator.of(context).maybePop();
-            return KeyEventResult.handled;
-          }
-          if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-            _moveSelection(1, filtered.length);
-            return KeyEventResult.handled;
-          }
-          if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-            _moveSelection(-1, filtered.length);
-            return KeyEventResult.handled;
-          }
-          if (event.logicalKey == LogicalKeyboardKey.enter &&
-              filtered.isNotEmpty) {
+        onKeyEvent: (node, event) => handleListDialogKey(
+          event: event,
+          listLength: filtered.length,
+          onMove: (d) => _moveSelection(d, filtered.length),
+          onEnter: () {
             final selected = filtered[_selectedIndex];
             Navigator.of(context).pop();
             selected.onSelected();
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
+          },
+          context: context,
+        ),
         child: GlassPanel(
           borderRadius: BorderRadius.circular(20),
           padding: const EdgeInsets.all(16),

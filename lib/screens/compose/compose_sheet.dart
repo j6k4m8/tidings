@@ -687,7 +687,6 @@ class _ComposeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: TidingsBackground(
-        accent: accent,
         child: SafeArea(
           child: Center(
             child: ConstrainedBox(

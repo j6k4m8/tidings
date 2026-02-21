@@ -1431,7 +1431,6 @@ class _ThreadScreenState extends State<ThreadScreen> {
                     isDark ? Brightness.dark : Brightness.light,
               ),
               child: TidingsBackground(
-                accent: widget.accent,
                 child: SafeArea(
                   top: false,
                   child: Padding(

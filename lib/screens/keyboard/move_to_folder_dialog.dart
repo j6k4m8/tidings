@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../models/folder_models.dart';
 import '../../state/send_queue.dart';
@@ -8,6 +7,7 @@ import '../../theme/glass.dart';
 import '../../utils/fuzzy_match.dart';
 import '../../widgets/accent_switch.dart';
 import '../../widgets/glass/glass_text_field.dart';
+import 'list_dialog_keys.dart';
 
 class MoveToFolderResult {
   const MoveToFolderResult({
@@ -132,27 +132,13 @@ class _MoveToFolderDialogState extends State<_MoveToFolderDialog> {
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
       child: Focus(
         autofocus: true,
-        onKeyEvent: (node, event) {
-          if (event is! KeyDownEvent) return KeyEventResult.ignored;
-          if (event.logicalKey == LogicalKeyboardKey.escape) {
-            Navigator.of(context).maybePop();
-            return KeyEventResult.handled;
-          }
-          if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-            _moveSelection(1, filtered.length);
-            return KeyEventResult.handled;
-          }
-          if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-            _moveSelection(-1, filtered.length);
-            return KeyEventResult.handled;
-          }
-          if (event.logicalKey == LogicalKeyboardKey.enter &&
-              filtered.isNotEmpty) {
-            _confirm(filtered[_selectedIndex]);
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
+        onKeyEvent: (node, event) => handleListDialogKey(
+          event: event,
+          listLength: filtered.length,
+          onMove: (d) => _moveSelection(d, filtered.length),
+          onEnter: () => _confirm(filtered[_selectedIndex]),
+          context: context,
+        ),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
           child: GlassPanel(

@@ -7,6 +7,7 @@ import '../../providers/email_provider.dart';
 import '../../state/app_state.dart';
 import '../../state/tidings_settings.dart';
 import '../../widgets/animations/page_reveal.dart';
+import '../../widgets/outbox_button.dart';
 import '../../widgets/paper_panel.dart';
 import '../compose/inline_reply_composer.dart';
 import 'home_utils.dart';
@@ -490,7 +491,7 @@ class CompactLayout extends StatelessWidget {
                 ),
               ),
               SizedBox(width: context.space(8)),
-              _CompactOutboxButton(
+              OutboxButton(
                 count: outboxCount,
                 accent: accent,
                 selected: outboxSelected,
@@ -625,52 +626,3 @@ class CompactLayout extends StatelessWidget {
   }
 }
 
-class _CompactOutboxButton extends StatelessWidget {
-  const _CompactOutboxButton({
-    required this.count,
-    required this.accent,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final int count;
-  final Color accent;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = count > 99 ? '99+' : count.toString();
-    final badgeVisible = count > 0;
-    final iconColor = selected ? accent.withValues(alpha: 0.9) : null;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        IconButton(
-          tooltip: badgeVisible ? 'Outbox ($label)' : 'Outbox',
-          onPressed: onTap,
-          icon: Icon(Icons.outbox_rounded, color: iconColor),
-        ),
-        if (badgeVisible)
-          Positioned(
-            right: 6,
-            top: 6,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              decoration: BoxDecoration(
-                color: accent,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}

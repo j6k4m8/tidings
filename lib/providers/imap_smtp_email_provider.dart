@@ -9,6 +9,8 @@ import '../models/account_models.dart';
 import '../models/email_models.dart';
 import '../models/folder_models.dart';
 import '../state/send_queue.dart';
+import '../utils/email_address_utils.dart';
+import '../utils/outbox_section.dart';
 import 'email_provider.dart';
 
 class ImapSmtpEmailProvider extends EmailProvider {
@@ -77,7 +79,8 @@ class ImapSmtpEmailProvider extends EmailProvider {
   }
 
   @override
-  List<FolderSection> get folderSections => _withOutboxSection(_folderSections);
+  List<FolderSection> get folderSections =>
+      withOutboxSection(_folderSections, _sendQueue);
 
   @override
   int get outboxCount => _sendQueue.pendingCount;
@@ -1225,16 +1228,6 @@ class ImapSmtpEmailProvider extends EmailProvider {
     return parts.map((email) => MailAddress(null, email)).toList();
   }
 
-  List<EmailAddress> _parseEmailAddresses(String raw) {
-    final parts = raw
-        .split(RegExp(r'[;,]'))
-        .map((part) => part.trim())
-        .where((part) => part.isNotEmpty)
-        .toList();
-    return parts
-        .map((email) => EmailAddress(name: email, email: email))
-        .toList();
-  }
 
   List<EmailThread> _outboxThreads() {
     final items = _sendQueue.items;
@@ -1244,9 +1237,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
     final threads = <EmailThread>[];
     for (final item in items) {
       final recipients = <EmailAddress>[
-        ..._parseEmailAddresses(item.toLine),
-        ..._parseEmailAddresses(item.ccLine ?? ''),
-        ..._parseEmailAddresses(item.bccLine ?? ''),
+        ...splitEmailAddresses(item.toLine),
+        ...splitEmailAddresses(item.ccLine ?? ''),
+        ...splitEmailAddresses(item.bccLine ?? ''),
       ];
       final createdAt = item.createdAt.toLocal();
       threads.add(
@@ -1290,9 +1283,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
     OutboxItem item, {
     String? threadIdOverride,
   }) {
-    final to = _parseEmailAddresses(item.toLine);
-    final cc = _parseEmailAddresses(item.ccLine ?? '');
-    final bcc = _parseEmailAddresses(item.bccLine ?? '');
+    final to = splitEmailAddresses(item.toLine);
+    final cc = splitEmailAddresses(item.ccLine ?? '');
+    final bcc = splitEmailAddresses(item.bccLine ?? '');
     final createdAt = item.createdAt.toLocal();
     return EmailMessage(
       id: 'outbox-${item.id}',
@@ -1608,58 +1601,6 @@ class ImapSmtpEmailProvider extends EmailProvider {
       paths.addAll(_folderCache.keys);
     }
     return paths;
-  }
-
-  List<FolderSection> _withOutboxSection(List<FolderSection> sections) {
-    if (sections.isEmpty) {
-      return [
-        FolderSection(
-          title: 'Mailboxes',
-          kind: FolderSectionKind.mailboxes,
-          items: [
-            FolderItem(
-              index: -1,
-              name: 'Outbox',
-              path: kOutboxFolderPath,
-              unreadCount: _sendQueue.pendingCount,
-              icon: Icons.outbox_rounded,
-            ),
-          ],
-        ),
-      ];
-    }
-    final updated = <FolderSection>[];
-    for (final section in sections) {
-      if (section.kind != FolderSectionKind.mailboxes) {
-        updated.add(section);
-        continue;
-      }
-      final hasOutbox = section.items.any(
-        (item) => item.path == kOutboxFolderPath,
-      );
-      if (hasOutbox) {
-        updated.add(section);
-        continue;
-      }
-      final items = [
-        FolderItem(
-          index: -1,
-          name: 'Outbox',
-          path: kOutboxFolderPath,
-          unreadCount: _sendQueue.pendingCount,
-          icon: Icons.outbox_rounded,
-        ),
-        ...section.items,
-      ];
-      updated.add(
-        FolderSection(
-          title: section.title,
-          kind: section.kind,
-          items: items,
-        ),
-      );
-    }
-    return updated;
   }
 
   void _scheduleInboxRefresh() {

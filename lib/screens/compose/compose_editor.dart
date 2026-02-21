@@ -166,35 +166,42 @@ class _ComposeEditorState extends State<ComposeEditor> {
     _bccFocusNode.addListener(_onBccFocusChanged);
   }
 
-  void _onCcChanged() {
-    if (widget.ccController.text.isNotEmpty && !_showCc) {
-      setState(() => _showCc = true);
+  void _onControllerChanged(
+    TextEditingController ctrl,
+    bool showing,
+    void Function(bool) setShow,
+  ) {
+    if (ctrl.text.isNotEmpty && !showing) setShow(true);
+  }
+
+  void _onCcChanged() =>
+      _onControllerChanged(widget.ccController, _showCc, (v) => setState(() => _showCc = v));
+
+  void _onBccChanged() =>
+      _onControllerChanged(widget.bccController, _showBcc, (v) => setState(() => _showBcc = v));
+
+  void _onFieldFocusChanged(
+    FocusNode node,
+    TextEditingController ctrl,
+    bool showing,
+    void Function(bool) setShow,
+  ) {
+    if (node.hasFocus && !showing) {
+      setShow(true);
+    } else if (!node.hasFocus && showing && ctrl.text.isEmpty) {
+      setShow(false);
     }
   }
 
-  void _onBccChanged() {
-    if (widget.bccController.text.isNotEmpty && !_showBcc) {
-      setState(() => _showBcc = true);
-    }
-  }
+  void _onCcFocusChanged() => _onFieldFocusChanged(
+        _ccFocusNode, widget.ccController, _showCc,
+        (v) => setState(() => _showCc = v),
+      );
 
-  void _onCcFocusChanged() {
-    if (_ccFocusNode.hasFocus && !_showCc) {
-      setState(() => _showCc = true);
-    } else if (!_ccFocusNode.hasFocus && _showCc &&
-        widget.ccController.text.isEmpty) {
-      setState(() => _showCc = false);
-    }
-  }
-
-  void _onBccFocusChanged() {
-    if (_bccFocusNode.hasFocus && !_showBcc) {
-      setState(() => _showBcc = true);
-    } else if (!_bccFocusNode.hasFocus && _showBcc &&
-        widget.bccController.text.isEmpty) {
-      setState(() => _showBcc = false);
-    }
-  }
+  void _onBccFocusChanged() => _onFieldFocusChanged(
+        _bccFocusNode, widget.bccController, _showBcc,
+        (v) => setState(() => _showBcc = v),
+      );
 
   @override
   void didUpdateWidget(covariant ComposeEditor oldWidget) {

@@ -219,7 +219,6 @@ class _BootSplash extends StatelessWidget {
     final textStyle = Theme.of(context).textTheme.titleMedium;
     return Scaffold(
       body: TidingsBackground(
-        accent: accent,
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,

@@ -311,16 +311,12 @@ class _HomeScreenState extends State<HomeScreen> {
     provider.selectFolder(kOutboxFolderPath);
   }
 
-  String? _folderPathForIndex(List<FolderSection> sections, int index) {
-    for (final section in sections) {
-      for (final item in section.items) {
-        if (item.index == index) {
-          return item.path;
-        }
-      }
-    }
-    return null;
-  }
+  // Delegate to the shared home_utils helpers.
+  String? _folderPathForIndex(List<FolderSection> sections, int index) =>
+      folderPathForIndex(sections, index);
+
+  int? _folderIndexForPath(List<FolderSection> sections, String path) =>
+      folderIndexForPath(sections, path);
 
   String _currentUserEmailForThread(
     EmailThread? thread,
@@ -330,17 +326,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return fallback.email;
     }
     return _unifiedProvider.accountEmailForThread(thread.id) ?? fallback.email;
-  }
-
-  int? _folderIndexForPath(List<FolderSection> sections, String path) {
-    for (final section in sections) {
-      for (final item in section.items) {
-        if (item.path == path) {
-          return item.index;
-        }
-      }
-    }
-    return null;
   }
 
   bool _isTextInputFocused() {
@@ -518,6 +503,26 @@ class _HomeScreenState extends State<HomeScreen> {
       _messageSelectionByThread[threadId] = index;
     });
     _threadDetailFocusNode.requestFocus();
+  }
+
+  /// Common handler for tapping / keyboard-selecting a thread in either layout.
+  void _handleThreadSelected(EmailProvider listProvider, int index) {
+    final threads = listProvider.threads;
+    final safeIndex = threads.isEmpty ? 0 : index.clamp(0, threads.length - 1);
+    final thread = threads.isEmpty ? null : threads[safeIndex];
+    setState(() {
+      _selectedThreadIndex = index;
+      _threadPanelOpen = true;
+      _showSettings = false;
+      if (thread != null) {
+        final messages = listProvider.messagesForThread(thread.id);
+        if (messages.isNotEmpty) {
+          _messageSelectionByThread[thread.id] = messages.length - 1;
+        }
+      }
+    });
+    _syncAccentWithSelection(listProvider);
+    _threadListFocusNode.requestFocus();
   }
 
   void _navigateMessageSelection(EmailProvider provider, int delta) {
@@ -1103,7 +1108,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                     bottomNavigationBar: null,
                     body: TidingsBackground(
-                      accent: widget.accent,
                       child: SafeArea(
                         bottom: false,
                         child: isWide
@@ -1113,30 +1117,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 accent: widget.accent,
                                 provider: listProvider,
                                 selectedThreadIndex: _selectedThreadIndex,
-                                onThreadSelected: (index) {
-                                  final threads = listProvider.threads;
-                                  final safeIndex = threads.isEmpty
-                                      ? 0
-                                      : index.clamp(0, threads.length - 1);
-                                  final thread = threads.isEmpty
-                                      ? null
-                                      : threads[safeIndex];
-                                  setState(() {
-                                    _selectedThreadIndex = index;
-                                    _threadPanelOpen = true;
-                                    _showSettings = false;
-                                    if (thread != null) {
-                                      final messages = listProvider
-                                          .messagesForThread(thread.id);
-                                      if (messages.isNotEmpty) {
-                                        _messageSelectionByThread[thread.id] =
-                                            messages.length - 1;
-                                      }
-                                    }
-                                  });
-                                  _syncAccentWithSelection(listProvider);
-                                  _threadListFocusNode.requestFocus();
-                                },
+                                onThreadSelected: (index) =>
+                                    _handleThreadSelected(listProvider, index),
                                 selectedFolderIndex: effectiveFolderIndex,
                                 onFolderSelected: (index) =>
                                     _handleFolderSelected(listProvider, index),
@@ -1234,30 +1216,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 accent: widget.accent,
                                 provider: listProvider,
                                 selectedThreadIndex: _selectedThreadIndex,
-                                onThreadSelected: (index) {
-                                  final threads = listProvider.threads;
-                                  final safeIndex = threads.isEmpty
-                                      ? 0
-                                      : index.clamp(0, threads.length - 1);
-                                  final thread = threads.isEmpty
-                                      ? null
-                                      : threads[safeIndex];
-                                  setState(() {
-                                    _selectedThreadIndex = index;
-                                    _threadPanelOpen = true;
-                                    _showSettings = false;
-                                    if (thread != null) {
-                                      final messages = listProvider
-                                          .messagesForThread(thread.id);
-                                      if (messages.isNotEmpty) {
-                                        _messageSelectionByThread[thread.id] =
-                                            messages.length - 1;
-                                      }
-                                    }
-                                  });
-                                  _syncAccentWithSelection(listProvider);
-                                  _threadListFocusNode.requestFocus();
-                                },
+                                onThreadSelected: (index) =>
+                                    _handleThreadSelected(listProvider, index),
                                 selectedFolderIndex: effectiveFolderIndex,
                                 onFolderSelected: (index) {
                                   _handleFolderSelected(listProvider, index);

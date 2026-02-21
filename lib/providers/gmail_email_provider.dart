@@ -10,6 +10,7 @@ import '../models/email_models.dart';
 import '../models/folder_models.dart';
 import '../state/send_queue.dart';
 import 'email_provider.dart';
+import '../utils/email_address_utils.dart';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -702,11 +703,11 @@ class GmailEmailProvider extends EmailProvider {
 
     final subject = headers['subject'] ?? '(No subject)';
     final fromRaw = headers['from'] ?? '';
-    final from = _parseAddress(fromRaw);
-    final to = _parseAddressList(headers['to'] ?? '');
-    final cc = _parseAddressList(headers['cc'] ?? '');
-    final bcc = _parseAddressList(headers['bcc'] ?? '');
-    final replyTo = _parseAddressList(headers['reply-to'] ?? '');
+    final from = parseAddress(fromRaw);
+    final to = parseAddressList(headers['to'] ?? '');
+    final cc = parseAddressList(headers['cc'] ?? '');
+    final bcc = parseAddressList(headers['bcc'] ?? '');
+    final replyTo = parseAddressList(headers['reply-to'] ?? '');
     // internalDate is milliseconds since epoch as a string — always present and
     // unambiguous. Fall back to the Date header only if missing.
     DateTime? receivedAt;
@@ -931,9 +932,9 @@ class GmailEmailProvider extends EmailProvider {
             threadId: threadId,
             subject: item.subject,
             from: EmailAddress(name: email, email: email),
-            to: _parseAddressList(item.toLine),
-            cc: _parseAddressList(item.ccLine ?? ''),
-            bcc: _parseAddressList(item.bccLine ?? ''),
+            to: parseAddressList(item.toLine),
+            cc: parseAddressList(item.ccLine ?? ''),
+            bcc: parseAddressList(item.bccLine ?? ''),
             time: '',
             isMe: true,
             isUnread: false,
@@ -960,38 +961,7 @@ class GmailEmailProvider extends EmailProvider {
   // Utilities — address parsing
   // ---------------------------------------------------------------------------
 
-  EmailAddress _parseAddress(String raw) {
-    final trimmed = raw.trim();
-    // "Display Name <email@example.com>"
-    final match = RegExp(r'^(.*?)<([^>]+)>$').firstMatch(trimmed);
-    if (match != null) {
-      final name = match.group(1)?.trim().replaceAll(RegExp(r'^"|"$'), '') ?? '';
-      final addr = match.group(2)?.trim() ?? '';
-      return EmailAddress(name: name, email: addr);
-    }
-    // Bare email.
-    return EmailAddress(name: '', email: trimmed);
-  }
 
-  List<EmailAddress> _parseAddressList(String raw) {
-    if (raw.isEmpty) return const [];
-    // Split on commas, but not commas inside angle brackets.
-    final parts = <String>[];
-    var depth = 0;
-    var current = StringBuffer();
-    for (final ch in raw.characters) {
-      if (ch == '<') depth++;
-      if (ch == '>') depth--;
-      if (ch == ',' && depth == 0) {
-        parts.add(current.toString().trim());
-        current.clear();
-      } else {
-        current.write(ch);
-      }
-    }
-    if (current.isNotEmpty) parts.add(current.toString().trim());
-    return parts.where((p) => p.isNotEmpty).map(_parseAddress).toList();
-  }
 
   // ---------------------------------------------------------------------------
   // Utilities — time formatting
