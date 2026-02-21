@@ -200,15 +200,19 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
       );
     } else {
       _subjectController.text = replySubject(widget.thread.subject);
-      final latestSender = latest?.from;
-      if (latestSender != null &&
-          latestSender.email != widget.currentUserEmail) {
-        _toController.text = latestSender.email;
+      // Prefer the Reply-To header over From — RFC 5322 §3.6.2.
+      final replyToAddresses = latest?.replyTo ?? const [];
+      final effectiveSender = replyToAddresses.isNotEmpty
+          ? replyToAddresses.first
+          : latest?.from;
+      if (effectiveSender != null &&
+          effectiveSender.email != widget.currentUserEmail) {
+        _toController.text = effectiveSender.email;
       } else if (widget.thread.participants.isNotEmpty) {
         _toController.text = widget.thread.participants
             .firstWhere(
               (participant) => participant.email != widget.currentUserEmail,
-              orElse: () => latestSender ?? widget.thread.participants.first,
+              orElse: () => effectiveSender ?? widget.thread.participants.first,
             )
             .email;
       } else {
@@ -440,110 +444,121 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
             ),
           },
           child: Container(
-            padding: EdgeInsets.all(context.space(12)),
+            padding: EdgeInsets.fromLTRB(
+              context.space(14),
+              context.space(10),
+              context.space(8),
+              context.space(12),
+            ),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(context.radius(20)),
-              border: Border.all(color: ColorTokens.border(context, 0.18)),
+              borderRadius: BorderRadius.circular(context.radius(16)),
+              border: Border.all(color: ColorTokens.border(context, 0.14)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+              // ── Shared header: reply mode label + actions ───────────────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.reply_rounded,
+                    color: widget.accent.withValues(alpha: 0.8),
+                    size: 15,
+                  ),
+                  SizedBox(width: context.space(6)),
+                  PopupMenuButton<ReplyMode>(
+                    tooltip: 'Change reply mode',
+                    onSelected: _setReplyMode,
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(value: ReplyMode.reply, child: Text('Reply')),
+                      PopupMenuItem(value: ReplyMode.replyAll, child: Text('Reply all')),
+                      PopupMenuItem(value: ReplyMode.forward, child: Text('Forward')),
+                    ],
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: context.space(220)),
+                          child: Text(
+                            replyLabel,
+                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: ColorTokens.textSecondary(context, 0.7),
+                                ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_drop_down_rounded,
+                          size: 16,
+                          color: ColorTokens.textSecondary(context, 0.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  // Pop-out button (always available)
+                  IconButton(
+                    tooltip: 'Pop out',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      showComposeSheet(
+                        context,
+                        provider: widget.provider,
+                        accent: widget.accent,
+                        thread: widget.thread,
+                        currentUserEmail: widget.currentUserEmail,
+                        initialTo: _toController.text,
+                        initialCc: _ccController.text,
+                        initialBcc: _bccController.text,
+                        initialSubject: _subjectController.text,
+                        initialDelta: _controller.document.toDelta(),
+                        quotedContent: _quotedContent,
+                      );
+                    },
+                    icon: const Icon(Icons.open_in_new_rounded, size: 15),
+                  ),
+                  // Expand/collapse toggle
+                  IconButton(
+                    tooltip: _showDetails ? 'Collapse' : 'Expand',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() => _showDetails = !_showDetails),
+                    icon: Icon(
+                      _showDetails
+                          ? Icons.unfold_less_rounded
+                          : Icons.unfold_more_rounded,
+                      size: 17,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: context.space(8)),
               if (!_showDetails) ...[
                 Row(
                   children: [
-                    PopupMenuButton<ReplyMode>(
-                      tooltip: 'Reply options',
-                      onSelected: (mode) {
-                        _setReplyMode(mode);
-                      },
-                      itemBuilder: (context) => const [
-                        PopupMenuItem(
-                          value: ReplyMode.reply,
-                          child: Text('Reply'),
-                        ),
-                        PopupMenuItem(
-                          value: ReplyMode.replyAll,
-                          child: Text('Reply all'),
-                        ),
-                        PopupMenuItem(
-                          value: ReplyMode.forward,
-                          child: Text('Forward'),
-                        ),
-                      ],
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.reply_rounded,
-                            color: widget.accent,
-                            size: 16,
-                          ),
-                          SizedBox(width: context.space(8)),
-                          ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxWidth: context.space(200),
-                            ),
-                            child: Text(
-                              replyLabel,
-                              style: Theme.of(context).textTheme.bodySmall,
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      tooltip: 'Expand',
-                      onPressed: () {
-                        setState(() {
-                          _showDetails = true;
-                        });
-                      },
-                      icon: const Icon(Icons.unfold_more_rounded),
-                    ),
-                  ],
-                ),
-                SizedBox(height: context.space(8)),
-                Row(
-                  children: [
                     Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius:
-                              BorderRadius.circular(context.radius(16)),
-                          border: Border.all(
-                            color: ColorTokens.border(context, 0.14),
-                          ),
-                        ),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: context.space(8),
-                          vertical: context.space(4),
-                        ),
-                        child: ComposeEditor(
-                          controller: _controller,
-                          toController: _toController,
-                          ccController: _ccController,
-                          bccController: _bccController,
-                          subjectController: _subjectController,
-                          showFields: false,
-                          showFormattingToggle: false,
-                          placeholder: placeholder,
-                          minEditorHeight: collapsedHeight,
-                          maxEditorHeight: collapsedHeight,
-                          editorFocusNode: _editorFocusNode,
-                          quotedText: _quotedContent?.plainText,
-                          quotedTooltip: 'Show quoted',
-                          onEscape: () {
-                            widget.parentFocusNode?.requestFocus();
-                          },
-                        ),
+                      child: ComposeEditor(
+                        controller: _controller,
+                        toController: _toController,
+                        ccController: _ccController,
+                        bccController: _bccController,
+                        subjectController: _subjectController,
+                        showFields: false,
+                        showFormattingToggle: false,
+                        placeholder: placeholder,
+                        minEditorHeight: collapsedHeight,
+                        maxEditorHeight: collapsedHeight,
+                        editorFocusNode: _editorFocusNode,
+                        // No quoted toggle in collapsed chat-style view — it's just noise.
+                        onEscape: () {
+                          widget.parentFocusNode?.requestFocus();
+                        },
                       ),
                     ),
                     SizedBox(width: context.space(8)),
                     GlassPanel(
-                      borderRadius:
-                          BorderRadius.circular(context.radius(16)),
+                      borderRadius: BorderRadius.circular(context.radius(16)),
                       padding: EdgeInsets.all(context.space(4)),
                       variant: GlassVariant.pill,
                       accent: widget.accent,
@@ -559,80 +574,6 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
                   ],
                 ),
               ] else ...[
-                Row(
-                  children: [
-                    PopupMenuButton<ReplyMode>(
-                      tooltip: 'Reply options',
-                      onSelected: (mode) {
-                        _setReplyMode(mode);
-                      },
-                      itemBuilder: (context) => const [
-                        PopupMenuItem(
-                          value: ReplyMode.reply,
-                          child: Text('Reply'),
-                        ),
-                        PopupMenuItem(
-                          value: ReplyMode.replyAll,
-                          child: Text('Reply all'),
-                        ),
-                        PopupMenuItem(
-                          value: ReplyMode.forward,
-                          child: Text('Forward'),
-                        ),
-                      ],
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.reply_rounded,
-                            color: widget.accent,
-                            size: 16,
-                          ),
-                          SizedBox(width: context.space(8)),
-                          Text(
-                            replyLabel,
-                            style: Theme.of(context).textTheme.bodySmall,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      tooltip: 'Pop out',
-                      onPressed: () {
-                        showComposeSheet(
-                          context,
-                          provider: widget.provider,
-                          accent: widget.accent,
-                          thread: widget.thread,
-                          currentUserEmail: widget.currentUserEmail,
-                          initialTo: _toController.text,
-                          initialCc: _ccController.text,
-                          initialBcc: _bccController.text,
-                          initialSubject: _subjectController.text,
-                          initialDelta: _controller.document.toDelta(),
-                          quotedContent: _quotedContent,
-                        );
-                      },
-                      icon: const Icon(Icons.open_in_new_rounded),
-                    ),
-                    TextButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _showDetails = !_showDetails;
-                        });
-                      },
-                      icon: Icon(
-                        _showDetails
-                            ? Icons.unfold_less_rounded
-                            : Icons.unfold_more_rounded,
-                      ),
-                      label: Text(_showDetails ? 'Collapse' : 'Expand'),
-                    ),
-                  ],
-                ),
-                SizedBox(height: context.space(8)),
                 ComposeForm(
                   controller: _controller,
                   toController: _toController,

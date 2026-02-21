@@ -4,7 +4,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../state/tidings_settings.dart';
 import '../../theme/color_tokens.dart';
-import '../../widgets/glass/glass_text_field.dart';
+import '../../widgets/recipient_field.dart';
 
 class _QuillEscapeIntent extends Intent {
   const _QuillEscapeIntent();
@@ -89,8 +89,13 @@ class _ComposeEditorState extends State<ComposeEditor> {
   late bool _ownsSubjectFocusNode;
   late bool _ownsEditorFocusNode;
   late bool _ownsToFocusNode;
-  bool _showToolbar = false;
+  // Internal focus nodes for Cc/Bcc (always owned by this state)
+  final FocusNode _ccFocusNode = FocusNode();
+  final FocusNode _bccFocusNode = FocusNode();
   bool _showQuoted = false;
+  // Cc/Bcc visibility — shown when populated or focused, hidden when empty+blurred
+  bool _showCc = false;
+  bool _showBcc = false;
 
   DefaultStyles _editorStyles(BuildContext context) {
     final styles = DefaultStyles.getInstance(context);
@@ -150,11 +155,60 @@ class _ComposeEditorState extends State<ComposeEditor> {
     _ownsSubjectFocusNode = widget.subjectFocusNode == null;
     _ownsEditorFocusNode = widget.editorFocusNode == null;
     _showQuoted = widget.showQuotedInitially;
+    // Show Cc/Bcc if already populated (e.g. restored draft or reply-all).
+    _showCc = widget.ccController.text.isNotEmpty;
+    _showBcc = widget.bccController.text.isNotEmpty;
+    // Keep visibility in sync when controllers change externally.
+    widget.ccController.addListener(_onCcChanged);
+    widget.bccController.addListener(_onBccChanged);
+    // Show when focus enters the hidden field (e.g. Tab key from To).
+    _ccFocusNode.addListener(_onCcFocusChanged);
+    _bccFocusNode.addListener(_onBccFocusChanged);
+  }
+
+  void _onCcChanged() {
+    if (widget.ccController.text.isNotEmpty && !_showCc) {
+      setState(() => _showCc = true);
+    }
+  }
+
+  void _onBccChanged() {
+    if (widget.bccController.text.isNotEmpty && !_showBcc) {
+      setState(() => _showBcc = true);
+    }
+  }
+
+  void _onCcFocusChanged() {
+    if (_ccFocusNode.hasFocus && !_showCc) {
+      setState(() => _showCc = true);
+    } else if (!_ccFocusNode.hasFocus && _showCc &&
+        widget.ccController.text.isEmpty) {
+      setState(() => _showCc = false);
+    }
+  }
+
+  void _onBccFocusChanged() {
+    if (_bccFocusNode.hasFocus && !_showBcc) {
+      setState(() => _showBcc = true);
+    } else if (!_bccFocusNode.hasFocus && _showBcc &&
+        widget.bccController.text.isEmpty) {
+      setState(() => _showBcc = false);
+    }
   }
 
   @override
   void didUpdateWidget(covariant ComposeEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.ccController != widget.ccController) {
+      oldWidget.ccController.removeListener(_onCcChanged);
+      widget.ccController.addListener(_onCcChanged);
+      if (widget.ccController.text.isNotEmpty) setState(() => _showCc = true);
+    }
+    if (oldWidget.bccController != widget.bccController) {
+      oldWidget.bccController.removeListener(_onBccChanged);
+      widget.bccController.addListener(_onBccChanged);
+      if (widget.bccController.text.isNotEmpty) setState(() => _showBcc = true);
+    }
     if (oldWidget.toFocusNode != widget.toFocusNode) {
       if (_ownsToFocusNode) {
         _toFocusNode.dispose();
@@ -188,6 +242,10 @@ class _ComposeEditorState extends State<ComposeEditor> {
 
   @override
   void dispose() {
+    widget.ccController.removeListener(_onCcChanged);
+    widget.bccController.removeListener(_onBccChanged);
+    _ccFocusNode.removeListener(_onCcFocusChanged);
+    _bccFocusNode.removeListener(_onBccFocusChanged);
     if (_ownsToFocusNode) {
       _toFocusNode.dispose();
     }
@@ -197,52 +255,24 @@ class _ComposeEditorState extends State<ComposeEditor> {
     if (_ownsEditorFocusNode) {
       _editorFocusNode.dispose();
     }
+    _ccFocusNode.dispose();
+    _bccFocusNode.dispose();
     super.dispose();
-  }
-
-  void _toggleToolbar() {
-    setState(() {
-      _showToolbar = !_showToolbar;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    const toolbarScale = 0.6;
-    final resolvedToolbarIconSize = widget.toolbarIconSize ?? 10;
-    final resolvedToolbarPadding = widget.toolbarIconPadding ?? EdgeInsets.zero;
-    final resolvedToolbarConstraints =
-        widget.toolbarButtonConstraints ??
-        const BoxConstraints.tightFor(width: 20, height: 20);
-    final resolvedToolbarStyle =
-        widget.toolbarButtonStyle ??
-        const ButtonStyle(
-          backgroundColor: WidgetStatePropertyAll<Color>(Colors.transparent),
-          overlayColor: WidgetStatePropertyAll<Color>(Colors.transparent),
-        );
-    final resolvedToolbarDecoration =
-        widget.toolbarDecoration ??
-        const BoxDecoration(color: Colors.transparent);
-    final resolvedToolbarSize = widget.toolbarSize ?? 24;
-    final resolvedToolbarSpacing = widget.toolbarSectionSpacing ?? 1;
-    final resolvedToolbarMultiRows = widget.toolbarMultiRowsDisplay ?? false;
     final showFields = widget.showFields;
-    final textStyle = Theme.of(context).textTheme.bodyMedium;
-    final editorBorderColor =
-        widget.editorBorderColor ?? ColorTokens.border(context, 0.14);
-    final editorBorderRadius =
-        widget.editorBorderRadius ?? BorderRadius.circular(context.radius(16));
-    final editorPadding =
-        widget.editorPadding ??
-        EdgeInsets.symmetric(
-          horizontal: context.space(10),
-          vertical: context.space(8),
+    final labelStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: ColorTokens.textSecondary(context, 0.5),
         );
-    return FocusTraversalGroup(
-      policy: OrderedTraversalPolicy(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    final fieldStyle = Theme.of(context).textTheme.bodyMedium;
+    final dividerColor = ColorTokens.border(context, 0.10);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+          // ── Recipient/subject summary (collapsed mode) ─────────────────
           if (!showFields && widget.recipientSummary != null) ...[
             Text(
               widget.recipientSummary!,
@@ -251,7 +281,7 @@ class _ComposeEditorState extends State<ComposeEditor> {
               ),
             ),
             if (widget.subjectSummary != null) ...[
-              SizedBox(height: context.space(6)),
+              SizedBox(height: context.space(4)),
               Text(
                 widget.subjectSummary!,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -261,231 +291,161 @@ class _ComposeEditorState extends State<ComposeEditor> {
             ],
             SizedBox(height: context.space(10)),
           ],
+          // ── Fields (To / Cc / Bcc / Subject) ──────────────────────────
           if (showFields) ...[
-            FocusTraversalOrder(
-              order: const NumericFocusOrder(1),
-              child: GlassTextField(
-                controller: widget.toController,
-                hintText: 'To',
-                focusNode: _toFocusNode,
-                textInputAction: TextInputAction.next,
-                textStyle: textStyle,
-              ),
-            ),
-            SizedBox(height: context.space(10)),
+            // To row — with Cc/Bcc reveal buttons on the right
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
-                  child: FocusTraversalOrder(
-                    order: const NumericFocusOrder(2),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        GlassTextField(
-                          controller: widget.ccController,
-                          hintText: 'Cc',
-                          textInputAction: TextInputAction.next,
-                          textStyle: textStyle,
-                        ),
-                      ],
-                    ),
+                  child: RecipientField(
+                    controller: widget.toController,
+                    label: 'To',
+                    focusNode: _toFocusNode,
+                    // Tab advances to Cc if visible, otherwise Bcc if visible,
+                    // otherwise Subject.
+                    nextFocusNode: _showCc
+                        ? _ccFocusNode
+                        : _showBcc
+                            ? _bccFocusNode
+                            : _subjectFocusNode,
+                    textStyle: fieldStyle,
+                    labelStyle: labelStyle,
                   ),
                 ),
-                SizedBox(width: context.space(10)),
-                Expanded(
-                  child: FocusTraversalOrder(
-                    order: const NumericFocusOrder(3),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        GlassTextField(
-                          controller: widget.bccController,
-                          hintText: 'Bcc',
-                          textInputAction: TextInputAction.next,
-                          textStyle: textStyle,
-                        ),
-                      ],
+                // Cc / Bcc reveal buttons (hidden once the field is shown)
+                if (!_showCc || !_showBcc) ...[
+                  if (!_showCc)
+                    _CcBccButton(
+                      label: 'Cc',
+                      onTap: () {
+                        setState(() => _showCc = true);
+                        // Focus the Cc field on the next frame so the widget
+                        // is in the tree before we request focus.
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) _ccFocusNode.requestFocus();
+                        });
+                      },
                     ),
-                  ),
-                ),
+                  if (!_showBcc)
+                    _CcBccButton(
+                      label: 'Bcc',
+                      onTap: () {
+                        setState(() => _showBcc = true);
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) _bccFocusNode.requestFocus();
+                        });
+                      },
+                    ),
+                  const SizedBox(width: 4),
+                ],
               ],
             ),
-            SizedBox(height: context.space(10)),
-            FocusTraversalOrder(
-              order: const NumericFocusOrder(4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  GlassTextField(
-                    controller: widget.subjectController,
-                    hintText: 'Subject',
-                    focusNode: _subjectFocusNode,
-                    textInputAction: TextInputAction.next,
-                    textStyle: textStyle,
-                    onSubmitted: (_) => _editorFocusNode.requestFocus(),
-                  ),
-                ],
+            Divider(height: 1, thickness: 1, color: dividerColor),
+            // Cc — only shown when populated or focused
+            if (_showCc) ...[
+              RecipientField(
+                controller: widget.ccController,
+                label: 'Cc',
+                focusNode: _ccFocusNode,
+                nextFocusNode: _showBcc ? _bccFocusNode : _subjectFocusNode,
+                textStyle: fieldStyle,
+                labelStyle: labelStyle,
               ),
-            ),
-            SizedBox(height: context.space(10)),
-          ],
-          if (widget.showFormattingToggle) ...[
-            FocusTraversalOrder(
-              order: const NumericFocusOrder(5),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final buttonSize = context.space(26);
-                  return SizedBox(
-                    width: constraints.maxWidth,
-                    height: resolvedToolbarSize,
-                    child: Stack(
-                      alignment: Alignment.centerLeft,
-                      children: [
-                        if (_showToolbar)
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Transform.scale(
-                              scale: toolbarScale,
-                              alignment: Alignment.centerLeft,
-                              child: QuillSimpleToolbar(
-                                controller: widget.controller,
-                                config: QuillSimpleToolbarConfig(
-                                  decoration: resolvedToolbarDecoration,
-                                  toolbarIconAlignment: WrapAlignment.start,
-                                  showUndo: false,
-                                  showRedo: false,
-                                  showFontFamily: false,
-                                  showFontSize: false,
-                                  showColorButton: false,
-                                  showBackgroundColorButton: false,
-                                  showSearchButton: false,
-                                  showSubscript: false,
-                                  showSuperscript: false,
-                                  showCodeBlock: false,
-                                  showQuote: false,
-                                  showIndent: false,
-                                  showListNumbers: false,
-                                  showListBullets: false,
-                                  showListCheck: false,
-                                  showInlineCode: false,
-                                  showHeaderStyle: false,
-                                  showClearFormat: false,
-                                  toolbarSize: resolvedToolbarSize,
-                                  toolbarSectionSpacing:
-                                      resolvedToolbarSpacing,
-                                  multiRowsDisplay: resolvedToolbarMultiRows,
-                                  iconTheme: QuillIconTheme(
-                                    iconButtonUnselectedData: IconButtonData(
-                                      iconSize: resolvedToolbarIconSize,
-                                      padding: resolvedToolbarPadding,
-                                      constraints: resolvedToolbarConstraints,
-                                      visualDensity: VisualDensity.compact,
-                                      style: resolvedToolbarStyle,
-                                    ),
-                                    iconButtonSelectedData: IconButtonData(
-                                      iconSize: resolvedToolbarIconSize,
-                                      padding: resolvedToolbarPadding,
-                                      constraints: resolvedToolbarConstraints,
-                                      visualDensity: VisualDensity.compact,
-                                      style: resolvedToolbarStyle,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        Positioned(
-                          right: 0,
-                          child: IconButton(
-                            onPressed: _toggleToolbar,
-                            icon: Icon(
-                              _showToolbar
-                                  ? Icons.close_fullscreen_rounded
-                                  : Icons.text_format_rounded,
-                            ),
-                            tooltip: _showToolbar
-                                ? 'Hide formatting'
-                                : 'Show formatting',
-                            constraints: BoxConstraints.tightFor(
-                              width: buttonSize,
-                              height: buttonSize,
-                            ),
-                            padding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ),
-                      ],
+              Divider(height: 1, thickness: 1, color: dividerColor),
+            ],
+            // Bcc — only shown when populated or focused
+            if (_showBcc) ...[
+              RecipientField(
+                controller: widget.bccController,
+                label: 'Bcc',
+                focusNode: _bccFocusNode,
+                nextFocusNode: _subjectFocusNode,
+                textStyle: fieldStyle,
+                labelStyle: labelStyle,
+              ),
+              Divider(height: 1, thickness: 1, color: dividerColor),
+            ],
+            // Subject — large, prominent, no label
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: TextField(
+                controller: widget.subjectController,
+                focusNode: _subjectFocusNode,
+                textInputAction: TextInputAction.next,
+                onSubmitted: (_) => _editorFocusNode.requestFocus(),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
-                  );
-                },
+                decoration: InputDecoration.collapsed(
+                  hintText: 'Subject',
+                  hintStyle:
+                      Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: ColorTokens.textSecondary(context, 0.3),
+                          ),
+                ),
               ),
             ),
+            Divider(height: 1, thickness: 1, color: dividerColor),
             SizedBox(height: context.space(8)),
           ],
+          // ── Body editor ───────────────────────────────────────────────
           FocusTraversalOrder(
             order: const NumericFocusOrder(6),
-            child: Container(
-              decoration: widget.showEditorBorder
-                  ? BoxDecoration(
-                      borderRadius: editorBorderRadius,
-                      border: Border.all(color: editorBorderColor),
-                    )
-                  : null,
-              padding: widget.showEditorBorder ? editorPadding : null,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: widget.minEditorHeight,
-                  maxHeight: widget.maxEditorHeight,
-                ),
-                child: QuillEditor.basic(
-                  controller: widget.controller,
-                  focusNode: _editorFocusNode,
-                  config: QuillEditorConfig(
-                    placeholder: widget.placeholder,
-                    customStyles: _editorStyles(context),
-                    customShortcuts: {
-                      const SingleActivator(LogicalKeyboardKey.escape):
-                          const _QuillEscapeIntent(),
-                    },
-                    customActions: {
-                      _QuillEscapeIntent: CallbackAction<_QuillEscapeIntent>(
-                        onInvoke: (intent) {
-                          if (_editorFocusNode.hasFocus) {
-                            _editorFocusNode.unfocus();
-                          } else {
-                            FocusManager.instance.primaryFocus?.unfocus();
-                          }
-                          widget.onEscape?.call();
-                          return null;
-                        },
-                      ),
-                    },
-                    onKeyPressed: (event, _) {
-                      if (event is KeyDownEvent &&
-                          event.logicalKey == LogicalKeyboardKey.escape) {
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: widget.minEditorHeight,
+                maxHeight: widget.maxEditorHeight,
+              ),
+              child: QuillEditor.basic(
+                controller: widget.controller,
+                focusNode: _editorFocusNode,
+                config: QuillEditorConfig(
+                  placeholder: widget.placeholder,
+                  customStyles: _editorStyles(context),
+                  customShortcuts: {
+                    const SingleActivator(LogicalKeyboardKey.escape):
+                        const _QuillEscapeIntent(),
+                  },
+                  customActions: {
+                    _QuillEscapeIntent: CallbackAction<_QuillEscapeIntent>(
+                      onInvoke: (intent) {
                         if (_editorFocusNode.hasFocus) {
                           _editorFocusNode.unfocus();
                         } else {
                           FocusManager.instance.primaryFocus?.unfocus();
                         }
                         widget.onEscape?.call();
-                        return KeyEventResult.handled;
+                        return null;
+                      },
+                    ),
+                  },
+                  onKeyPressed: (event, _) {
+                    if (event is KeyDownEvent &&
+                        event.logicalKey == LogicalKeyboardKey.escape) {
+                      if (_editorFocusNode.hasFocus) {
+                        _editorFocusNode.unfocus();
+                      } else {
+                        FocusManager.instance.primaryFocus?.unfocus();
                       }
-                      return null;
-                    },
-                  ),
+                      widget.onEscape?.call();
+                      return KeyEventResult.handled;
+                    }
+                    return null;
+                  },
                 ),
               ),
             ),
           ),
+          // ── Quoted content ─────────────────────────────────────────────
           if (widget.quotedText != null &&
               widget.quotedText!.trim().isNotEmpty) ...[
             SizedBox(height: context.space(8)),
             Align(
               alignment: Alignment.centerLeft,
               child: Tooltip(
-                message:
-                    _showQuoted ? 'Hide quoted' : widget.quotedTooltip,
+                message: _showQuoted ? 'Hide quoted' : widget.quotedTooltip,
                 child: TextButton(
                   onPressed: () {
                     setState(() {
@@ -499,7 +459,7 @@ class _ComposeEditorState extends State<ComposeEditor> {
                     visualDensity: VisualDensity.compact,
                   ),
                   child: Text(
-                    _showQuoted ? 'Hide quoted' : '...',
+                    _showQuoted ? 'Hide quoted' : '···',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: ColorTokens.textSecondary(context),
                         ),
@@ -528,10 +488,7 @@ class _ComposeEditorState extends State<ComposeEditor> {
                     child: SingleChildScrollView(
                       child: SelectableText(
                         widget.quotedText!,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: ColorTokens.textSecondary(context),
                               height: 1.4,
                             ),
@@ -543,6 +500,29 @@ class _ComposeEditorState extends State<ComposeEditor> {
             ],
           ],
         ],
+      );
+  }
+}
+
+/// Small tappable label used to reveal the Cc or Bcc field.
+class _CcBccButton extends StatelessWidget {
+  const _CcBccButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: ColorTokens.textSecondary(context, 0.5),
+              ),
+        ),
       ),
     );
   }

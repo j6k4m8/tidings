@@ -69,6 +69,7 @@ class EmailMessage {
     required this.to,
     this.cc = const [],
     this.bcc = const [],
+    this.replyTo = const [],
     required this.time,
     required this.isMe,
     required this.isUnread,
@@ -88,6 +89,8 @@ class EmailMessage {
   final List<EmailAddress> to;
   final List<EmailAddress> cc;
   final List<EmailAddress> bcc;
+  /// Addresses from the RFC 5322 `Reply-To` header. Empty when not present.
+  final List<EmailAddress> replyTo;
   final String time;
   final bool isMe;
   final bool isUnread;

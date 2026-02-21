@@ -723,6 +723,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
       to: message.to,
       cc: message.cc,
       bcc: message.bcc,
+      replyTo: message.replyTo,
       time: message.time,
       isMe: message.isMe,
       isUnread: isUnread,
@@ -918,7 +919,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
     final fromAddress =
         envelope.from?.isNotEmpty == true ? envelope.from!.first : null;
     final from = EmailAddress(
-      name: fromAddress?.personalName ?? 'Unknown',
+      name: fromAddress?.personalName ?? '',
       email: fromAddress?.email ?? '',
     );
     final to =
@@ -942,6 +943,14 @@ class ImapSmtpEmailProvider extends EmailProvider {
             )
             .toList() ??
         const [];
+    // RFC 5322 Reply-To header — available from IMAP ENVELOPE field 4.
+    final replyTo =
+        envelope.replyTo
+            ?.map(
+              (r) => EmailAddress(name: r.personalName ?? '', email: r.email),
+            )
+            .toList() ??
+        const <EmailAddress>[];
     final timestamp = envelope.date?.toUtc();
     const timeLabel = '';
     final isUnread = !(message.flags?.contains(MessageFlags.seen) ?? false);
@@ -960,6 +969,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
       to: to,
       cc: cc,
       bcc: bcc,
+      replyTo: replyTo,
       time: timeLabel,
       bodyText: bodyText,
       bodyHtml: bodyHtml,
@@ -1088,6 +1098,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
         to: header.to,
         cc: header.cc,
         bcc: header.bcc,
+        replyTo: header.replyTo,
         time: header.time,
         bodyText: bodyText,
         bodyHtml: bodyHtml,
