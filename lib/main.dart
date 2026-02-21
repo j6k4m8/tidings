@@ -12,12 +12,17 @@ void main() {
   // out globally until the upstream fix lands.
   final upstream = FlutterError.onError;
   FlutterError.onError = (FlutterErrorDetails details) {
-    final isAspectRatioDryLayout =
-        details.exception is AssertionError &&
-        details.stack.toString().contains('computeDryLayout');
-    if (!isAspectRatioDryLayout) {
-      upstream?.call(details);
+    // flutter_widget_from_html 0.17.x triggers a flood of harmless assertions
+    // about RenderBox.size being accessed during dry layout/baseline passes
+    // inside table cells. Filter them all out.
+    final msg = details.exception.toString();
+    if (details.exception is AssertionError &&
+        (msg.contains('computeDryLayout') ||
+            msg.contains('computeDryBaseline') ||
+            msg.contains('does not meet its constraints'))) {
+      return;
     }
+    upstream?.call(details);
   };
 
   runApp(const TidingsApp());
