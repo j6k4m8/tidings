@@ -10,6 +10,7 @@ import '../../providers/unified_email_provider.dart';
 import '../../state/shortcut_definitions.dart';
 import '../../state/send_queue.dart';
 import '../../state/tidings_settings.dart';
+import '../../utils/email_time.dart';
 import '../../theme/color_tokens.dart';
 import '../../widgets/key_hint.dart';
 import '../../widgets/tidings_background.dart';
@@ -873,7 +874,13 @@ class MessageCard extends StatelessWidget {
                                   ),
                                 ),
                                 Text(
-                                  message.time,
+                                  () {
+                                    final s = context.tidingsSettings;
+                                    final ts = message.receivedAt;
+                                    return ts != null
+                                        ? formatEmailTime(ts, dateOrder: s.dateOrder, use24h: s.use24HourTime)
+                                        : message.time;
+                                  }(),
                                   style: Theme.of(context)
                                       .textTheme
                                       .labelSmall

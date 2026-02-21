@@ -154,7 +154,7 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
   void didUpdateWidget(covariant InlineReplyComposer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.thread.id != widget.thread.id) {
-      _applyMode(_replyMode);
+      _applyMode(_replyMode, settings: context.tidingsSettings);
     }
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller?.detach(oldWidget.thread.id);
@@ -179,15 +179,15 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
   void _setReplyMode(ReplyMode mode) {
     setState(() {
       _replyMode = mode;
-      _applyMode(mode);
+      _applyMode(mode, settings: context.tidingsSettings);
     });
     _focusEditor();
   }
 
-  void _applyMode(ReplyMode mode) {
+  void _applyMode(ReplyMode mode, {TidingsSettings? settings}) {
     final latest = widget.provider.latestMessageForThread(widget.thread.id);
     _quotedContent =
-        buildQuotedContent(latest, isForward: mode == ReplyMode.forward);
+        buildQuotedContent(latest, isForward: mode == ReplyMode.forward, settings: settings);
     if (mode == ReplyMode.forward) {
       _subjectController.text = forwardSubject(widget.thread.subject);
       _toController.text = '';

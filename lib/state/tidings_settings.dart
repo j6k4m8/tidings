@@ -25,6 +25,8 @@ class TidingsSettings extends ChangeNotifier {
   double _threadPanelFraction = 0.58;
   bool _moveEntireThreadByDefault = true;
   bool _showMessageFolderSource = false;
+  DateOrder _dateOrder = DateOrder.mdy;
+  bool _use24HourTime = false;
   final Set<String> _pinnedFolderPaths = {};
   final Map<ShortcutAction, KeyboardShortcut> _shortcutPrimary = {};
   final Map<ShortcutAction, KeyboardShortcut?> _shortcutSecondary = {};
@@ -47,6 +49,8 @@ class TidingsSettings extends ChangeNotifier {
   double get threadPanelFraction => _threadPanelFraction;
   bool get moveEntireThreadByDefault => _moveEntireThreadByDefault;
   bool get showMessageFolderSource => _showMessageFolderSource;
+  DateOrder get dateOrder => _dateOrder;
+  bool get use24HourTime => _use24HourTime;
   Set<String> get pinnedFolderPaths => Set.unmodifiable(_pinnedFolderPaths);
 
   double get densityScale => _layoutDensity.scale;
@@ -142,6 +146,8 @@ class TidingsSettings extends ChangeNotifier {
       settings['showMessageFolderSource'],
       _showMessageFolderSource,
     );
+    _dateOrder = _dateOrderFromStorage(settings['dateOrder']);
+    _use24HourTime = _boolFromStorage(settings['use24HourTime'], _use24HourTime);
     _pinnedFolderPaths
       ..clear()
       ..addAll(_stringListFromStorage(settings['pinnedFolderPaths']));
@@ -224,6 +230,8 @@ class TidingsSettings extends ChangeNotifier {
       'threadPanelFraction': _threadPanelFraction,
       'moveEntireThreadByDefault': _moveEntireThreadByDefault,
       'showMessageFolderSource': _showMessageFolderSource,
+      'dateOrder': _dateOrder.name,
+      'use24HourTime': _use24HourTime,
       'pinnedFolderPaths': pinned,
       'shortcuts': {
         'primary': primary,
@@ -313,6 +321,15 @@ class TidingsSettings extends ChangeNotifier {
       return raw.whereType<String>().toList();
     }
     return const [];
+  }
+
+  DateOrder _dateOrderFromStorage(Object? raw) {
+    if (raw is String) {
+      for (final order in DateOrder.values) {
+        if (order.name == raw) return order;
+      }
+    }
+    return _dateOrder;
   }
 
   void setShortcut(
@@ -493,6 +510,20 @@ class TidingsSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setDateOrder(DateOrder value) {
+    if (_dateOrder == value) return;
+    _dateOrder = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setUse24HourTime(bool value) {
+    if (_use24HourTime == value) return;
+    _use24HourTime = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
   bool isFolderPinned(String path) {
     return _pinnedFolderPaths.contains(path);
   }
@@ -595,6 +626,36 @@ extension TidingsSettingsContext on BuildContext {
   double gutter(double value) => value * tidingsSettings.densityScale;
 
   double radius(double value) => value * tidingsSettings.cornerRadiusScale;
+}
+
+enum DateOrder {
+  mdy,
+  dmy,
+  ymd,
+}
+
+extension DateOrderMeta on DateOrder {
+  String get label {
+    switch (this) {
+      case DateOrder.mdy:
+        return 'Month Day Year';
+      case DateOrder.dmy:
+        return 'Day Month Year';
+      case DateOrder.ymd:
+        return 'Year Month Day';
+    }
+  }
+
+  String get example {
+    switch (this) {
+      case DateOrder.mdy:
+        return 'Feb 20 2025';
+      case DateOrder.dmy:
+        return '20 Feb 2025';
+      case DateOrder.ymd:
+        return '2025 Feb 20';
+    }
+  }
 }
 
 enum MessageCollapseMode {

@@ -679,6 +679,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final quoted = buildQuotedContent(
       latest,
       isForward: mode == ReplyMode.forward,
+      settings: context.tidingsSettings,
     );
     await showComposeSheet(
       context,

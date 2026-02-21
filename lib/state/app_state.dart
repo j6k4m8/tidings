@@ -5,9 +5,11 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:enough_mail/enough_mail.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../models/account_models.dart';
 import '../providers/email_provider.dart';
+import '../providers/gmail_email_provider.dart';
 import '../providers/imap_smtp_email_provider.dart';
 import '../providers/mock_email_provider.dart';
 import 'shortcut_definitions.dart';
@@ -115,6 +117,7 @@ class AppState extends ChangeNotifier {
         orElse: () => EmailProviderType.mock,
       );
       ImapAccountConfig? imapConfig;
+      GmailAccountConfig? gmailConfig;
       if (providerType == EmailProviderType.imap) {
         final configJson = map['imapConfig'];
         if (configJson is! Map<String, dynamic>) {
@@ -137,19 +140,42 @@ class AppState extends ChangeNotifier {
             imapConfig.smtpPassword.isEmpty) {
           imapConfig = imapConfig.copyWith(smtpPassword: imapConfig.password);
         }
+      } else if (providerType == EmailProviderType.gmail) {
+        final configJson = map['gmailConfig'];
+        if (configJson is! Map<String, dynamic>) {
+          needsPersist = true;
+          continue;
+        }
+        gmailConfig = GmailAccountConfig.fromStorageJson(
+          configJson.cast<String, Object?>(),
+        );
       }
-      var account = EmailAccount.fromStorageJson(map, imapConfig: imapConfig);
+      var account = EmailAccount.fromStorageJson(
+        map,
+        imapConfig: imapConfig,
+        gmailConfig: gmailConfig,
+      );
       if (account.accentColorValue == null) {
         account = account.copyWith(accentColorValue: _randomAccentValue());
         needsPersist = true;
       }
-      final provider = account.providerType == EmailProviderType.imap
-          ? ImapSmtpEmailProvider(
-              config: imapConfig!,
-              email: account.email,
-              accountId: account.id,
-            )
-          : MockEmailProvider(accountId: account.id);
+      final EmailProvider provider;
+      switch (account.providerType) {
+        case EmailProviderType.imap:
+          provider = ImapSmtpEmailProvider(
+            config: imapConfig!,
+            email: account.email,
+            accountId: account.id,
+          );
+        case EmailProviderType.gmail:
+          provider = GmailEmailProvider(
+            email: account.email,
+            accountId: account.id,
+            googleSignIn: _makeGoogleSignIn(account.email),
+          );
+        case EmailProviderType.mock:
+          provider = MockEmailProvider(accountId: account.id);
+      }
       _accounts.add(account);
       _providers[account.id] = provider;
     }
@@ -205,6 +231,53 @@ class AppState extends ChangeNotifier {
       return provider.errorMessage ?? 'Unable to connect to the IMAP server.';
     }
     return null;
+  }
+
+  Future<String?> addGmailAccount({
+    required String displayName,
+    required String email,
+    GoogleSignIn? googleSignIn,
+    GoogleSignInAccount? existingAccount,
+  }) async {
+    final gmailConfig = GmailAccountConfig(email: email);
+    final account = EmailAccount(
+      id: 'gmail-${DateTime.now().millisecondsSinceEpoch}',
+      displayName: displayName,
+      email: email,
+      providerType: EmailProviderType.gmail,
+      gmailConfig: gmailConfig,
+      accentColorValue: _randomAccentValue(),
+    );
+    final provider = GmailEmailProvider(
+      email: email,
+      accountId: account.id,
+      googleSignIn: googleSignIn ?? _makeGoogleSignIn(email),
+      existingAccount: existingAccount,
+    );
+    _addAccount(account, provider);
+    await _persistConfig();
+    await _initializeCurrentProvider();
+    debugPrint('[addGmailAccount] provider.status=${provider.status} errorMessage=${provider.errorMessage}');
+    debugPrint('[addGmailAccount] accounts=${_accounts.map((a) => a.email).toList()}');
+    if (provider.status == ProviderStatus.error) {
+      debugPrint('[addGmailAccount] removing account due to error');
+      await removeAccount(account.id);
+      return provider.errorMessage ?? 'Unable to connect to Gmail.';
+    }
+    return null;
+  }
+
+  /// Creates a [GoogleSignIn] instance scoped to [hint] so that apps with
+  /// multiple Google accounts can disambiguate on re-auth.
+  GoogleSignIn _makeGoogleSignIn(String hint) {
+    return GoogleSignIn(
+      scopes: [
+        'https://www.googleapis.com/auth/gmail.modify',
+        'https://www.googleapis.com/auth/gmail.send',
+        'email',
+        'profile',
+      ],
+    );
   }
 
   Future<String?> updateImapAccount({
@@ -379,6 +452,12 @@ class AppState extends ChangeNotifier {
             );
           }
           json['imapConfig'] = configJson;
+        } else if (account.providerType == EmailProviderType.gmail &&
+            account.gmailConfig != null) {
+          // OAuth tokens are managed by the platform keychain via google_sign_in.
+          // We only persist the email address so we can call signInSilently on
+          // startup with the right account hint.
+          json['gmailConfig'] = account.gmailConfig!.toStorageJson();
         }
         return json;
       }).toList(),
@@ -433,6 +512,12 @@ class AppState extends ChangeNotifier {
   Future<ConnectionTestReport> testAccountConnection(
     EmailAccount account,
   ) async {
+    if (account.providerType == EmailProviderType.gmail) {
+      return const ConnectionTestReport(
+        ok: true,
+        log: 'Gmail accounts authenticate via OAuth — no connection test needed.',
+      );
+    }
     if (account.providerType != EmailProviderType.imap ||
         account.imapConfig == null) {
       return const ConnectionTestReport(

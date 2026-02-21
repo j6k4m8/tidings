@@ -555,7 +555,7 @@ class MockEmailProvider extends EmailProvider {
     required String bodyText,
   }) async {
     final now = DateTime.now();
-    final timeLabel = _formatTime(now);
+    const timeLabel = '';
     final recipients = _parseRecipients(toLine);
     final ccRecipients = _parseRecipients(ccLine ?? '');
     final bccRecipients = _parseRecipients(bccLine ?? '');
@@ -657,7 +657,7 @@ class MockEmailProvider extends EmailProvider {
     required String bodyText,
   }) async {
     final now = DateTime.now();
-    final timeLabel = _formatTime(now);
+    const timeLabel = '';
     final recipients = _parseRecipients(toLine);
     final ccRecipients = _parseRecipients(ccLine ?? '');
     final bccRecipients = _parseRecipients(bccLine ?? '');
@@ -841,7 +841,7 @@ class MockEmailProvider extends EmailProvider {
           id: _outboxThreadId(item),
           subject: item.subject,
           participants: [_you, ...recipients],
-          time: _formatTime(createdAt),
+          time: '',
           unread: false,
           starred: false,
           receivedAt: createdAt,
@@ -889,7 +889,7 @@ class MockEmailProvider extends EmailProvider {
       to: to,
       cc: cc,
       bcc: bcc,
-      time: _formatTime(createdAt),
+      time: '',
       bodyText: item.bodyText.isEmpty ? null : item.bodyText,
       bodyHtml: item.bodyHtml.isEmpty ? null : item.bodyHtml,
       isMe: true,
@@ -1000,18 +1000,6 @@ class MockEmailProvider extends EmailProvider {
       );
     }
     return updated;
-  }
-
-  String _formatTime(DateTime timestamp) {
-    var hour = timestamp.hour;
-    final minute = timestamp.minute;
-    final suffix = hour >= 12 ? 'PM' : 'AM';
-    hour = hour % 12;
-    if (hour == 0) {
-      hour = 12;
-    }
-    final minuteLabel = minute.toString().padLeft(2, '0');
-    return '$hour:$minuteLabel $suffix';
   }
 
   @override

@@ -942,8 +942,8 @@ class ImapSmtpEmailProvider extends EmailProvider {
             )
             .toList() ??
         const [];
-    final timestamp = envelope.date?.toLocal();
-    final timeLabel = timestamp == null ? '' : _formatTime(timestamp);
+    final timestamp = envelope.date?.toUtc();
+    const timeLabel = '';
     final isUnread = !(message.flags?.contains(MessageFlags.seen) ?? false);
     final threadId = _resolveThreadId(
       subject: subject,
@@ -1243,7 +1243,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
           id: _outboxThreadId(item),
           subject: item.subject,
           participants: [EmailAddress(name: email, email: email), ...recipients],
-          time: _formatTime(createdAt),
+          time: '',
           unread: false,
           starred: false,
           receivedAt: createdAt,
@@ -1291,7 +1291,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
       to: to,
       cc: cc,
       bcc: bcc,
-      time: _formatTime(createdAt),
+      time: '',
       bodyText: item.bodyText.isEmpty ? null : item.bodyText,
       bodyHtml: item.bodyHtml.isEmpty ? null : item.bodyHtml,
       isMe: true,
@@ -1555,12 +1555,6 @@ class ImapSmtpEmailProvider extends EmailProvider {
     value = value.replaceAll(RegExp(r'^(re|fwd|fw):\s*'), '');
     value = value.replaceAll(RegExp(r'\s+'), ' ').trim();
     return value;
-  }
-
-  String _formatTime(DateTime time) {
-    final hours = time.hour.toString().padLeft(2, '0');
-    final minutes = time.minute.toString().padLeft(2, '0');
-    return '$hours:$minutes';
   }
 
   void updateCrossFolderThreading(bool enabled) {
