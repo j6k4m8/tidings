@@ -6,6 +6,7 @@ import 'package:flutter_quill/quill_delta.dart';
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
 import '../../state/send_queue.dart';
+import '../../state/tidings_settings.dart';
 import 'compose_form.dart';
 import '../../theme/color_tokens.dart';
 import '../../widgets/tidings_background.dart';
@@ -26,7 +27,7 @@ Future<void> showComposeSheet(
   Delta? initialDelta,
   QuotedContent? quotedContent,
 }) {
-  final isCompact = MediaQuery.of(context).size.width < 720;
+  final isCompact = context.isCompact;
   if (isCompact) {
     return showModalBottomSheet<void>(
       context: context,
@@ -687,7 +688,6 @@ class _ComposeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: TidingsBackground(
-        accent: accent,
         child: SafeArea(
           child: Center(
             child: ConstrainedBox(

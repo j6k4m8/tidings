@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../models/email_models.dart';
 import '../models/folder_models.dart';
 import '../state/send_queue.dart';
+import '../utils/email_address_utils.dart';
+import '../utils/outbox_section.dart';
 import 'email_provider.dart';
 
 class MockEmailProvider extends EmailProvider {
@@ -115,7 +117,8 @@ class MockEmailProvider extends EmailProvider {
   }
 
   @override
-  List<FolderSection> get folderSections => _withOutboxSection(_folderSections);
+  List<FolderSection> get folderSections =>
+      withOutboxSection(_folderSections, _sendQueue);
 
   @override
   int get outboxCount => _sendQueue.pendingCount;
@@ -799,29 +802,13 @@ class MockEmailProvider extends EmailProvider {
   }
 
   List<EmailAddress> _parseRecipients(String raw) {
-    final parts = raw
-        .split(RegExp(r'[;,]'))
-        .map((part) => part.trim())
-        .where((part) => part.isNotEmpty)
-        .toList();
+    final parts = splitEmailAddresses(raw);
     if (parts.isEmpty) {
       return const [_you];
     }
-    return parts
-        .map((email) => EmailAddress(name: email, email: email))
-        .toList();
+    return parts;
   }
 
-  List<EmailAddress> _parseRecipientAddresses(String raw) {
-    final parts = raw
-        .split(RegExp(r'[;,]'))
-        .map((part) => part.trim())
-        .where((part) => part.isNotEmpty)
-        .toList();
-    return parts
-        .map((email) => EmailAddress(name: email, email: email))
-        .toList();
-  }
 
   List<EmailThread> _outboxThreads() {
     final items = _sendQueue.items;
@@ -831,9 +818,9 @@ class MockEmailProvider extends EmailProvider {
     final threads = <EmailThread>[];
     for (final item in items) {
       final recipients = <EmailAddress>[
-        ..._parseRecipientAddresses(item.toLine),
-        ..._parseRecipientAddresses(item.ccLine ?? ''),
-        ..._parseRecipientAddresses(item.bccLine ?? ''),
+        ...splitEmailAddresses(item.toLine),
+        ...splitEmailAddresses(item.ccLine ?? ''),
+        ...splitEmailAddresses(item.bccLine ?? ''),
       ];
       final createdAt = item.createdAt.toLocal();
       threads.add(
@@ -877,9 +864,9 @@ class MockEmailProvider extends EmailProvider {
     OutboxItem item, {
     String? threadIdOverride,
   }) {
-    final to = _parseRecipientAddresses(item.toLine);
-    final cc = _parseRecipientAddresses(item.ccLine ?? '');
-    final bcc = _parseRecipientAddresses(item.bccLine ?? '');
+    final to = splitEmailAddresses(item.toLine);
+    final cc = splitEmailAddresses(item.ccLine ?? '');
+    final bcc = splitEmailAddresses(item.bccLine ?? '');
     final createdAt = item.createdAt.toLocal();
     return EmailMessage(
       id: 'outbox-${item.id}',
@@ -890,8 +877,8 @@ class MockEmailProvider extends EmailProvider {
       cc: cc,
       bcc: bcc,
       time: '',
-      bodyText: item.bodyText.isEmpty ? null : item.bodyText,
-      bodyHtml: item.bodyHtml.isEmpty ? null : item.bodyHtml,
+      bodyText: item.bodyTextOrNull,
+      bodyHtml: item.bodyHtmlOrNull,
       isMe: true,
       isUnread: false,
       receivedAt: createdAt,
@@ -948,58 +935,6 @@ class MockEmailProvider extends EmailProvider {
       }
     }
     return null;
-  }
-
-  List<FolderSection> _withOutboxSection(List<FolderSection> sections) {
-    if (sections.isEmpty) {
-      return [
-        FolderSection(
-          title: 'Mailboxes',
-          kind: FolderSectionKind.mailboxes,
-          items: [
-            FolderItem(
-              index: -1,
-              name: 'Outbox',
-              path: kOutboxFolderPath,
-              unreadCount: _sendQueue.pendingCount,
-              icon: Icons.outbox_rounded,
-            ),
-          ],
-        ),
-      ];
-    }
-    final updated = <FolderSection>[];
-    for (final section in sections) {
-      if (section.kind != FolderSectionKind.mailboxes) {
-        updated.add(section);
-        continue;
-      }
-      final hasOutbox = section.items.any(
-        (item) => item.path == kOutboxFolderPath,
-      );
-      if (hasOutbox) {
-        updated.add(section);
-        continue;
-      }
-      final items = [
-        FolderItem(
-          index: -1,
-          name: 'Outbox',
-          path: kOutboxFolderPath,
-          unreadCount: _sendQueue.pendingCount,
-          icon: Icons.outbox_rounded,
-        ),
-        ...section.items,
-      ];
-      updated.add(
-        FolderSection(
-          title: section.title,
-          kind: section.kind,
-          items: items,
-        ),
-      );
-    }
-    return updated;
   }
 
   @override

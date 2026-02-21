@@ -9,6 +9,8 @@ import '../models/account_models.dart';
 import '../models/email_models.dart';
 import '../models/folder_models.dart';
 import '../state/send_queue.dart';
+import '../utils/email_address_utils.dart';
+import '../utils/outbox_section.dart';
 import 'email_provider.dart';
 
 class ImapSmtpEmailProvider extends EmailProvider {
@@ -77,7 +79,8 @@ class ImapSmtpEmailProvider extends EmailProvider {
   }
 
   @override
-  List<FolderSection> get folderSections => _withOutboxSection(_folderSections);
+  List<FolderSection> get folderSections =>
+      withOutboxSection(_folderSections, _sendQueue);
 
   @override
   int get outboxCount => _sendQueue.pendingCount;
@@ -489,34 +492,48 @@ class ImapSmtpEmailProvider extends EmailProvider {
     if (targetPath == null || targetPath.isEmpty) {
       return 'Archive folder not found.';
     }
-    final ids = messagesForThread(thread.id)
+    final allMessages = messagesForThread(thread.id);
+    final ids = allMessages
         .map((message) => int.tryParse(message.id))
         .whereType<int>()
         .toList();
     if (ids.isEmpty) {
       return 'No messages to archive.';
     }
-    await _ensureConnected();
-    final client = _client;
-    if (client == null) {
-      return 'IMAP client not connected.';
-    }
-    await client.selectMailboxByPath(_currentMailboxPath);
-    final sequence = MessageSequence.fromIds(ids, isUid: true);
-    if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
-      await client.uidMove(sequence, targetMailboxPath: targetPath);
-    } else {
-      await client.uidCopy(sequence, targetMailboxPath: targetPath);
-      await client.uidStore(
-        sequence,
-        [MessageFlags.deleted],
-        action: StoreAction.add,
-      );
-      await client.expunge();
-    }
+    // Snapshot for rollback.
+    final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
+    final savedMessages = List<EmailMessage>.from(allMessages);
+    // Optimistic remove — UI updates immediately.
     _removeThreadFromCache(thread.id);
     notifyListeners();
-    return null;
+    try {
+      await _ensureConnected();
+      final client = _client;
+      if (client == null) {
+        _restoreThreadToCache(thread, savedMessages, threadIndex);
+        notifyListeners();
+        return 'IMAP client not connected.';
+      }
+      await client.selectMailboxByPath(_currentMailboxPath);
+      final sequence = MessageSequence.fromIds(ids, isUid: true);
+      if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
+        await client.uidMove(sequence, targetMailboxPath: targetPath);
+      } else {
+        await client.uidCopy(sequence, targetMailboxPath: targetPath);
+        await client.uidStore(
+          sequence,
+          [MessageFlags.deleted],
+          action: StoreAction.add,
+        );
+        await client.expunge();
+      }
+      return null;
+    } catch (e) {
+      // Server failed — roll back so the thread reappears.
+      _restoreThreadToCache(thread, savedMessages, threadIndex);
+      notifyListeners();
+      return e.toString();
+    }
   }
 
   @override
@@ -534,31 +551,44 @@ class ImapSmtpEmailProvider extends EmailProvider {
     if (ids.isEmpty) {
       return 'No messages to move.';
     }
-    await _ensureConnected();
-    final client = _client;
-    if (client == null) {
-      return 'IMAP client not connected.';
-    }
-    await client.selectMailboxByPath(_currentMailboxPath);
-    final sequence = MessageSequence.fromIds(ids, isUid: true);
-    if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
-      await client.uidMove(sequence, targetMailboxPath: targetPath);
-    } else {
-      await client.uidCopy(sequence, targetMailboxPath: targetPath);
-      await client.uidStore(
-        sequence,
-        [MessageFlags.deleted],
-        action: StoreAction.add,
-      );
-      await client.expunge();
-    }
+    // Snapshot for rollback.
+    final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
+    final savedMessages = List<EmailMessage>.from(allMessages);
+    // Optimistic remove.
     if (singleMessage == null) {
       _removeThreadFromCache(thread.id);
     } else {
       _removeSingleMessageFromCache(thread.id, singleMessage.id);
     }
     notifyListeners();
-    return null;
+    try {
+      await _ensureConnected();
+      final client = _client;
+      if (client == null) {
+        _restoreThreadToCache(thread, savedMessages, threadIndex);
+        notifyListeners();
+        return 'IMAP client not connected.';
+      }
+      await client.selectMailboxByPath(_currentMailboxPath);
+      final sequence = MessageSequence.fromIds(ids, isUid: true);
+      if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
+        await client.uidMove(sequence, targetMailboxPath: targetPath);
+      } else {
+        await client.uidCopy(sequence, targetMailboxPath: targetPath);
+        await client.uidStore(
+          sequence,
+          [MessageFlags.deleted],
+          action: StoreAction.add,
+        );
+        await client.expunge();
+      }
+      return null;
+    } catch (e) {
+      // Server failed — roll back.
+      _restoreThreadToCache(thread, savedMessages, threadIndex);
+      notifyListeners();
+      return e.toString();
+    }
   }
 
   void _removeSingleMessageFromCache(String threadId, String messageId) {
@@ -658,6 +688,36 @@ class ImapSmtpEmailProvider extends EmailProvider {
       data: _MailboxData(threads: nextThreads, messages: nextMessages),
       fetchedAt: DateTime.now(),
     );
+  }
+
+  /// Re-inserts a thread and its messages after a failed optimistic remove.
+  void _restoreThreadToCache(
+    EmailThread thread,
+    List<EmailMessage> messages,
+    int index,
+  ) {
+    if (!_threads.any((t) => t.id == thread.id)) {
+      final insertAt = index.clamp(0, _threads.length);
+      _threads.insert(insertAt, thread);
+    }
+    if (messages.isNotEmpty) {
+      _messages[thread.id] = messages;
+    }
+    // Also restore the folder cache entry.
+    final entry = _folderCache[_currentMailboxPath];
+    if (entry != null && !entry.data.threads.any((t) => t.id == thread.id)) {
+      final insertAt = index.clamp(0, entry.data.threads.length);
+      final restoredThreads = List<EmailThread>.from(entry.data.threads)
+        ..insert(insertAt, thread);
+      final restoredMessages = Map<String, List<EmailMessage>>.from(
+        entry.data.messages,
+      );
+      if (messages.isNotEmpty) restoredMessages[thread.id] = messages;
+      _folderCache[_currentMailboxPath] = _FolderCacheEntry(
+        data: _MailboxData(threads: restoredThreads, messages: restoredMessages),
+        fetchedAt: entry.fetchedAt,
+      );
+    }
   }
 
   void _updateThreadReadState(String threadId, bool isUnread) {
@@ -1225,16 +1285,6 @@ class ImapSmtpEmailProvider extends EmailProvider {
     return parts.map((email) => MailAddress(null, email)).toList();
   }
 
-  List<EmailAddress> _parseEmailAddresses(String raw) {
-    final parts = raw
-        .split(RegExp(r'[;,]'))
-        .map((part) => part.trim())
-        .where((part) => part.isNotEmpty)
-        .toList();
-    return parts
-        .map((email) => EmailAddress(name: email, email: email))
-        .toList();
-  }
 
   List<EmailThread> _outboxThreads() {
     final items = _sendQueue.items;
@@ -1244,9 +1294,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
     final threads = <EmailThread>[];
     for (final item in items) {
       final recipients = <EmailAddress>[
-        ..._parseEmailAddresses(item.toLine),
-        ..._parseEmailAddresses(item.ccLine ?? ''),
-        ..._parseEmailAddresses(item.bccLine ?? ''),
+        ...splitEmailAddresses(item.toLine),
+        ...splitEmailAddresses(item.ccLine ?? ''),
+        ...splitEmailAddresses(item.bccLine ?? ''),
       ];
       final createdAt = item.createdAt.toLocal();
       threads.add(
@@ -1290,9 +1340,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
     OutboxItem item, {
     String? threadIdOverride,
   }) {
-    final to = _parseEmailAddresses(item.toLine);
-    final cc = _parseEmailAddresses(item.ccLine ?? '');
-    final bcc = _parseEmailAddresses(item.bccLine ?? '');
+    final to = splitEmailAddresses(item.toLine);
+    final cc = splitEmailAddresses(item.ccLine ?? '');
+    final bcc = splitEmailAddresses(item.bccLine ?? '');
     final createdAt = item.createdAt.toLocal();
     return EmailMessage(
       id: 'outbox-${item.id}',
@@ -1303,8 +1353,8 @@ class ImapSmtpEmailProvider extends EmailProvider {
       cc: cc,
       bcc: bcc,
       time: '',
-      bodyText: item.bodyText.isEmpty ? null : item.bodyText,
-      bodyHtml: item.bodyHtml.isEmpty ? null : item.bodyHtml,
+      bodyText: item.bodyTextOrNull,
+      bodyHtml: item.bodyHtmlOrNull,
       isMe: true,
       isUnread: false,
       receivedAt: createdAt,
@@ -1608,58 +1658,6 @@ class ImapSmtpEmailProvider extends EmailProvider {
       paths.addAll(_folderCache.keys);
     }
     return paths;
-  }
-
-  List<FolderSection> _withOutboxSection(List<FolderSection> sections) {
-    if (sections.isEmpty) {
-      return [
-        FolderSection(
-          title: 'Mailboxes',
-          kind: FolderSectionKind.mailboxes,
-          items: [
-            FolderItem(
-              index: -1,
-              name: 'Outbox',
-              path: kOutboxFolderPath,
-              unreadCount: _sendQueue.pendingCount,
-              icon: Icons.outbox_rounded,
-            ),
-          ],
-        ),
-      ];
-    }
-    final updated = <FolderSection>[];
-    for (final section in sections) {
-      if (section.kind != FolderSectionKind.mailboxes) {
-        updated.add(section);
-        continue;
-      }
-      final hasOutbox = section.items.any(
-        (item) => item.path == kOutboxFolderPath,
-      );
-      if (hasOutbox) {
-        updated.add(section);
-        continue;
-      }
-      final items = [
-        FolderItem(
-          index: -1,
-          name: 'Outbox',
-          path: kOutboxFolderPath,
-          unreadCount: _sendQueue.pendingCount,
-          icon: Icons.outbox_rounded,
-        ),
-        ...section.items,
-      ];
-      updated.add(
-        FolderSection(
-          title: section.title,
-          kind: section.kind,
-          items: items,
-        ),
-      );
-    }
-    return updated;
   }
 
   void _scheduleInboxRefresh() {

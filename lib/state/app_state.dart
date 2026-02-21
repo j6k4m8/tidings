@@ -317,19 +317,21 @@ class AppState extends ChangeNotifier {
     required int minutes,
   }) async {
     final index = _accounts.indexWhere((account) => account.id == accountId);
-    if (index == -1) {
-      return;
-    }
+    if (index == -1) return;
     final account = _accounts[index];
-    final config = account.imapConfig;
-    if (config == null) {
-      return;
-    }
-    final updatedConfig = config.copyWith(checkMailIntervalMinutes: minutes);
-    _accounts[index] = account.copyWith(imapConfig: updatedConfig);
     final provider = _providers[accountId];
-    if (provider is ImapSmtpEmailProvider) {
-      provider.updateInboxRefreshInterval(Duration(minutes: minutes));
+    if (account.imapConfig != null) {
+      final updated = account.imapConfig!.copyWith(checkMailIntervalMinutes: minutes);
+      _accounts[index] = account.copyWith(imapConfig: updated);
+      if (provider is ImapSmtpEmailProvider) {
+        provider.updateInboxRefreshInterval(Duration(minutes: minutes));
+      }
+    } else if (account.gmailConfig != null) {
+      final updated = account.gmailConfig!.copyWith(checkMailIntervalMinutes: minutes);
+      _accounts[index] = account.copyWith(gmailConfig: updated);
+      if (provider is GmailEmailProvider) {
+        provider.updateInboxRefreshInterval(Duration(minutes: minutes));
+      }
     }
     await _persistConfig();
     notifyListeners();
@@ -340,19 +342,21 @@ class AppState extends ChangeNotifier {
     required bool enabled,
   }) async {
     final index = _accounts.indexWhere((account) => account.id == accountId);
-    if (index == -1) {
-      return;
-    }
+    if (index == -1) return;
     final account = _accounts[index];
-    final config = account.imapConfig;
-    if (config == null) {
-      return;
-    }
-    final updatedConfig = config.copyWith(crossFolderThreadingEnabled: enabled);
-    _accounts[index] = account.copyWith(imapConfig: updatedConfig);
     final provider = _providers[accountId];
-    if (provider is ImapSmtpEmailProvider) {
-      provider.updateCrossFolderThreading(enabled);
+    if (account.imapConfig != null) {
+      final updated = account.imapConfig!.copyWith(crossFolderThreadingEnabled: enabled);
+      _accounts[index] = account.copyWith(imapConfig: updated);
+      if (provider is ImapSmtpEmailProvider) {
+        provider.updateCrossFolderThreading(enabled);
+      }
+    } else if (account.gmailConfig != null) {
+      final updated = account.gmailConfig!.copyWith(crossFolderThreadingEnabled: enabled);
+      _accounts[index] = account.copyWith(gmailConfig: updated);
+      if (provider is GmailEmailProvider) {
+        provider.updateCrossFolderThreading(enabled);
+      }
     }
     await _persistConfig();
     notifyListeners();
@@ -384,6 +388,16 @@ class AppState extends ChangeNotifier {
     _accounts[index] = _accounts[index].copyWith(
       accentColorValue: color.toARGB32(),
     );
+    notifyListeners();
+    await _persistConfig();
+  }
+
+  Future<void> setAccountDisplayName(String accountId, String name) async {
+    final index = _accounts.indexWhere((a) => a.id == accountId);
+    if (index == -1) return;
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    _accounts[index] = _accounts[index].copyWith(displayName: trimmed);
     notifyListeners();
     await _persistConfig();
   }

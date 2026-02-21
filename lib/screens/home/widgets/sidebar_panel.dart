@@ -24,10 +24,14 @@ class SidebarPanel extends StatelessWidget {
     required this.onCollapse,
     required this.onAccountTap,
     required this.onCompose,
+    this.isUnified = false,
+    this.accountCount = 0,
   });
 
   final EmailAccount account;
   final Color accent;
+  final bool isUnified;
+  final int accountCount;
   final EmailProvider provider;
   final List<FolderSection> sections;
   final int selectedIndex;
@@ -58,22 +62,35 @@ class SidebarPanel extends StatelessWidget {
                   onTap: onAccountTap,
                   child: Row(
                     children: [
-                      AccountAvatar(
-                        name: account.displayName,
-                        accent: accent,
-                        showRing: true,
-                      ),
+                      if (isUnified)
+                        CircleAvatar(
+                          radius: context.space(18),
+                          backgroundColor: accent.withValues(alpha: 0.2),
+                          child: Icon(
+                            Icons.layers_rounded,
+                            size: context.space(18),
+                            color: accent,
+                          ),
+                        )
+                      else
+                        AccountAvatar(
+                          name: account.displayName,
+                          accent: accent,
+                          showRing: true,
+                        ),
                       SizedBox(width: context.space(10)),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              account.displayName,
+                              isUnified ? 'Unified Inbox' : account.displayName,
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                             Text(
-                              account.email,
+                              isUnified
+                                  ? '$accountCount accounts'
+                                  : account.email,
                               style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(
                                     color: ColorTokens.textSecondary(context),

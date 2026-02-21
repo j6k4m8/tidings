@@ -10,6 +10,7 @@ import '../models/email_models.dart';
 import '../models/folder_models.dart';
 import '../state/send_queue.dart';
 import 'email_provider.dart';
+import '../utils/email_address_utils.dart';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -97,6 +98,9 @@ class GmailEmailProvider extends EmailProvider {
   String _selectedLabelId = _kInbox;
   DateTime? _lastMutationAt;
   Timer? _refreshTimer;
+  int _checkMailIntervalMinutes = 5;
+  // ignore: unused_field
+  bool _crossFolderThreadingEnabled = false;
 
   // ---------------------------------------------------------------------------
   // EmailProvider interface — status & data
@@ -345,17 +349,20 @@ class GmailEmailProvider extends EmailProvider {
   Future<String?> archiveThread(EmailThread thread) async {
     final api = _gmailApi;
     if (api == null) return 'Not connected.';
+    // Snapshot for rollback.
+    final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
+    final savedMessages = List<EmailMessage>.from(_messages[thread.id] ?? []);
+    // Optimistic remove — UI updates immediately.
+    _removeThreadFromCache(thread.id);
+    notifyListeners();
     try {
-      final messageIds = _allMessageIdsForThread(thread.id);
-      final req = gmail.ModifyMessageRequest()
-        ..removeLabelIds = [_kInbox];
-      for (final msgId in messageIds) {
-        await api.users.messages.modify(req, 'me', msgId);
-      }
-      _removeThreadFromCache(thread.id);
-      notifyListeners();
+      final req = gmail.ModifyThreadRequest()..removeLabelIds = [_kInbox];
+      await api.users.threads.modify(req, 'me', thread.id);
       return null;
     } catch (e) {
+      // Server failed — roll back so the thread reappears.
+      _restoreThreadToCache(thread, savedMessages, threadIndex);
+      notifyListeners();
       return e.toString();
     }
   }
@@ -368,24 +375,35 @@ class GmailEmailProvider extends EmailProvider {
   }) async {
     final api = _gmailApi;
     if (api == null) return 'Not connected.';
+    if (singleMessage != null) {
+      try {
+        final req = gmail.ModifyMessageRequest()
+          ..addLabelIds = [targetPath]
+          ..removeLabelIds = [_selectedLabelId];
+        await api.users.messages.modify(req, 'me', singleMessage.id);
+        _removeSingleMessageFromCache(thread.id, singleMessage.id);
+        notifyListeners();
+        return null;
+      } catch (e) {
+        return e.toString();
+      }
+    }
+    // Snapshot for rollback.
+    final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
+    final savedMessages = List<EmailMessage>.from(_messages[thread.id] ?? []);
+    // Optimistic remove.
+    _removeThreadFromCache(thread.id);
+    notifyListeners();
     try {
-      final messageIds = singleMessage != null
-          ? [singleMessage.id]
-          : _allMessageIdsForThread(thread.id);
-      final req = gmail.ModifyMessageRequest()
+      final req = gmail.ModifyThreadRequest()
         ..addLabelIds = [targetPath]
         ..removeLabelIds = [_selectedLabelId];
-      for (final msgId in messageIds) {
-        await api.users.messages.modify(req, 'me', msgId);
-      }
-      if (singleMessage == null) {
-        _removeThreadFromCache(thread.id);
-      } else {
-        _removeSingleMessageFromCache(thread.id, singleMessage.id);
-      }
-      notifyListeners();
+      await api.users.threads.modify(req, 'me', thread.id);
       return null;
     } catch (e) {
+      // Server failed — roll back.
+      _restoreThreadToCache(thread, savedMessages, threadIndex);
+      notifyListeners();
       return e.toString();
     }
   }
@@ -702,11 +720,11 @@ class GmailEmailProvider extends EmailProvider {
 
     final subject = headers['subject'] ?? '(No subject)';
     final fromRaw = headers['from'] ?? '';
-    final from = _parseAddress(fromRaw);
-    final to = _parseAddressList(headers['to'] ?? '');
-    final cc = _parseAddressList(headers['cc'] ?? '');
-    final bcc = _parseAddressList(headers['bcc'] ?? '');
-    final replyTo = _parseAddressList(headers['reply-to'] ?? '');
+    final from = parseAddress(fromRaw);
+    final to = parseAddressList(headers['to'] ?? '');
+    final cc = parseAddressList(headers['cc'] ?? '');
+    final bcc = parseAddressList(headers['bcc'] ?? '');
+    final replyTo = parseAddressList(headers['reply-to'] ?? '');
     // internalDate is milliseconds since epoch as a string — always present and
     // unambiguous. Fall back to the Date header only if missing.
     DateTime? receivedAt;
@@ -780,6 +798,23 @@ class GmailEmailProvider extends EmailProvider {
     _lastMutationAt = DateTime.now();
     _threads.removeWhere((t) => t.id == threadId);
     _messages.remove(threadId);
+    _patchLabelCache(_selectedLabelId);
+  }
+
+  /// Re-inserts a thread and its messages after a failed optimistic remove.
+  /// Restores to [index] if valid, otherwise appends.
+  void _restoreThreadToCache(
+    EmailThread thread,
+    List<EmailMessage> messages,
+    int index,
+  ) {
+    if (!_threads.any((t) => t.id == thread.id)) {
+      final insertAt = index.clamp(0, _threads.length);
+      _threads.insert(insertAt, thread);
+    }
+    if (messages.isNotEmpty) {
+      _messages[thread.id] = messages;
+    }
     _patchLabelCache(_selectedLabelId);
   }
 
@@ -896,11 +931,25 @@ class GmailEmailProvider extends EmailProvider {
   // Internal — periodic refresh
   // ---------------------------------------------------------------------------
 
+  void updateInboxRefreshInterval(Duration interval) {
+    _checkMailIntervalMinutes = interval.inMinutes.clamp(1, 60);
+    _scheduleRefresh();
+  }
+
+  void updateCrossFolderThreading(bool enabled) {
+    _crossFolderThreadingEnabled = enabled;
+    // Gmail uses native conversation threading; this flag is stored but has no
+    // effect on the Gmail API fetch logic.
+  }
+
   void _scheduleRefresh() {
     _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(const Duration(minutes: 5), (_) {
-      _startLabelLoad(_selectedLabelId, showErrors: false);
-    });
+    _refreshTimer = Timer.periodic(
+      Duration(minutes: _checkMailIntervalMinutes),
+      (_) {
+        _startLabelLoad(_selectedLabelId, showErrors: false);
+      },
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -931,9 +980,9 @@ class GmailEmailProvider extends EmailProvider {
             threadId: threadId,
             subject: item.subject,
             from: EmailAddress(name: email, email: email),
-            to: _parseAddressList(item.toLine),
-            cc: _parseAddressList(item.ccLine ?? ''),
-            bcc: _parseAddressList(item.bccLine ?? ''),
+            to: parseAddressList(item.toLine),
+            cc: parseAddressList(item.ccLine ?? ''),
+            bcc: parseAddressList(item.bccLine ?? ''),
             time: '',
             isMe: true,
             isUnread: false,
@@ -960,38 +1009,7 @@ class GmailEmailProvider extends EmailProvider {
   // Utilities — address parsing
   // ---------------------------------------------------------------------------
 
-  EmailAddress _parseAddress(String raw) {
-    final trimmed = raw.trim();
-    // "Display Name <email@example.com>"
-    final match = RegExp(r'^(.*?)<([^>]+)>$').firstMatch(trimmed);
-    if (match != null) {
-      final name = match.group(1)?.trim().replaceAll(RegExp(r'^"|"$'), '') ?? '';
-      final addr = match.group(2)?.trim() ?? '';
-      return EmailAddress(name: name, email: addr);
-    }
-    // Bare email.
-    return EmailAddress(name: '', email: trimmed);
-  }
 
-  List<EmailAddress> _parseAddressList(String raw) {
-    if (raw.isEmpty) return const [];
-    // Split on commas, but not commas inside angle brackets.
-    final parts = <String>[];
-    var depth = 0;
-    var current = StringBuffer();
-    for (final ch in raw.characters) {
-      if (ch == '<') depth++;
-      if (ch == '>') depth--;
-      if (ch == ',' && depth == 0) {
-        parts.add(current.toString().trim());
-        current.clear();
-      } else {
-        current.write(ch);
-      }
-    }
-    if (current.isNotEmpty) parts.add(current.toString().trim());
-    return parts.where((p) => p.isNotEmpty).map(_parseAddress).toList();
-  }
 
   // ---------------------------------------------------------------------------
   // Utilities — time formatting

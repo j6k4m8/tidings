@@ -47,3 +47,23 @@ String? folderLabelForPath(
   }
   return null;
 }
+
+/// Returns the folder path for the given [index], or null if not found.
+String? folderPathForIndex(List<FolderSection> sections, int index) {
+  for (final section in sections) {
+    for (final item in section.items) {
+      if (item.index == index) return item.path;
+    }
+  }
+  return null;
+}
+
+/// Returns the item index for the given [path], or null if not found.
+int? folderIndexForPath(List<FolderSection> sections, String path) {
+  for (final section in sections) {
+    for (final item in section.items) {
+      if (item.path == path) return item.index;
+    }
+  }
+  return null;
+}

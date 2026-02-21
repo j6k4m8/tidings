@@ -8,6 +8,7 @@ import '../models/folder_models.dart';
 import '../state/app_state.dart';
 import '../state/send_queue.dart';
 import 'email_provider.dart';
+import '../utils/email_address_utils.dart';
 
 class UnifiedEmailProvider extends EmailProvider {
   UnifiedEmailProvider({required this.appState}) {
@@ -442,9 +443,9 @@ class UnifiedEmailProvider extends EmailProvider {
           item: item,
         );
         final recipients = <EmailAddress>[
-          ..._parseEmailAddresses(item.toLine),
-          ..._parseEmailAddresses(item.ccLine ?? ''),
-          ..._parseEmailAddresses(item.bccLine ?? ''),
+          ...splitEmailAddresses(item.toLine),
+          ...splitEmailAddresses(item.ccLine ?? ''),
+          ...splitEmailAddresses(item.bccLine ?? ''),
         ];
         final createdAt = item.createdAt.toLocal();
         threads.add(
@@ -481,9 +482,9 @@ class UnifiedEmailProvider extends EmailProvider {
     EmailAccount account,
     String threadId,
   ) {
-    final to = _parseEmailAddresses(item.toLine);
-    final cc = _parseEmailAddresses(item.ccLine ?? '');
-    final bcc = _parseEmailAddresses(item.bccLine ?? '');
+    final to = splitEmailAddresses(item.toLine);
+    final cc = splitEmailAddresses(item.ccLine ?? '');
+    final bcc = splitEmailAddresses(item.bccLine ?? '');
     final createdAt = item.createdAt.toLocal();
     return EmailMessage(
       id: 'outbox-${item.id}',
@@ -494,8 +495,8 @@ class UnifiedEmailProvider extends EmailProvider {
       cc: cc,
       bcc: bcc,
       time: '',
-      bodyText: item.bodyText.isEmpty ? null : item.bodyText,
-      bodyHtml: item.bodyHtml.isEmpty ? null : item.bodyHtml,
+      bodyText: item.bodyTextOrNull,
+      bodyHtml: item.bodyHtmlOrNull,
       isMe: true,
       isUnread: false,
       receivedAt: createdAt,
@@ -508,16 +509,6 @@ class UnifiedEmailProvider extends EmailProvider {
     return 'outbox-$accountId::$itemId';
   }
 
-  List<EmailAddress> _parseEmailAddresses(String raw) {
-    final parts = raw
-        .split(RegExp(r'[;,]'))
-        .map((part) => part.trim())
-        .where((part) => part.isNotEmpty)
-        .toList();
-    return parts
-        .map((email) => EmailAddress(name: email, email: email))
-        .toList();
-  }
 
   MessageSendStatus _statusForOutbox(OutboxStatus status) {
     switch (status) {

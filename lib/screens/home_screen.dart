@@ -20,8 +20,11 @@ import 'compose/compose_utils.dart';
 import 'compose/inline_reply_composer.dart';
 import 'home/home_utils.dart';
 import 'home/home_layouts.dart';
+import '../utils/subject_utils.dart';
+import '../utils/reply_utils.dart';
 import 'home/thread_detail.dart';
 import 'keyboard/command_palette.dart';
+import '../theme/account_accent.dart';
 import 'keyboard/go_to_dialog.dart';
 import 'keyboard/move_to_folder_dialog.dart';
 import 'keyboard/shortcuts_sheet.dart';
@@ -51,7 +54,6 @@ class _BlurIntent extends Intent {
 enum _HomeScope { list, detail, editor }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const double _wideLayoutBreakpoint = 500;
   static final _escapeKey = LogicalKeySet(LogicalKeyboardKey.escape);
   int _selectedThreadIndex = 0;
   int _selectedFolderIndex = 0;
@@ -78,6 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
     appState: widget.appState,
   );
   bool _isUnifiedInbox = false;
+  bool _startupApplied = false;
   bool _isRefreshing = false;
   bool _compactRailOpen = false;
   bool _compactRailExpanded = false;
@@ -191,6 +194,17 @@ class _HomeScreenState extends State<HomeScreen> {
         _threadPanelFraction = settings.threadPanelFraction;
         _sidebarCollapsed = settings.sidebarCollapsed;
       });
+    }
+    if (!_startupApplied && widget.appState.hasAccounts) {
+      _startupApplied = true;
+      final startupId = settings.startupAccountId;
+      if (startupId == 'unified') {
+        _enableUnifiedInbox();
+      } else if (startupId != null) {
+        final idx = widget.appState.accounts
+            .indexWhere((a) => a.id == startupId);
+        if (idx != -1) widget.appState.selectAccount(idx);
+      }
     }
   }
 
@@ -311,16 +325,12 @@ class _HomeScreenState extends State<HomeScreen> {
     provider.selectFolder(kOutboxFolderPath);
   }
 
-  String? _folderPathForIndex(List<FolderSection> sections, int index) {
-    for (final section in sections) {
-      for (final item in section.items) {
-        if (item.index == index) {
-          return item.path;
-        }
-      }
-    }
-    return null;
-  }
+  // Delegate to the shared home_utils helpers.
+  String? _folderPathForIndex(List<FolderSection> sections, int index) =>
+      folderPathForIndex(sections, index);
+
+  int? _folderIndexForPath(List<FolderSection> sections, String path) =>
+      folderIndexForPath(sections, path);
 
   String _currentUserEmailForThread(
     EmailThread? thread,
@@ -330,17 +340,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return fallback.email;
     }
     return _unifiedProvider.accountEmailForThread(thread.id) ?? fallback.email;
-  }
-
-  int? _folderIndexForPath(List<FolderSection> sections, String path) {
-    for (final section in sections) {
-      for (final item in section.items) {
-        if (item.path == path) {
-          return item.index;
-        }
-      }
-    }
-    return null;
   }
 
   bool _isTextInputFocused() {
@@ -393,12 +392,6 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  String _subjectLabel(String subject, {int maxLen = 30}) {
-    final s = subject.trim();
-    if (s.isEmpty) return '"(No subject)"';
-    return s.length <= maxLen ? '"$s"' : '"${s.substring(0, maxLen)}…"';
   }
 
   Future<void> _runRefresh(EmailProvider provider) async {
@@ -520,6 +513,26 @@ class _HomeScreenState extends State<HomeScreen> {
     _threadDetailFocusNode.requestFocus();
   }
 
+  /// Common handler for tapping / keyboard-selecting a thread in either layout.
+  void _handleThreadSelected(EmailProvider listProvider, int index) {
+    final threads = listProvider.threads;
+    final safeIndex = threads.isEmpty ? 0 : index.clamp(0, threads.length - 1);
+    final thread = threads.isEmpty ? null : threads[safeIndex];
+    setState(() {
+      _selectedThreadIndex = index;
+      _threadPanelOpen = true;
+      _showSettings = false;
+      if (thread != null) {
+        final messages = listProvider.messagesForThread(thread.id);
+        if (messages.isNotEmpty) {
+          _messageSelectionByThread[thread.id] = messages.length - 1;
+        }
+      }
+    });
+    _syncAccentWithSelection(listProvider);
+    _threadListFocusNode.requestFocus();
+  }
+
   void _navigateMessageSelection(EmailProvider provider, int delta) {
     final thread = _currentThread(provider);
     if (thread == null) {
@@ -586,8 +599,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     final currentUserEmail = _currentUserEmailForThread(thread, account);
-    final isCompact = MediaQuery.of(context).size.width < 720;
-    if (isCompact) {
+    if (context.isCompact) {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => ThreadScreen(
@@ -620,7 +632,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _toast('No thread selected.');
       return;
     }
-    final isWide = MediaQuery.of(context).size.width >= _wideLayoutBreakpoint;
+    final isWide = MediaQuery.sizeOf(context).width >= kWideSidebarBreakpoint;
     final detailOpen = isWide && _threadPanelOpen && !_showSettings;
     if (!detailOpen) {
       await _openReplyFromList(provider, account, thread, mode);
@@ -662,23 +674,13 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case ReplyMode.reply:
         // Prefer Reply-To header over From — RFC 5322 §3.6.2.
-        final replyToAddresses = latest?.replyTo ?? const [];
-        final effectiveSender = replyToAddresses.isNotEmpty
-            ? replyToAddresses.first
-            : latest?.from;
-        if (effectiveSender != null &&
-            effectiveSender.email != currentUserEmail) {
-          to = effectiveSender.email;
-        } else if (thread.participants.isNotEmpty) {
-          to = thread.participants
-              .firstWhere(
-                (participant) => participant.email != currentUserEmail,
-                orElse: () => effectiveSender ?? thread.participants.first,
-              )
-              .email;
-        } else {
-          to = '';
-        }
+        final replyAddress = effectiveReplyTo(
+          replyToAddresses: latest?.replyTo ?? const [],
+          from: latest?.from,
+          participants: thread.participants,
+          currentUserEmail: currentUserEmail,
+        );
+        to = replyAddress?.email ?? '';
         break;
     }
     final quoted = buildQuotedContent(
@@ -710,7 +712,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     _advanceAfterRemoval(provider);
-    _toast('Archived ${_subjectLabel(thread.subject)}');
+    _toast('Archived ${subjectLabel(thread.subject)}');
   }
 
   Future<void> _moveSelectedThreadToFolder(
@@ -756,7 +758,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     _advanceAfterRemoval(provider);
-    _toast('Moved ${_subjectLabel(thread.subject)}');
+    _toast('Moved ${subjectLabel(thread.subject)}');
   }
 
   Future<void> _showCommandPalette(
@@ -878,6 +880,25 @@ class _HomeScreenState extends State<HomeScreen> {
     final entries = <GoToEntry>[];
     final accounts = widget.appState.accounts;
     final currentAccountId = widget.appState.selectedAccount?.id;
+    // Only treat entries as priority when in single-account view (not unified).
+    final inSingleAccountView = currentAccountId != null &&
+        widget.appState.selectedAccount != null &&
+        widget.appState.currentProvider is! UnifiedEmailProvider;
+
+    // Add "Unified Inbox" entry when showing all accounts and there are
+    // multiple accounts to merge.
+    if (!currentAccountOnly && accounts.length > 1) {
+      entries.add(
+        GoToEntry(
+          title: 'Unified Inbox',
+          subtitle: '${accounts.length} accounts',
+          accentColor: widget.accent,
+          isPriority: _isUnifiedInbox, // sort to top when already in unified
+          onSelected: _enableUnifiedInbox,
+        ),
+      );
+    }
+
     for (var index = 0; index < accounts.length; index++) {
       final account = accounts[index];
       if (currentAccountOnly && account.id != currentAccountId) {
@@ -890,12 +911,18 @@ class _HomeScreenState extends State<HomeScreen> {
       if (provider.status == ProviderStatus.idle) {
         await provider.initialize();
       }
+      final accountAccent = account.accentColorValue != null
+          ? Color(account.accentColorValue!)
+          : accentFromAccount(account.id);
+      final isCurrentAccount = account.id == currentAccountId;
       for (final section in provider.folderSections) {
         for (final item in section.items) {
           entries.add(
             GoToEntry(
               title: item.name,
               subtitle: '${account.displayName} · ${account.email}',
+              accentColor: accountAccent,
+              isPriority: inSingleAccountView && isCurrentAccount,
               onSelected: () async {
                 await widget.appState.selectAccount(index);
                 final nextProvider = widget.appState.currentProvider;
@@ -967,7 +994,7 @@ class _HomeScreenState extends State<HomeScreen> {
         await _inlineReplyController.send();
         break;
       case ShortcutAction.toggleSidebar:
-        if (MediaQuery.of(context).size.width < _wideLayoutBreakpoint) {
+        if (MediaQuery.sizeOf(context).width < kWideSidebarBreakpoint) {
           return;
         }
         setState(() {
@@ -1047,7 +1074,7 @@ class _HomeScreenState extends State<HomeScreen> {
               autofocus: true,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= _wideLayoutBreakpoint;
+                  final isWide = constraints.maxWidth >= kWideSidebarBreakpoint;
                   final showSettings = _showSettings;
                   final effectiveFolderIndex =
                       _folderIndexForPath(
@@ -1103,7 +1130,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                     bottomNavigationBar: null,
                     body: TidingsBackground(
-                      accent: widget.accent,
                       child: SafeArea(
                         bottom: false,
                         child: isWide
@@ -1111,32 +1137,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 appState: widget.appState,
                                 account: account,
                                 accent: widget.accent,
+                                isUnified: _isUnifiedInbox,
                                 provider: listProvider,
                                 selectedThreadIndex: _selectedThreadIndex,
-                                onThreadSelected: (index) {
-                                  final threads = listProvider.threads;
-                                  final safeIndex = threads.isEmpty
-                                      ? 0
-                                      : index.clamp(0, threads.length - 1);
-                                  final thread = threads.isEmpty
-                                      ? null
-                                      : threads[safeIndex];
-                                  setState(() {
-                                    _selectedThreadIndex = index;
-                                    _threadPanelOpen = true;
-                                    _showSettings = false;
-                                    if (thread != null) {
-                                      final messages = listProvider
-                                          .messagesForThread(thread.id);
-                                      if (messages.isNotEmpty) {
-                                        _messageSelectionByThread[thread.id] =
-                                            messages.length - 1;
-                                      }
-                                    }
-                                  });
-                                  _syncAccentWithSelection(listProvider);
-                                  _threadListFocusNode.requestFocus();
-                                },
+                                onThreadSelected: (index) =>
+                                    _handleThreadSelected(listProvider, index),
                                 selectedFolderIndex: effectiveFolderIndex,
                                 onFolderSelected: (index) =>
                                     _handleFolderSelected(listProvider, index),
@@ -1232,32 +1237,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             : CompactLayout(
                                 account: account,
                                 accent: widget.accent,
+                                isUnified: _isUnifiedInbox,
                                 provider: listProvider,
                                 selectedThreadIndex: _selectedThreadIndex,
-                                onThreadSelected: (index) {
-                                  final threads = listProvider.threads;
-                                  final safeIndex = threads.isEmpty
-                                      ? 0
-                                      : index.clamp(0, threads.length - 1);
-                                  final thread = threads.isEmpty
-                                      ? null
-                                      : threads[safeIndex];
-                                  setState(() {
-                                    _selectedThreadIndex = index;
-                                    _threadPanelOpen = true;
-                                    _showSettings = false;
-                                    if (thread != null) {
-                                      final messages = listProvider
-                                          .messagesForThread(thread.id);
-                                      if (messages.isNotEmpty) {
-                                        _messageSelectionByThread[thread.id] =
-                                            messages.length - 1;
-                                      }
-                                    }
-                                  });
-                                  _syncAccentWithSelection(listProvider);
-                                  _threadListFocusNode.requestFocus();
-                                },
+                                onThreadSelected: (index) =>
+                                    _handleThreadSelected(listProvider, index),
                                 selectedFolderIndex: effectiveFolderIndex,
                                 onFolderSelected: (index) {
                                   _handleFolderSelected(listProvider, index);
@@ -1316,6 +1300,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 listCurrentUserEmail: listCurrentUserEmail,
                                 currentUserEmailForThread: (thread) =>
                                     _currentUserEmailForThread(thread, account),
+                                accountCount: widget.appState.accounts.length,
                               ),
                       ),
                     ),

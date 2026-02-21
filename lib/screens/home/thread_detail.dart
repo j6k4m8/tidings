@@ -11,6 +11,7 @@ import '../../state/shortcut_definitions.dart';
 import '../../state/send_queue.dart';
 import '../../state/tidings_settings.dart';
 import '../../utils/email_time.dart';
+import '../../utils/subject_utils.dart';
 import '../../theme/color_tokens.dart';
 import '../../widgets/key_hint.dart';
 import '../../widgets/tidings_background.dart';
@@ -193,12 +194,6 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  String _subjectLabel(String subject, {int maxLen = 30}) {
-    final s = subject.trim();
-    if (s.isEmpty) return '"(No subject)"';
-    return s.length <= maxLen ? '"$s"' : '"${s.substring(0, maxLen)}…"';
-  }
-
   Future<void> _toggleThreadRead() async {
     final messages = widget.provider.messagesForThread(widget.thread.id);
     final hasUnreadMessage = messages.any((message) => message.isUnread);
@@ -337,7 +332,7 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
       _toast('Move failed: $error');
       return;
     }
-    _toast('Moved ${_subjectLabel(widget.thread.subject)}');
+    _toast('Moved ${subjectLabel(widget.thread.subject)}');
   }
 
   @override
@@ -657,10 +652,12 @@ class MessageCard extends StatelessWidget {
     return clampedLines * fontSize * 1.45;
   }
 
-  Widget _buildShowMoreButton(BuildContext context) {
-    return Positioned(
-      right: 0,
-      bottom: 0,
+  Widget _buildToggleButton(BuildContext context, {required bool expand}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final label = expand ? 'Show more' : 'Show less';
+    final icon = expand ? Icons.expand_more_rounded : Icons.expand_less_rounded;
+    return Padding(
+      padding: EdgeInsets.only(top: context.space(6)),
       child: GestureDetector(
         onTap: onToggleExpanded,
         child: Container(
@@ -669,21 +666,17 @@ class MessageCard extends StatelessWidget {
             vertical: context.space(4),
           ),
           decoration: BoxDecoration(
-            color: ColorTokens.cardFill(context, 0.12),
+            color: ColorTokens.cardFill(context, isDark ? 0.18 : 0.1),
             borderRadius: BorderRadius.circular(context.radius(999)),
-            border: Border.all(color: ColorTokens.border(context, 0.12)),
+            border: Border.all(color: ColorTokens.border(context, 0.14)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.expand_more_rounded,
-                size: 14,
-                color: accent.withValues(alpha: 0.9),
-              ),
+              Icon(icon, size: 14, color: accent.withValues(alpha: 0.9)),
               SizedBox(width: context.space(4)),
               Text(
-                'Show more',
+                label,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: accent.withValues(alpha: 0.9),
                   fontWeight: FontWeight.w600,
@@ -807,6 +800,59 @@ class MessageCard extends StatelessWidget {
     value = value.replaceAll(
       RegExp(r"\s+on\w+\s*=\s*'[^']*'", caseSensitive: false),
       '',
+    );
+
+    // Strip inline width/height from <img> tags.
+    //
+    // flutter_widget_from_html wraps images that have both a width and height
+    // attribute in a RenderAspectRatio widget. When those images appear inside
+    // a <table>, the table's multi-pass dry-layout algorithm asks each cell for
+    // its dry size, which in turn calls RenderAspectRatio.computeDryLayout —
+    // and that method illegally accesses RenderBox.size, triggering a Flutter
+    // assertion. Removing explicit dimensions prevents the AspectRatio wrapper
+    // from being created; the image will still honour max-width:100% applied
+    // by the customStylesBuilder below and will render at its natural size or
+    // fill the available width.
+    value = value.replaceAllMapped(
+      RegExp(
+        r'(<img\b[^>]*?)\s+width\s*=\s*"[^"]*"',
+        caseSensitive: false,
+      ),
+      (m) => m.group(1)!,
+    );
+    value = value.replaceAllMapped(
+      RegExp(
+        r'(<img\b[^>]*?)\s+height\s*=\s*"[^"]*"',
+        caseSensitive: false,
+      ),
+      (m) => m.group(1)!,
+    );
+    // Also strip width/height from inline style on <img>.
+    value = value.replaceAllMapped(
+      RegExp(
+        r'(<img\b[^>]*?style\s*=\s*")[^"]*"',
+        caseSensitive: false,
+      ),
+      (m) {
+        final tag = m.group(1)!;
+        // Remove width and height declarations from the style value.
+        // We rebuild only the parts we want to keep.
+        final styleAttr = m.group(0)!.substring(tag.length);
+        // styleAttr is currently like: `...style="width:100px; height:50px"`,
+        // but we matched starting after the opening quote so it looks like
+        // `width:100px; height:50px"`.  Strip the closing quote we included.
+        final rawStyle = styleAttr.endsWith('"')
+            ? styleAttr.substring(0, styleAttr.length - 1)
+            : styleAttr;
+        final cleaned = rawStyle
+            .split(';')
+            .where((part) {
+              final p = part.trim().toLowerCase();
+              return !p.startsWith('width') && !p.startsWith('height');
+            })
+            .join(';');
+        return '$tag$cleaned"';
+      },
     );
 
     return value.trim();
@@ -1033,6 +1079,9 @@ class MessageCard extends StatelessWidget {
                                 return true;
                               },
                               customStylesBuilder: (element) {
+                                final isDark =
+                                    Theme.of(context).brightness ==
+                                    Brightness.dark;
                                 switch (element.localName) {
                                   case 'a':
                                     return {'color': '#1a73e8'};
@@ -1050,6 +1099,17 @@ class MessageCard extends StatelessWidget {
                                     return {
                                       'font-family':
                                           'SF Mono, Menlo, monospace',
+                                    };
+                                  case 'blockquote':
+                                    // Clear any browser-default margin/border,
+                                    // then add a clear left rule + indent.
+                                    return {
+                                      'margin': '4px 0',
+                                      'padding': '0 0 0 12px',
+                                      'border-left':
+                                          '3px solid ${isDark ? '#ffffff33' : '#00000033'}',
+                                      'color':
+                                          isDark ? '#ffffffaa' : '#00000099',
                                     };
                                 }
                                 return null;
@@ -1089,17 +1149,28 @@ class MessageCard extends StatelessWidget {
                           child: contentWidget,
                         );
 
+                        // Long message, expanded → show full content + "Show less" below.
                         if (!shouldClamp) {
-                          return content;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              content,
+                              if (_isLongBody(bodyText, collapseMode, maxLines))
+                                _buildToggleButton(context, expand: false),
+                            ],
+                          );
                         }
 
-                        // Compute collapsed height based on mode
+                        // Long message, collapsed → clip to computed height.
+                        // The fade gradient is overlaid on the clip via a Stack,
+                        // and the "Show more" button lives *below* the clip in a
+                        // Column so it never overlaps readable text.
                         final collapsedHeight =
                             collapseMode == MessageCollapseMode.beforeQuotes
                             ? _collapsedHeightForQuotes(context, bodyText)
                             : _collapsedHeight(context, maxLines);
 
-                        return Stack(
+                        final clippedContent = Stack(
                           children: [
                             ClipRRect(
                               borderRadius:
@@ -1115,7 +1186,38 @@ class MessageCard extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            _buildShowMoreButton(context),
+                            // Gradient fade over the bottom ~36px of the clip —
+                            // purely decorative, indicates more content below.
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              height: 36,
+                              child: IgnorePointer(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        Theme.of(context).colorScheme.surface
+                                            .withValues(alpha: 0),
+                                        Theme.of(context).colorScheme.surface
+                                            .withValues(alpha: 1),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            clippedContent,
+                            _buildToggleButton(context, expand: true),
                           ],
                         );
                       },
@@ -1431,7 +1533,6 @@ class _ThreadScreenState extends State<ThreadScreen> {
                     isDark ? Brightness.dark : Brightness.light,
               ),
               child: TidingsBackground(
-                accent: widget.accent,
                 child: SafeArea(
                   top: false,
                   child: Padding(

@@ -27,6 +27,7 @@ class TidingsSettings extends ChangeNotifier {
   bool _showMessageFolderSource = false;
   DateOrder _dateOrder = DateOrder.mdy;
   bool _use24HourTime = false;
+  String? _startupAccountId; // null = last used, 'unified' = unified inbox, else account id
   final Set<String> _pinnedFolderPaths = {};
   final Map<ShortcutAction, KeyboardShortcut> _shortcutPrimary = {};
   final Map<ShortcutAction, KeyboardShortcut?> _shortcutSecondary = {};
@@ -51,6 +52,7 @@ class TidingsSettings extends ChangeNotifier {
   bool get showMessageFolderSource => _showMessageFolderSource;
   DateOrder get dateOrder => _dateOrder;
   bool get use24HourTime => _use24HourTime;
+  String? get startupAccountId => _startupAccountId;
   Set<String> get pinnedFolderPaths => Set.unmodifiable(_pinnedFolderPaths);
 
   double get densityScale => _layoutDensity.scale;
@@ -148,6 +150,7 @@ class TidingsSettings extends ChangeNotifier {
     );
     _dateOrder = _dateOrderFromStorage(settings['dateOrder']);
     _use24HourTime = _boolFromStorage(settings['use24HourTime'], _use24HourTime);
+    _startupAccountId = settings['startupAccountId'] as String?;
     _pinnedFolderPaths
       ..clear()
       ..addAll(_stringListFromStorage(settings['pinnedFolderPaths']));
@@ -232,6 +235,7 @@ class TidingsSettings extends ChangeNotifier {
       'showMessageFolderSource': _showMessageFolderSource,
       'dateOrder': _dateOrder.name,
       'use24HourTime': _use24HourTime,
+      'startupAccountId': _startupAccountId,
       'pinnedFolderPaths': pinned,
       'shortcuts': {
         'primary': primary,
@@ -524,6 +528,13 @@ class TidingsSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setStartupAccountId(String? value) {
+    if (_startupAccountId == value) return;
+    _startupAccountId = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
   bool isFolderPinned(String path) {
     return _pinnedFolderPaths.contains(path);
   }
@@ -626,7 +637,18 @@ extension TidingsSettingsContext on BuildContext {
   double gutter(double value) => value * tidingsSettings.densityScale;
 
   double radius(double value) => value * tidingsSettings.cornerRadiusScale;
+
+  /// Whether the viewport is narrow enough to use compact (mobile-style) UI.
+  /// Below this threshold, sheets/dialogs switch to bottom-sheet presentation.
+  bool get isCompact => MediaQuery.sizeOf(this).width < kCompactBreakpoint;
 }
+
+/// Viewport-width below which the UI switches to compact (mobile) presentation.
+/// Sheets and dialogs become bottom sheets; the thread panel is full-screen.
+const double kCompactBreakpoint = 720.0;
+
+/// Viewport-width below which the wide sidebar layout collapses.
+const double kWideSidebarBreakpoint = 500.0;
 
 enum DateOrder {
   mdy,

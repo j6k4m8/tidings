@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -99,7 +100,7 @@ class RecipientFieldState extends State<RecipientField> {
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
         .toList();
-    if (!_listsEqual(parts, _chips)) {
+    if (!listEquals(parts, _chips)) {
       setState(() {
         _chips
           ..clear()
@@ -340,10 +341,3 @@ class _Chip extends StatelessWidget {
   }
 }
 
-bool _listsEqual(List<String> a, List<String> b) {
-  if (a.length != b.length) return false;
-  for (int i = 0; i < a.length; i++) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
-}

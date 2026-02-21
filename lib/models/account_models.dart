@@ -20,7 +20,7 @@ class ImapAccountConfig {
     required this.smtpPassword,
     required this.smtpUseTls,
     required this.smtpUseImapCredentials,
-    this.crossFolderThreadingEnabled = false,
+    this.crossFolderThreadingEnabled = true,
     this.checkMailIntervalMinutes = 5,
   });
 
@@ -107,7 +107,7 @@ class ImapAccountConfig {
       smtpUseTls: json['smtpUseTls'] as bool? ?? true,
       smtpUseImapCredentials: smtpUseImapCredentials,
       crossFolderThreadingEnabled:
-          json['crossFolderThreadingEnabled'] as bool? ?? false,
+          json['crossFolderThreadingEnabled'] as bool? ?? true,
       checkMailIntervalMinutes:
           (json['checkMailIntervalMinutes'] as num?)?.toInt() ?? 5,
     );
@@ -121,20 +121,44 @@ class ImapAccountConfig {
 class GmailAccountConfig {
   const GmailAccountConfig({
     required this.email,
+    this.checkMailIntervalMinutes = 5,
+    this.crossFolderThreadingEnabled = true,
   });
 
   /// The Google account email, used to disambiguate when multiple Google
   /// accounts are signed in via the platform SDK.
   final String email;
+  final int checkMailIntervalMinutes;
+  final bool crossFolderThreadingEnabled;
 
-  GmailAccountConfig copyWith({String? email}) {
-    return GmailAccountConfig(email: email ?? this.email);
+  GmailAccountConfig copyWith({
+    String? email,
+    int? checkMailIntervalMinutes,
+    bool? crossFolderThreadingEnabled,
+  }) {
+    return GmailAccountConfig(
+      email: email ?? this.email,
+      checkMailIntervalMinutes:
+          checkMailIntervalMinutes ?? this.checkMailIntervalMinutes,
+      crossFolderThreadingEnabled:
+          crossFolderThreadingEnabled ?? this.crossFolderThreadingEnabled,
+    );
   }
 
-  Map<String, Object?> toStorageJson() => {'email': email};
+  Map<String, Object?> toStorageJson() => {
+        'email': email,
+        'checkMailIntervalMinutes': checkMailIntervalMinutes,
+        'crossFolderThreadingEnabled': crossFolderThreadingEnabled,
+      };
 
   static GmailAccountConfig fromStorageJson(Map<String, Object?> json) {
-    return GmailAccountConfig(email: json['email'] as String? ?? '');
+    return GmailAccountConfig(
+      email: json['email'] as String? ?? '',
+      checkMailIntervalMinutes:
+          (json['checkMailIntervalMinutes'] as num?)?.toInt() ?? 5,
+      crossFolderThreadingEnabled:
+          json['crossFolderThreadingEnabled'] as bool? ?? true,
+    );
   }
 }
 

@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/color_tokens.dart';
 import '../../../theme/glass.dart';
-import 'refresh_button.dart';
+import '../../../widgets/outbox_button.dart';
 import '../../../state/tidings_settings.dart';
+import 'refresh_button.dart';
 
 class HomeTopBar extends StatelessWidget {
   const HomeTopBar({
@@ -109,7 +110,7 @@ class HomeTopBar extends StatelessWidget {
                   ),
                 ),
                 SizedBox(width: context.space(12)),
-                _OutboxButton(
+                OutboxButton(
                   count: outboxCount,
                   accent: accent,
                   selected: outboxSelected,
@@ -133,52 +134,3 @@ class HomeTopBar extends StatelessWidget {
   }
 }
 
-class _OutboxButton extends StatelessWidget {
-  const _OutboxButton({
-    required this.count,
-    required this.accent,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final int count;
-  final Color accent;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = count > 99 ? '99+' : count.toString();
-    final badgeVisible = count > 0;
-    final iconColor = selected ? accent.withValues(alpha: 0.9) : null;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        IconButton(
-          tooltip: badgeVisible ? 'Outbox ($label)' : 'Outbox',
-          onPressed: onTap,
-          icon: Icon(Icons.outbox_rounded, color: iconColor),
-        ),
-        if (badgeVisible)
-          Positioned(
-            right: 6,
-            top: 6,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              decoration: BoxDecoration(
-                color: accent,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}

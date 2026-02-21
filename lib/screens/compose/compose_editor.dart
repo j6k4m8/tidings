@@ -145,14 +145,19 @@ class _ComposeEditorState extends State<ComposeEditor> {
     );
   }
 
+  /// Resolves a focus node, taking ownership when [external] is null.
+  FocusNode _adoptFocusNode(FocusNode? external, String debugLabel) {
+    return external ?? FocusNode(debugLabel: debugLabel);
+  }
+
   @override
   void initState() {
     super.initState();
-    _toFocusNode = widget.toFocusNode ?? FocusNode();
-    _subjectFocusNode = widget.subjectFocusNode ?? FocusNode();
-    _editorFocusNode = widget.editorFocusNode ?? FocusNode();
+    _toFocusNode = _adoptFocusNode(widget.toFocusNode, 'ComposeTo');
     _ownsToFocusNode = widget.toFocusNode == null;
+    _subjectFocusNode = _adoptFocusNode(widget.subjectFocusNode, 'ComposeSubject');
     _ownsSubjectFocusNode = widget.subjectFocusNode == null;
+    _editorFocusNode = _adoptFocusNode(widget.editorFocusNode, 'ComposeEditor');
     _ownsEditorFocusNode = widget.editorFocusNode == null;
     _showQuoted = widget.showQuotedInitially;
     // Show Cc/Bcc if already populated (e.g. restored draft or reply-all).
@@ -166,35 +171,42 @@ class _ComposeEditorState extends State<ComposeEditor> {
     _bccFocusNode.addListener(_onBccFocusChanged);
   }
 
-  void _onCcChanged() {
-    if (widget.ccController.text.isNotEmpty && !_showCc) {
-      setState(() => _showCc = true);
+  void _onControllerChanged(
+    TextEditingController ctrl,
+    bool showing,
+    void Function(bool) setShow,
+  ) {
+    if (ctrl.text.isNotEmpty && !showing) setShow(true);
+  }
+
+  void _onCcChanged() =>
+      _onControllerChanged(widget.ccController, _showCc, (v) => setState(() => _showCc = v));
+
+  void _onBccChanged() =>
+      _onControllerChanged(widget.bccController, _showBcc, (v) => setState(() => _showBcc = v));
+
+  void _onFieldFocusChanged(
+    FocusNode node,
+    TextEditingController ctrl,
+    bool showing,
+    void Function(bool) setShow,
+  ) {
+    if (node.hasFocus && !showing) {
+      setShow(true);
+    } else if (!node.hasFocus && showing && ctrl.text.isEmpty) {
+      setShow(false);
     }
   }
 
-  void _onBccChanged() {
-    if (widget.bccController.text.isNotEmpty && !_showBcc) {
-      setState(() => _showBcc = true);
-    }
-  }
+  void _onCcFocusChanged() => _onFieldFocusChanged(
+        _ccFocusNode, widget.ccController, _showCc,
+        (v) => setState(() => _showCc = v),
+      );
 
-  void _onCcFocusChanged() {
-    if (_ccFocusNode.hasFocus && !_showCc) {
-      setState(() => _showCc = true);
-    } else if (!_ccFocusNode.hasFocus && _showCc &&
-        widget.ccController.text.isEmpty) {
-      setState(() => _showCc = false);
-    }
-  }
-
-  void _onBccFocusChanged() {
-    if (_bccFocusNode.hasFocus && !_showBcc) {
-      setState(() => _showBcc = true);
-    } else if (!_bccFocusNode.hasFocus && _showBcc &&
-        widget.bccController.text.isEmpty) {
-      setState(() => _showBcc = false);
-    }
-  }
+  void _onBccFocusChanged() => _onFieldFocusChanged(
+        _bccFocusNode, widget.bccController, _showBcc,
+        (v) => setState(() => _showBcc = v),
+      );
 
   @override
   void didUpdateWidget(covariant ComposeEditor oldWidget) {
@@ -210,24 +222,18 @@ class _ComposeEditorState extends State<ComposeEditor> {
       if (widget.bccController.text.isNotEmpty) setState(() => _showBcc = true);
     }
     if (oldWidget.toFocusNode != widget.toFocusNode) {
-      if (_ownsToFocusNode) {
-        _toFocusNode.dispose();
-      }
-      _toFocusNode = widget.toFocusNode ?? FocusNode();
+      if (_ownsToFocusNode) _toFocusNode.dispose();
+      _toFocusNode = _adoptFocusNode(widget.toFocusNode, 'ComposeTo');
       _ownsToFocusNode = widget.toFocusNode == null;
     }
     if (oldWidget.subjectFocusNode != widget.subjectFocusNode) {
-      if (_ownsSubjectFocusNode) {
-        _subjectFocusNode.dispose();
-      }
-      _subjectFocusNode = widget.subjectFocusNode ?? FocusNode();
+      if (_ownsSubjectFocusNode) _subjectFocusNode.dispose();
+      _subjectFocusNode = _adoptFocusNode(widget.subjectFocusNode, 'ComposeSubject');
       _ownsSubjectFocusNode = widget.subjectFocusNode == null;
     }
     if (oldWidget.editorFocusNode != widget.editorFocusNode) {
-      if (_ownsEditorFocusNode) {
-        _editorFocusNode.dispose();
-      }
-      _editorFocusNode = widget.editorFocusNode ?? FocusNode();
+      if (_ownsEditorFocusNode) _editorFocusNode.dispose();
+      _editorFocusNode = _adoptFocusNode(widget.editorFocusNode, 'ComposeEditor');
       _ownsEditorFocusNode = widget.editorFocusNode == null;
     }
     if (oldWidget.quotedText != widget.quotedText) {
