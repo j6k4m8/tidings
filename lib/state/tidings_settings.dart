@@ -27,6 +27,7 @@ class TidingsSettings extends ChangeNotifier {
   bool _showMessageFolderSource = false;
   DateOrder _dateOrder = DateOrder.mdy;
   bool _use24HourTime = false;
+  String? _startupAccountId; // null = last used, 'unified' = unified inbox, else account id
   final Set<String> _pinnedFolderPaths = {};
   final Map<ShortcutAction, KeyboardShortcut> _shortcutPrimary = {};
   final Map<ShortcutAction, KeyboardShortcut?> _shortcutSecondary = {};
@@ -51,6 +52,7 @@ class TidingsSettings extends ChangeNotifier {
   bool get showMessageFolderSource => _showMessageFolderSource;
   DateOrder get dateOrder => _dateOrder;
   bool get use24HourTime => _use24HourTime;
+  String? get startupAccountId => _startupAccountId;
   Set<String> get pinnedFolderPaths => Set.unmodifiable(_pinnedFolderPaths);
 
   double get densityScale => _layoutDensity.scale;
@@ -148,6 +150,7 @@ class TidingsSettings extends ChangeNotifier {
     );
     _dateOrder = _dateOrderFromStorage(settings['dateOrder']);
     _use24HourTime = _boolFromStorage(settings['use24HourTime'], _use24HourTime);
+    _startupAccountId = settings['startupAccountId'] as String?;
     _pinnedFolderPaths
       ..clear()
       ..addAll(_stringListFromStorage(settings['pinnedFolderPaths']));
@@ -232,6 +235,7 @@ class TidingsSettings extends ChangeNotifier {
       'showMessageFolderSource': _showMessageFolderSource,
       'dateOrder': _dateOrder.name,
       'use24HourTime': _use24HourTime,
+      'startupAccountId': _startupAccountId,
       'pinnedFolderPaths': pinned,
       'shortcuts': {
         'primary': primary,
@@ -520,6 +524,13 @@ class TidingsSettings extends ChangeNotifier {
   void setUse24HourTime(bool value) {
     if (_use24HourTime == value) return;
     _use24HourTime = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setStartupAccountId(String? value) {
+    if (_startupAccountId == value) return;
+    _startupAccountId = value;
     unawaited(_persist());
     notifyListeners();
   }

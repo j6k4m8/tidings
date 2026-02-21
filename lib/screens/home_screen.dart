@@ -24,6 +24,7 @@ import '../utils/subject_utils.dart';
 import '../utils/reply_utils.dart';
 import 'home/thread_detail.dart';
 import 'keyboard/command_palette.dart';
+import '../theme/account_accent.dart';
 import 'keyboard/go_to_dialog.dart';
 import 'keyboard/move_to_folder_dialog.dart';
 import 'keyboard/shortcuts_sheet.dart';
@@ -79,6 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
     appState: widget.appState,
   );
   bool _isUnifiedInbox = false;
+  bool _startupApplied = false;
   bool _isRefreshing = false;
   bool _compactRailOpen = false;
   bool _compactRailExpanded = false;
@@ -192,6 +194,17 @@ class _HomeScreenState extends State<HomeScreen> {
         _threadPanelFraction = settings.threadPanelFraction;
         _sidebarCollapsed = settings.sidebarCollapsed;
       });
+    }
+    if (!_startupApplied && widget.appState.hasAccounts) {
+      _startupApplied = true;
+      final startupId = settings.startupAccountId;
+      if (startupId == 'unified') {
+        _enableUnifiedInbox();
+      } else if (startupId != null) {
+        final idx = widget.appState.accounts
+            .indexWhere((a) => a.id == startupId);
+        if (idx != -1) widget.appState.selectAccount(idx);
+      }
     }
   }
 
@@ -867,6 +880,25 @@ class _HomeScreenState extends State<HomeScreen> {
     final entries = <GoToEntry>[];
     final accounts = widget.appState.accounts;
     final currentAccountId = widget.appState.selectedAccount?.id;
+    // Only treat entries as priority when in single-account view (not unified).
+    final inSingleAccountView = currentAccountId != null &&
+        widget.appState.selectedAccount != null &&
+        widget.appState.currentProvider is! UnifiedEmailProvider;
+
+    // Add "Unified Inbox" entry when showing all accounts and there are
+    // multiple accounts to merge.
+    if (!currentAccountOnly && accounts.length > 1) {
+      entries.add(
+        GoToEntry(
+          title: 'Unified Inbox',
+          subtitle: '${accounts.length} accounts',
+          accentColor: widget.accent,
+          isPriority: _isUnifiedInbox, // sort to top when already in unified
+          onSelected: _enableUnifiedInbox,
+        ),
+      );
+    }
+
     for (var index = 0; index < accounts.length; index++) {
       final account = accounts[index];
       if (currentAccountOnly && account.id != currentAccountId) {
@@ -879,12 +911,18 @@ class _HomeScreenState extends State<HomeScreen> {
       if (provider.status == ProviderStatus.idle) {
         await provider.initialize();
       }
+      final accountAccent = account.accentColorValue != null
+          ? Color(account.accentColorValue!)
+          : accentFromAccount(account.id);
+      final isCurrentAccount = account.id == currentAccountId;
       for (final section in provider.folderSections) {
         for (final item in section.items) {
           entries.add(
             GoToEntry(
               title: item.name,
               subtitle: '${account.displayName} · ${account.email}',
+              accentColor: accountAccent,
+              isPriority: inSingleAccountView && isCurrentAccount,
               onSelected: () async {
                 await widget.appState.selectAccount(index);
                 final nextProvider = widget.appState.currentProvider;
@@ -1099,6 +1137,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 appState: widget.appState,
                                 account: account,
                                 accent: widget.accent,
+                                isUnified: _isUnifiedInbox,
                                 provider: listProvider,
                                 selectedThreadIndex: _selectedThreadIndex,
                                 onThreadSelected: (index) =>
@@ -1198,6 +1237,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             : CompactLayout(
                                 account: account,
                                 accent: widget.accent,
+                                isUnified: _isUnifiedInbox,
                                 provider: listProvider,
                                 selectedThreadIndex: _selectedThreadIndex,
                                 onThreadSelected: (index) =>
@@ -1260,6 +1300,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 listCurrentUserEmail: listCurrentUserEmail,
                                 currentUserEmailForThread: (thread) =>
                                     _currentUserEmailForThread(thread, account),
+                                accountCount: widget.appState.accounts.length,
                               ),
                       ),
                     ),

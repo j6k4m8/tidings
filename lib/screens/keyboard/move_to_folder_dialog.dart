@@ -126,10 +126,13 @@ class _MoveToFolderDialogState extends State<_MoveToFolderDialog> {
     if (_selectedIndex >= filtered.length) {
       _selectedIndex = 0;
     }
+    final n = filtered.length;
+    final countLabel = n == 1 ? '·  1 folder' : '·  $n folders';
 
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+      alignment: Alignment.topCenter,
       child: Focus(
         autofocus: true,
         onKeyEvent: (node, event) => handleListDialogKey(
@@ -163,7 +166,7 @@ class _MoveToFolderDialogState extends State<_MoveToFolderDialog> {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        '·  ${filtered.length}',
+                        countLabel,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: ColorTokens.textSecondary(context),
                             ),

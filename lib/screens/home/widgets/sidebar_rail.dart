@@ -48,10 +48,12 @@ class SidebarRail extends StatelessWidget {
     required this.onExpand,
     required this.onAccountTap,
     required this.onCompose,
+    this.isUnified = false,
   });
 
   final EmailAccount account;
   final Color accent;
+  final bool isUnified;
   final List<FolderItem> mailboxItems;
   final List<FolderItem> pinnedItems;
   final int selectedIndex;
@@ -82,11 +84,13 @@ class SidebarRail extends StatelessWidget {
       variant: GlassVariant.panel,
       child: Column(
         children: [
-          AccountAvatar(
-            name: account.displayName,
-            accent: accent,
-            onTap: onAccountTap,
-          ),
+          isUnified
+              ? _UnifiedAvatar(accent: accent, onTap: onAccountTap)
+              : AccountAvatar(
+                  name: account.displayName,
+                  accent: accent,
+                  onTap: onAccountTap,
+                ),
           SizedBox(height: context.space(16)),
           for (final item in items.take(6))
             _RailIconButton(
@@ -117,6 +121,34 @@ class SidebarRail extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Circular avatar shown in the rail when the Unified Inbox is active.
+/// Displays a stacked-layers icon tinted by the current accent.
+class _UnifiedAvatar extends StatelessWidget {
+  const _UnifiedAvatar({required this.accent, this.onTap});
+
+  final Color accent;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final avatar = CircleAvatar(
+      radius: context.space(18),
+      backgroundColor: accent.withValues(alpha: 0.2),
+      child: Icon(
+        Icons.layers_rounded,
+        size: context.space(18),
+        color: accent,
+      ),
+    );
+    if (onTap == null) return avatar;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Tooltip(message: 'Unified Inbox', child: avatar),
     );
   }
 }

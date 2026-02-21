@@ -98,6 +98,9 @@ class GmailEmailProvider extends EmailProvider {
   String _selectedLabelId = _kInbox;
   DateTime? _lastMutationAt;
   Timer? _refreshTimer;
+  int _checkMailIntervalMinutes = 5;
+  // ignore: unused_field
+  bool _crossFolderThreadingEnabled = false;
 
   // ---------------------------------------------------------------------------
   // EmailProvider interface — status & data
@@ -928,11 +931,25 @@ class GmailEmailProvider extends EmailProvider {
   // Internal — periodic refresh
   // ---------------------------------------------------------------------------
 
+  void updateInboxRefreshInterval(Duration interval) {
+    _checkMailIntervalMinutes = interval.inMinutes.clamp(1, 60);
+    _scheduleRefresh();
+  }
+
+  void updateCrossFolderThreading(bool enabled) {
+    _crossFolderThreadingEnabled = enabled;
+    // Gmail uses native conversation threading; this flag is stored but has no
+    // effect on the Gmail API fetch logic.
+  }
+
   void _scheduleRefresh() {
     _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(const Duration(minutes: 5), (_) {
-      _startLabelLoad(_selectedLabelId, showErrors: false);
-    });
+    _refreshTimer = Timer.periodic(
+      Duration(minutes: _checkMailIntervalMinutes),
+      (_) {
+        _startLabelLoad(_selectedLabelId, showErrors: false);
+      },
+    );
   }
 
   // ---------------------------------------------------------------------------

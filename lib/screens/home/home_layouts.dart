@@ -63,12 +63,14 @@ class WideLayout extends StatelessWidget {
     required this.selectedMessageIndex,
     required this.onMessageSelected,
     this.onReplyFocusChange,
+    this.isUnified = false,
   });
 
   final AppState appState;
   final EmailAccount account;
   final Color accent;
   final EmailProvider provider;
+  final bool isUnified;
   final String listCurrentUserEmail;
   final String detailCurrentUserEmail;
   final int selectedThreadIndex;
@@ -155,6 +157,7 @@ class WideLayout extends StatelessWidget {
                             child: SidebarRail(
                               account: account,
                               accent: accent,
+                              isUnified: isUnified,
                               mailboxItems: mailboxItems(folderSections),
                               pinnedItems: pinnedFolderItems,
                               selectedIndex: selectedFolderIndex,
@@ -177,6 +180,8 @@ class WideLayout extends StatelessWidget {
                               onCollapse: onSidebarToggle,
                               onAccountTap: onAccountTap,
                               onCompose: onCompose,
+                              isUnified: isUnified,
+                              accountCount: appState.accounts.length,
                             ),
                           ),
                   ),
@@ -421,11 +426,15 @@ class CompactLayout extends StatelessWidget {
     required this.threadListFocusNode,
     required this.listCurrentUserEmail,
     required this.currentUserEmailForThread,
+    this.isUnified = false,
+    this.accountCount = 0,
   });
 
   final EmailAccount account;
   final Color accent;
   final EmailProvider provider;
+  final bool isUnified;
+  final int accountCount;
   final int selectedThreadIndex;
   final ValueChanged<int> onThreadSelected;
   final int selectedFolderIndex;
@@ -599,11 +608,14 @@ class CompactLayout extends StatelessWidget {
                             onCollapse: onRailCollapse,
                             onAccountTap: onAccountTap,
                             onCompose: onCompose,
+                            isUnified: isUnified,
+                            accountCount: accountCount,
                           )
                         : SidebarRail(
                             key: const ValueKey('compact-rail'),
                             account: account,
                             accent: accent,
+                            isUnified: isUnified,
                             mailboxItems: mailboxItems(provider.folderSections),
                             pinnedItems: pinnedFolderItems,
                             selectedIndex: selectedFolderIndex,

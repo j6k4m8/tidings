@@ -652,10 +652,12 @@ class MessageCard extends StatelessWidget {
     return clampedLines * fontSize * 1.45;
   }
 
-  Widget _buildShowMoreButton(BuildContext context) {
-    return Positioned(
-      right: 0,
-      bottom: 0,
+  Widget _buildToggleButton(BuildContext context, {required bool expand}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final label = expand ? 'Show more' : 'Show less';
+    final icon = expand ? Icons.expand_more_rounded : Icons.expand_less_rounded;
+    return Padding(
+      padding: EdgeInsets.only(top: context.space(6)),
       child: GestureDetector(
         onTap: onToggleExpanded,
         child: Container(
@@ -664,21 +666,17 @@ class MessageCard extends StatelessWidget {
             vertical: context.space(4),
           ),
           decoration: BoxDecoration(
-            color: ColorTokens.cardFill(context, 0.12),
+            color: ColorTokens.cardFill(context, isDark ? 0.18 : 0.1),
             borderRadius: BorderRadius.circular(context.radius(999)),
-            border: Border.all(color: ColorTokens.border(context, 0.12)),
+            border: Border.all(color: ColorTokens.border(context, 0.14)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.expand_more_rounded,
-                size: 14,
-                color: accent.withValues(alpha: 0.9),
-              ),
+              Icon(icon, size: 14, color: accent.withValues(alpha: 0.9)),
               SizedBox(width: context.space(4)),
               Text(
-                'Show more',
+                label,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: accent.withValues(alpha: 0.9),
                   fontWeight: FontWeight.w600,
@@ -1081,6 +1079,9 @@ class MessageCard extends StatelessWidget {
                                 return true;
                               },
                               customStylesBuilder: (element) {
+                                final isDark =
+                                    Theme.of(context).brightness ==
+                                    Brightness.dark;
                                 switch (element.localName) {
                                   case 'a':
                                     return {'color': '#1a73e8'};
@@ -1098,6 +1099,17 @@ class MessageCard extends StatelessWidget {
                                     return {
                                       'font-family':
                                           'SF Mono, Menlo, monospace',
+                                    };
+                                  case 'blockquote':
+                                    // Clear any browser-default margin/border,
+                                    // then add a clear left rule + indent.
+                                    return {
+                                      'margin': '4px 0',
+                                      'padding': '0 0 0 12px',
+                                      'border-left':
+                                          '3px solid ${isDark ? '#ffffff33' : '#00000033'}',
+                                      'color':
+                                          isDark ? '#ffffffaa' : '#00000099',
                                     };
                                 }
                                 return null;
@@ -1137,17 +1149,28 @@ class MessageCard extends StatelessWidget {
                           child: contentWidget,
                         );
 
+                        // Long message, expanded → show full content + "Show less" below.
                         if (!shouldClamp) {
-                          return content;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              content,
+                              if (_isLongBody(bodyText, collapseMode, maxLines))
+                                _buildToggleButton(context, expand: false),
+                            ],
+                          );
                         }
 
-                        // Compute collapsed height based on mode
+                        // Long message, collapsed → clip to computed height.
+                        // The fade gradient is overlaid on the clip via a Stack,
+                        // and the "Show more" button lives *below* the clip in a
+                        // Column so it never overlaps readable text.
                         final collapsedHeight =
                             collapseMode == MessageCollapseMode.beforeQuotes
                             ? _collapsedHeightForQuotes(context, bodyText)
                             : _collapsedHeight(context, maxLines);
 
-                        return Stack(
+                        final clippedContent = Stack(
                           children: [
                             ClipRRect(
                               borderRadius:
@@ -1163,7 +1186,38 @@ class MessageCard extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            _buildShowMoreButton(context),
+                            // Gradient fade over the bottom ~36px of the clip —
+                            // purely decorative, indicates more content below.
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              height: 36,
+                              child: IgnorePointer(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        Theme.of(context).colorScheme.surface
+                                            .withValues(alpha: 0),
+                                        Theme.of(context).colorScheme.surface
+                                            .withValues(alpha: 1),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            clippedContent,
+                            _buildToggleButton(context, expand: true),
                           ],
                         );
                       },
