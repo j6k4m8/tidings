@@ -346,17 +346,23 @@ class GmailEmailProvider extends EmailProvider {
   Future<String?> archiveThread(EmailThread thread) async {
     final api = _gmailApi;
     if (api == null) return 'Not connected.';
+    // Snapshot for rollback.
+    final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
+    final savedMessages = List<EmailMessage>.from(_messages[thread.id] ?? []);
+    // Optimistic remove — UI updates immediately.
+    _removeThreadFromCache(thread.id);
+    notifyListeners();
     try {
       final messageIds = _allMessageIdsForThread(thread.id);
-      final req = gmail.ModifyMessageRequest()
-        ..removeLabelIds = [_kInbox];
+      final req = gmail.ModifyMessageRequest()..removeLabelIds = [_kInbox];
       for (final msgId in messageIds) {
         await api.users.messages.modify(req, 'me', msgId);
       }
-      _removeThreadFromCache(thread.id);
-      notifyListeners();
       return null;
     } catch (e) {
+      // Server failed — roll back so the thread reappears.
+      _restoreThreadToCache(thread, savedMessages, threadIndex);
+      notifyListeners();
       return e.toString();
     }
   }
@@ -369,6 +375,16 @@ class GmailEmailProvider extends EmailProvider {
   }) async {
     final api = _gmailApi;
     if (api == null) return 'Not connected.';
+    // Snapshot for rollback.
+    final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
+    final savedMessages = List<EmailMessage>.from(_messages[thread.id] ?? []);
+    // Optimistic remove.
+    if (singleMessage == null) {
+      _removeThreadFromCache(thread.id);
+    } else {
+      _removeSingleMessageFromCache(thread.id, singleMessage.id);
+    }
+    notifyListeners();
     try {
       final messageIds = singleMessage != null
           ? [singleMessage.id]
@@ -379,14 +395,11 @@ class GmailEmailProvider extends EmailProvider {
       for (final msgId in messageIds) {
         await api.users.messages.modify(req, 'me', msgId);
       }
-      if (singleMessage == null) {
-        _removeThreadFromCache(thread.id);
-      } else {
-        _removeSingleMessageFromCache(thread.id, singleMessage.id);
-      }
-      notifyListeners();
       return null;
     } catch (e) {
+      // Server failed — roll back.
+      _restoreThreadToCache(thread, savedMessages, threadIndex);
+      notifyListeners();
       return e.toString();
     }
   }
@@ -781,6 +794,23 @@ class GmailEmailProvider extends EmailProvider {
     _lastMutationAt = DateTime.now();
     _threads.removeWhere((t) => t.id == threadId);
     _messages.remove(threadId);
+    _patchLabelCache(_selectedLabelId);
+  }
+
+  /// Re-inserts a thread and its messages after a failed optimistic remove.
+  /// Restores to [index] if valid, otherwise appends.
+  void _restoreThreadToCache(
+    EmailThread thread,
+    List<EmailMessage> messages,
+    int index,
+  ) {
+    if (!_threads.any((t) => t.id == thread.id)) {
+      final insertAt = index.clamp(0, _threads.length);
+      _threads.insert(insertAt, thread);
+    }
+    if (messages.isNotEmpty) {
+      _messages[thread.id] = messages;
+    }
     _patchLabelCache(_selectedLabelId);
   }
 

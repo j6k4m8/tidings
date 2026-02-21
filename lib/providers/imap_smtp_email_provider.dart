@@ -492,34 +492,48 @@ class ImapSmtpEmailProvider extends EmailProvider {
     if (targetPath == null || targetPath.isEmpty) {
       return 'Archive folder not found.';
     }
-    final ids = messagesForThread(thread.id)
+    final allMessages = messagesForThread(thread.id);
+    final ids = allMessages
         .map((message) => int.tryParse(message.id))
         .whereType<int>()
         .toList();
     if (ids.isEmpty) {
       return 'No messages to archive.';
     }
-    await _ensureConnected();
-    final client = _client;
-    if (client == null) {
-      return 'IMAP client not connected.';
-    }
-    await client.selectMailboxByPath(_currentMailboxPath);
-    final sequence = MessageSequence.fromIds(ids, isUid: true);
-    if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
-      await client.uidMove(sequence, targetMailboxPath: targetPath);
-    } else {
-      await client.uidCopy(sequence, targetMailboxPath: targetPath);
-      await client.uidStore(
-        sequence,
-        [MessageFlags.deleted],
-        action: StoreAction.add,
-      );
-      await client.expunge();
-    }
+    // Snapshot for rollback.
+    final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
+    final savedMessages = List<EmailMessage>.from(allMessages);
+    // Optimistic remove — UI updates immediately.
     _removeThreadFromCache(thread.id);
     notifyListeners();
-    return null;
+    try {
+      await _ensureConnected();
+      final client = _client;
+      if (client == null) {
+        _restoreThreadToCache(thread, savedMessages, threadIndex);
+        notifyListeners();
+        return 'IMAP client not connected.';
+      }
+      await client.selectMailboxByPath(_currentMailboxPath);
+      final sequence = MessageSequence.fromIds(ids, isUid: true);
+      if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
+        await client.uidMove(sequence, targetMailboxPath: targetPath);
+      } else {
+        await client.uidCopy(sequence, targetMailboxPath: targetPath);
+        await client.uidStore(
+          sequence,
+          [MessageFlags.deleted],
+          action: StoreAction.add,
+        );
+        await client.expunge();
+      }
+      return null;
+    } catch (e) {
+      // Server failed — roll back so the thread reappears.
+      _restoreThreadToCache(thread, savedMessages, threadIndex);
+      notifyListeners();
+      return e.toString();
+    }
   }
 
   @override
@@ -537,31 +551,44 @@ class ImapSmtpEmailProvider extends EmailProvider {
     if (ids.isEmpty) {
       return 'No messages to move.';
     }
-    await _ensureConnected();
-    final client = _client;
-    if (client == null) {
-      return 'IMAP client not connected.';
-    }
-    await client.selectMailboxByPath(_currentMailboxPath);
-    final sequence = MessageSequence.fromIds(ids, isUid: true);
-    if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
-      await client.uidMove(sequence, targetMailboxPath: targetPath);
-    } else {
-      await client.uidCopy(sequence, targetMailboxPath: targetPath);
-      await client.uidStore(
-        sequence,
-        [MessageFlags.deleted],
-        action: StoreAction.add,
-      );
-      await client.expunge();
-    }
+    // Snapshot for rollback.
+    final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
+    final savedMessages = List<EmailMessage>.from(allMessages);
+    // Optimistic remove.
     if (singleMessage == null) {
       _removeThreadFromCache(thread.id);
     } else {
       _removeSingleMessageFromCache(thread.id, singleMessage.id);
     }
     notifyListeners();
-    return null;
+    try {
+      await _ensureConnected();
+      final client = _client;
+      if (client == null) {
+        _restoreThreadToCache(thread, savedMessages, threadIndex);
+        notifyListeners();
+        return 'IMAP client not connected.';
+      }
+      await client.selectMailboxByPath(_currentMailboxPath);
+      final sequence = MessageSequence.fromIds(ids, isUid: true);
+      if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
+        await client.uidMove(sequence, targetMailboxPath: targetPath);
+      } else {
+        await client.uidCopy(sequence, targetMailboxPath: targetPath);
+        await client.uidStore(
+          sequence,
+          [MessageFlags.deleted],
+          action: StoreAction.add,
+        );
+        await client.expunge();
+      }
+      return null;
+    } catch (e) {
+      // Server failed — roll back.
+      _restoreThreadToCache(thread, savedMessages, threadIndex);
+      notifyListeners();
+      return e.toString();
+    }
   }
 
   void _removeSingleMessageFromCache(String threadId, String messageId) {
@@ -661,6 +688,36 @@ class ImapSmtpEmailProvider extends EmailProvider {
       data: _MailboxData(threads: nextThreads, messages: nextMessages),
       fetchedAt: DateTime.now(),
     );
+  }
+
+  /// Re-inserts a thread and its messages after a failed optimistic remove.
+  void _restoreThreadToCache(
+    EmailThread thread,
+    List<EmailMessage> messages,
+    int index,
+  ) {
+    if (!_threads.any((t) => t.id == thread.id)) {
+      final insertAt = index.clamp(0, _threads.length);
+      _threads.insert(insertAt, thread);
+    }
+    if (messages.isNotEmpty) {
+      _messages[thread.id] = messages;
+    }
+    // Also restore the folder cache entry.
+    final entry = _folderCache[_currentMailboxPath];
+    if (entry != null && !entry.data.threads.any((t) => t.id == thread.id)) {
+      final insertAt = index.clamp(0, entry.data.threads.length);
+      final restoredThreads = List<EmailThread>.from(entry.data.threads)
+        ..insert(insertAt, thread);
+      final restoredMessages = Map<String, List<EmailMessage>>.from(
+        entry.data.messages,
+      );
+      if (messages.isNotEmpty) restoredMessages[thread.id] = messages;
+      _folderCache[_currentMailboxPath] = _FolderCacheEntry(
+        data: _MailboxData(threads: restoredThreads, messages: restoredMessages),
+        fetchedAt: entry.fetchedAt,
+      );
+    }
   }
 
   void _updateThreadReadState(String threadId, bool isUnread) {
