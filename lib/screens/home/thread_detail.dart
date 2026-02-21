@@ -1087,25 +1087,8 @@ class MessageCard extends StatelessWidget {
                                   case 'img':
                                   case 'video':
                                   case 'iframe':
-                                    // max-width keeps media from overflowing.
-                                    // width/height auto prevents the library
-                                    // from wrapping the element in a
-                                    // RenderAspectRatio, which crashes during
-                                    // the table dry-layout pass (Flutter
-                                    // assertion in computeDryLayout).
-                                    return {
-                                      'max-width': '100%',
-                                      'width': 'auto',
-                                      'height': 'auto',
-                                    };
                                   case 'table':
                                     return {'max-width': '100%'};
-                                  case 'td':
-                                  case 'th':
-                                    // Strip percentage widths from table cells;
-                                    // they can trigger recursive dry-layout
-                                    // passes that hit the same assertion.
-                                    return {'width': 'auto'};
                                   case 'pre':
                                     return {
                                       'white-space': 'pre-wrap',
