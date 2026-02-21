@@ -804,6 +804,59 @@ class MessageCard extends StatelessWidget {
       '',
     );
 
+    // Strip inline width/height from <img> tags.
+    //
+    // flutter_widget_from_html wraps images that have both a width and height
+    // attribute in a RenderAspectRatio widget. When those images appear inside
+    // a <table>, the table's multi-pass dry-layout algorithm asks each cell for
+    // its dry size, which in turn calls RenderAspectRatio.computeDryLayout —
+    // and that method illegally accesses RenderBox.size, triggering a Flutter
+    // assertion. Removing explicit dimensions prevents the AspectRatio wrapper
+    // from being created; the image will still honour max-width:100% applied
+    // by the customStylesBuilder below and will render at its natural size or
+    // fill the available width.
+    value = value.replaceAllMapped(
+      RegExp(
+        r'(<img\b[^>]*?)\s+width\s*=\s*"[^"]*"',
+        caseSensitive: false,
+      ),
+      (m) => m.group(1)!,
+    );
+    value = value.replaceAllMapped(
+      RegExp(
+        r'(<img\b[^>]*?)\s+height\s*=\s*"[^"]*"',
+        caseSensitive: false,
+      ),
+      (m) => m.group(1)!,
+    );
+    // Also strip width/height from inline style on <img>.
+    value = value.replaceAllMapped(
+      RegExp(
+        r'(<img\b[^>]*?style\s*=\s*")[^"]*"',
+        caseSensitive: false,
+      ),
+      (m) {
+        final tag = m.group(1)!;
+        // Remove width and height declarations from the style value.
+        // We rebuild only the parts we want to keep.
+        final styleAttr = m.group(0)!.substring(tag.length);
+        // styleAttr is currently like: `...style="width:100px; height:50px"`,
+        // but we matched starting after the opening quote so it looks like
+        // `width:100px; height:50px"`.  Strip the closing quote we included.
+        final rawStyle = styleAttr.endsWith('"')
+            ? styleAttr.substring(0, styleAttr.length - 1)
+            : styleAttr;
+        final cleaned = rawStyle
+            .split(';')
+            .where((part) {
+              final p = part.trim().toLowerCase();
+              return !p.startsWith('width') && !p.startsWith('height');
+            })
+            .join(';');
+        return '$tag$cleaned"';
+      },
+    );
+
     return value.trim();
   }
 
@@ -1034,8 +1087,25 @@ class MessageCard extends StatelessWidget {
                                   case 'img':
                                   case 'video':
                                   case 'iframe':
+                                    // max-width keeps media from overflowing.
+                                    // width/height auto prevents the library
+                                    // from wrapping the element in a
+                                    // RenderAspectRatio, which crashes during
+                                    // the table dry-layout pass (Flutter
+                                    // assertion in computeDryLayout).
+                                    return {
+                                      'max-width': '100%',
+                                      'width': 'auto',
+                                      'height': 'auto',
+                                    };
                                   case 'table':
                                     return {'max-width': '100%'};
+                                  case 'td':
+                                  case 'th':
+                                    // Strip percentage widths from table cells;
+                                    // they can trigger recursive dry-layout
+                                    // passes that hit the same assertion.
+                                    return {'width': 'auto'};
                                   case 'pre':
                                     return {
                                       'white-space': 'pre-wrap',

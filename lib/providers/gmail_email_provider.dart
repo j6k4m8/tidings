@@ -353,11 +353,8 @@ class GmailEmailProvider extends EmailProvider {
     _removeThreadFromCache(thread.id);
     notifyListeners();
     try {
-      final messageIds = _allMessageIdsForThread(thread.id);
-      final req = gmail.ModifyMessageRequest()..removeLabelIds = [_kInbox];
-      for (final msgId in messageIds) {
-        await api.users.messages.modify(req, 'me', msgId);
-      }
+      final req = gmail.ModifyThreadRequest()..removeLabelIds = [_kInbox];
+      await api.users.threads.modify(req, 'me', thread.id);
       return null;
     } catch (e) {
       // Server failed — roll back so the thread reappears.
@@ -375,26 +372,30 @@ class GmailEmailProvider extends EmailProvider {
   }) async {
     final api = _gmailApi;
     if (api == null) return 'Not connected.';
+    if (singleMessage != null) {
+      try {
+        final req = gmail.ModifyMessageRequest()
+          ..addLabelIds = [targetPath]
+          ..removeLabelIds = [_selectedLabelId];
+        await api.users.messages.modify(req, 'me', singleMessage.id);
+        _removeSingleMessageFromCache(thread.id, singleMessage.id);
+        notifyListeners();
+        return null;
+      } catch (e) {
+        return e.toString();
+      }
+    }
     // Snapshot for rollback.
     final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
     final savedMessages = List<EmailMessage>.from(_messages[thread.id] ?? []);
     // Optimistic remove.
-    if (singleMessage == null) {
-      _removeThreadFromCache(thread.id);
-    } else {
-      _removeSingleMessageFromCache(thread.id, singleMessage.id);
-    }
+    _removeThreadFromCache(thread.id);
     notifyListeners();
     try {
-      final messageIds = singleMessage != null
-          ? [singleMessage.id]
-          : _allMessageIdsForThread(thread.id);
-      final req = gmail.ModifyMessageRequest()
+      final req = gmail.ModifyThreadRequest()
         ..addLabelIds = [targetPath]
         ..removeLabelIds = [_selectedLabelId];
-      for (final msgId in messageIds) {
-        await api.users.messages.modify(req, 'me', msgId);
-      }
+      await api.users.threads.modify(req, 'me', thread.id);
       return null;
     } catch (e) {
       // Server failed — roll back.
