@@ -1,6 +1,8 @@
 import 'package:dart_quill_delta/dart_quill_delta.dart';
 
 import '../../models/email_models.dart';
+import '../../state/tidings_settings.dart';
+import '../../utils/email_time.dart';
 
 class QuotedContent {
   const QuotedContent({
@@ -34,6 +36,7 @@ String forwardSubject(String subject) {
 QuotedContent? buildQuotedContent(
   EmailMessage? message, {
   required bool isForward,
+  TidingsSettings? settings,
 }) {
   if (message == null) {
     return null;
@@ -42,11 +45,19 @@ QuotedContent? buildQuotedContent(
   if (body.isEmpty) {
     return null;
   }
+  final ts = message.receivedAt;
+  final timeStr = ts != null
+      ? formatEmailTime(
+          ts,
+          dateOrder: settings?.dateOrder ?? DateOrder.mdy,
+          use24h: settings?.use24HourTime ?? false,
+        )
+      : message.time;
   if (isForward) {
     final headerLines = <String>[
       '---------- Forwarded message ----------',
       'From: ${message.from.displayName}',
-      'Date: ${message.time}',
+      'Date: $timeStr',
       'Subject: ${message.subject}',
       'To: ${message.toSummary}',
     ];
@@ -62,7 +73,7 @@ QuotedContent? buildQuotedContent(
     return QuotedContent(plainText: plain, html: html);
   }
 
-  final header = 'On ${message.time}, ${message.from.displayName} wrote:';
+  final header = 'On $timeStr, ${message.from.displayName} wrote:';
   final quotedBody = _quoteLines(body);
   final plain = '$header\n$quotedBody';
   final html = [

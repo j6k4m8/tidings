@@ -455,7 +455,7 @@ class UnifiedEmailProvider extends EmailProvider {
               EmailAddress(name: account.displayName, email: account.email),
               ...recipients,
             ],
-            time: _formatTime(createdAt),
+            time: '',
             unread: false,
             starred: false,
             receivedAt: createdAt,
@@ -493,7 +493,7 @@ class UnifiedEmailProvider extends EmailProvider {
       to: to,
       cc: cc,
       bcc: bcc,
-      time: _formatTime(createdAt),
+      time: '',
       bodyText: item.bodyText.isEmpty ? null : item.bodyText,
       bodyHtml: item.bodyHtml.isEmpty ? null : item.bodyHtml,
       isMe: true,
@@ -517,12 +517,6 @@ class UnifiedEmailProvider extends EmailProvider {
     return parts
         .map((email) => EmailAddress(name: email, email: email))
         .toList();
-  }
-
-  String _formatTime(DateTime time) {
-    final hours = time.hour.toString().padLeft(2, '0');
-    final minutes = time.minute.toString().padLeft(2, '0');
-    return '$hours:$minutes';
   }
 
   MessageSendStatus _statusForOutbox(OutboxStatus status) {

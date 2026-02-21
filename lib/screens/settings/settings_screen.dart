@@ -211,6 +211,35 @@ class _AppearanceSettings extends StatelessWidget {
             },
           ),
         ),
+        SizedBox(height: context.space(24)),
+        SettingsSubheader(title: 'DATE & TIME'),
+        SizedBox(height: context.space(12)),
+        SettingRow(
+          title: 'Date order',
+          subtitle: 'How month, day, and year appear in timestamps.',
+          trailing: SegmentedButton<DateOrder>(
+            style: segmentedStyle,
+            segments: const [
+              ButtonSegment(value: DateOrder.mdy, label: Text('M D Y')),
+              ButtonSegment(value: DateOrder.dmy, label: Text('D M Y')),
+              ButtonSegment(value: DateOrder.ymd, label: Text('Y M D')),
+            ],
+            selected: {settings.dateOrder},
+            onSelectionChanged: (selection) {
+              settings.setDateOrder(selection.first);
+            },
+          ),
+        ),
+        SizedBox(height: context.space(16)),
+        SettingRow(
+          title: '24-hour clock',
+          subtitle: 'Show times as 13:45 instead of 1:45 PM.',
+          trailing: AccentSwitch(
+            accent: accent,
+            value: settings.use24HourTime,
+            onChanged: settings.setUse24HourTime,
+          ),
+        ),
       ],
     );
   }

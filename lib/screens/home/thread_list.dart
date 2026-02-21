@@ -5,6 +5,7 @@ import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
 import '../../providers/unified_email_provider.dart';
 import '../../state/tidings_settings.dart';
+import '../../utils/email_time.dart';
 import '../../theme/account_accent.dart';
 import 'home_utils.dart';
 import '../../theme/color_tokens.dart';
@@ -353,10 +354,15 @@ class _ThreadTileState extends State<ThreadTile> {
               : scheme.onSurface.withValues(alpha: 0.85)),
       fontWeight: FontWeight.w600,
     );
-    final displayTime = _formatThreadTimestamp(
-      widget.thread.receivedAt ?? latestMessage?.receivedAt,
-      widget.thread.time,
-    );
+    final settings = context.tidingsSettings;
+    final ts = widget.thread.receivedAt ?? latestMessage?.receivedAt;
+    final displayTime = ts != null
+        ? formatEmailTime(
+            ts,
+            dateOrder: settings.dateOrder,
+            use24h: settings.use24HourTime,
+          )
+        : widget.thread.time;
     final participants = _orderedParticipants(
       widget.participants,
       latestSender,
@@ -666,48 +672,6 @@ List<EmailAddress> _filterParticipants(
   return filtered.isEmpty ? participants : filtered;
 }
 
-String _formatThreadTimestamp(DateTime? timestamp, String fallback) {
-  if (timestamp == null) {
-    return fallback;
-  }
-  final now = DateTime.now();
-  final isToday = timestamp.year == now.year &&
-      timestamp.month == now.month &&
-      timestamp.day == now.day;
-  final time = _formatClock(timestamp);
-  if (isToday) {
-    return time;
-  }
-  final month = _monthAbbrev[timestamp.month - 1];
-  return '$month ${timestamp.day} $time';
-}
-
-String _formatClock(DateTime timestamp) {
-  var hour = timestamp.hour;
-  final minute = timestamp.minute;
-  final suffix = hour >= 12 ? 'PM' : 'AM';
-  hour = hour % 12;
-  if (hour == 0) {
-    hour = 12;
-  }
-  final minuteLabel = minute.toString().padLeft(2, '0');
-  return '$hour:$minuteLabel $suffix';
-}
-
-const List<String> _monthAbbrev = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
 
 class _ThreadListEntry {
   const _ThreadListEntry.header(this.header)

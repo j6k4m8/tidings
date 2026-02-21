@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../models/account_models.dart';
 import '../state/app_state.dart';
@@ -48,9 +49,18 @@ class OnboardingScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
                   _OnboardingCard(
+                    title: 'Connect Gmail',
+                    subtitle:
+                        'Sign in with Google to sync your Gmail inbox.',
+                    cta: 'Add Gmail account',
+                    accent: accent,
+                    onTap: () => _connectGmail(context, appState, accent),
+                  ),
+                  const SizedBox(height: 16),
+                  _OnboardingCard(
                     title: 'Connect IMAP',
                     subtitle:
-                        'Bring your real mailbox into Tidings with IMAP sync.',
+                        'Bring any mailbox into Tidings with IMAP sync.',
                     cta: 'Add IMAP account',
                     accent: accent,
                     onTap: () => showAccountSetupSheet(
@@ -58,6 +68,7 @@ class OnboardingScreen extends StatelessWidget {
                       appState: appState,
                       accent: accent,
                     ),
+                    subtle: true,
                   ),
                   const SizedBox(height: 16),
                   _OnboardingCard(
@@ -75,6 +86,58 @@ class OnboardingScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+Future<void> _connectGmail(
+  BuildContext context,
+  AppState appState,
+  Color accent,
+) async {
+  final googleSignIn = GoogleSignIn(
+    scopes: [
+      'https://www.googleapis.com/auth/gmail.modify',
+      'https://www.googleapis.com/auth/gmail.send',
+      'email',
+      'profile',
+    ],
+  );
+
+  GoogleSignInAccount? gsiAccount;
+  try {
+    gsiAccount = await googleSignIn.signIn();
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sign-in failed: $e')),
+      );
+    }
+    return;
+  }
+
+  if (gsiAccount == null) return; // User cancelled.
+  if (!context.mounted) return;
+
+  // Show a loading indicator while the provider initialises.
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const Center(child: CircularProgressIndicator()),
+  );
+
+  final error = await appState.addGmailAccount(
+    displayName: gsiAccount.displayName ?? gsiAccount.email,
+    email: gsiAccount.email,
+    googleSignIn: googleSignIn,
+    existingAccount: gsiAccount,
+  );
+
+  if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+
+  if (error != null && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(error)),
     );
   }
 }
@@ -185,6 +248,7 @@ void showAccountPickerSheet(
       showUnifiedOption: showUnifiedOption,
       onSelectUnified: onSelectUnified,
       onSelectAccount: onSelectAccount,
+      callerContext: context,
     ),
   );
 }
@@ -237,6 +301,7 @@ class _AccountPickerSheet extends StatelessWidget {
     required this.showUnifiedOption,
     required this.onSelectUnified,
     required this.onSelectAccount,
+    this.callerContext,
   });
 
   final AppState appState;
@@ -245,42 +310,90 @@ class _AccountPickerSheet extends StatelessWidget {
   final bool showUnifiedOption;
   final VoidCallback? onSelectUnified;
   final VoidCallback? onSelectAccount;
+  /// The context from the screen that opened the sheet — stays live after pop.
+  final BuildContext? callerContext;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: GlassPanel(
           borderRadius: BorderRadius.circular(24),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
           variant: GlassVariant.sheet,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Accounts', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 12),
-              if (showUnifiedOption)
-                ListTile(
-                  leading: const Icon(Icons.layers_rounded),
-                  title: const Text('All accounts'),
-                  subtitle: const Text('Unified inbox'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'Accounts',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (showUnifiedOption) ...[
+                _AccountRow(
+                  leading: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.layers_rounded,
+                      size: 18,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  title: 'All accounts',
+                  subtitle: 'Unified inbox',
+                  isSelected: appState.selectedAccount == null,
+                  accent: accent,
                   onTap: () {
                     Navigator.of(context).pop();
                     onSelectUnified?.call();
                   },
                 ),
-              if (showUnifiedOption) const SizedBox(height: 4),
+              ],
               ...appState.accounts.asMap().entries.map((entry) {
-                final isSelected =
-                    appState.selectedAccount?.id == entry.value.id;
-                return ListTile(
-                  title: Text(entry.value.displayName),
-                  subtitle: Text(entry.value.email),
-                  trailing: isSelected
-                      ? Icon(Icons.check_circle, color: accent)
-                      : null,
+                final account = entry.value;
+                final isSelected = appState.selectedAccount?.id == account.id;
+                final initial = account.displayName.isNotEmpty
+                    ? account.displayName[0].toUpperCase()
+                    : account.email[0].toUpperCase();
+                final accentColor = Color(account.accentColorValue ?? accent.toARGB32());
+                return _AccountRow(
+                  leading: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: accentColor.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: Text(
+                        initial,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: accentColor,
+                        ),
+                      ),
+                    ),
+                  ),
+                  title: account.displayName,
+                  subtitle: account.email,
+                  isSelected: isSelected,
+                  accent: accent,
                   onTap: () {
                     appState.selectAccount(entry.key);
                     Navigator.of(context).pop();
@@ -289,8 +402,33 @@ class _AccountPickerSheet extends StatelessWidget {
                 );
               }),
               const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () {
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Divider(
+                  height: 1,
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Add Gmail button
+              _ActionRow(
+                icon: Icons.mail_rounded,
+                iconColor: const Color(0xFF4285F4),
+                label: 'Add Gmail account',
+                onTap: () async {
+                  // Use callerContext (HomeScreen) so dialogs/snackbars work
+                  // after the sheet is popped.
+                  final ctx = callerContext ?? context;
+                  Navigator.of(context).pop();
+                  await _connectGmail(ctx, appState, accent);
+                },
+              ),
+              // Add IMAP account button
+              _ActionRow(
+                icon: Icons.add_circle_outline_rounded,
+                iconColor: colorScheme.onSurfaceVariant,
+                label: 'Add account (IMAP)',
+                onTap: () {
                   Navigator.of(context).pop();
                   showAccountSetupSheet(
                     context,
@@ -298,22 +436,121 @@ class _AccountPickerSheet extends StatelessWidget {
                     accent: accent,
                   );
                 },
-                icon: const Icon(Icons.add),
-                label: const Text('Add account'),
               ),
-              if (showMockOption) ...[
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () async {
+              if (showMockOption)
+                _ActionRow(
+                  icon: Icons.bolt_rounded,
+                  iconColor: colorScheme.onSurfaceVariant,
+                  label: 'Mock Email',
+                  onTap: () async {
                     Navigator.of(context).pop();
                     await appState.addMockAccount();
                   },
-                  icon: const Icon(Icons.bolt_rounded),
-                  label: const Text('Mock Email'),
                 ),
-              ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AccountRow extends StatelessWidget {
+  const _AccountRow({
+    required this.leading,
+    required this.title,
+    required this.subtitle,
+    required this.isSelected,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final Widget leading;
+  final String title;
+  final String subtitle;
+  final bool isSelected;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        child: Row(
+          children: [
+            leading,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected) ...[
+              const SizedBox(width: 8),
+              Icon(Icons.check_circle_rounded, color: accent, size: 20),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionRow extends StatelessWidget {
+  const _ActionRow({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 36,
+              child: Icon(icon, size: 18, color: iconColor),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: iconColor == const Color(0xFF4285F4)
+                        ? iconColor
+                        : Theme.of(context).colorScheme.onSurface,
+                  ),
+            ),
+          ],
         ),
       ),
     );
