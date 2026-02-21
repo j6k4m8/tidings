@@ -10,6 +10,8 @@ import '../../theme/account_accent.dart';
 import '../../theme/color_tokens.dart';
 import '../../theme/glass.dart';
 import '../../theme/theme_palette.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+
 import '../../widgets/accent/accent_presets.dart';
 import '../../widgets/accent/accent_swatch.dart';
 import '../../widgets/accent_switch.dart';
@@ -907,6 +909,15 @@ class _AccountSectionState extends State<_AccountSection> {
                           preset.color,
                         ),
                       ),
+                    // Custom colour — selected when no preset matches
+                    _CustomAccentSwatch(
+                      currentColor: baseAccent,
+                      isCustom: accentPresets.every(
+                        (p) => p.color.toARGB32() != baseAccent.toARGB32(),
+                      ),
+                      onColorChosen: (color) =>
+                          appState.setAccountAccentColor(account.id, color),
+                    ),
                   ],
                 ),
                 SizedBox(height: context.space(16)),
@@ -1099,4 +1110,229 @@ class _AccountSectionState extends State<_AccountSection> {
       ),
     );
   }
+}
+
+// ── Custom accent colour picker ────────────────────────────────────────────────
+
+/// A swatch that either shows "Custom" (with the live custom colour) or a
+/// generic paint-palette chip when no custom colour is active.  Tapping it
+/// opens a full colour-picker dialog with a hex input.
+class _CustomAccentSwatch extends StatefulWidget {
+  const _CustomAccentSwatch({
+    required this.currentColor,
+    required this.isCustom,
+    required this.onColorChosen,
+  });
+
+  /// The account's current accent (used as the dialog's initial value when
+  /// [isCustom] is true, otherwise we start from a vivid default).
+  final Color currentColor;
+
+  /// True when the current accent doesn't match any preset — i.e. it IS the
+  /// custom colour.
+  final bool isCustom;
+
+  final ValueChanged<Color> onColorChosen;
+
+  @override
+  State<_CustomAccentSwatch> createState() => _CustomAccentSwatchState();
+}
+
+class _CustomAccentSwatchState extends State<_CustomAccentSwatch> {
+  void _open() {
+    // Working colour — starts from the current custom colour (or a vivid blue
+    // when no custom colour is set yet).
+    Color working =
+        widget.isCustom ? widget.currentColor : const Color(0xFF4A9FFF);
+
+    // Hex input controller — kept in sync with the picker.
+    final hexController = TextEditingController(
+      text: _toHex(working),
+    );
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            void applyHex(String raw) {
+              final color = _fromHex(raw);
+              if (color != null) {
+                setDialogState(() => working = color);
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Custom colour'),
+              contentPadding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ColorPicker(
+                      pickerColor: working,
+                      onColorChanged: (c) {
+                        setDialogState(() {
+                          working = c;
+                          hexController.text = _toHex(c);
+                        });
+                      },
+                      enableAlpha: false,
+                      labelTypes: const [],
+                      pickerAreaHeightPercent: 0.6,
+                      displayThumbColor: true,
+                    ),
+                    const SizedBox(height: 8),
+                    // Hex input row
+                    Row(
+                      children: [
+                        const Text('#', style: TextStyle(fontSize: 14)),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: TextField(
+                            controller: hexController,
+                            decoration: const InputDecoration(
+                              hintText: 'RRGGBB',
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
+                              border: OutlineInputBorder(),
+                            ),
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 13,
+                            ),
+                            maxLength: 6,
+                            buildCounter: (_, {required currentLength,
+                              required isFocused, maxLength}) => null,
+                            onSubmitted: applyHex,
+                            onChanged: applyHex,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Live preview chip
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: working,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Theme.of(ctx)
+                                  .colorScheme
+                                  .outline
+                                  .withValues(alpha: 0.4),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    widget.onColorChosen(working);
+                  },
+                  child: const Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final densityScale = context.tidingsSettings.densityScale;
+    double space(double v) => v * densityScale;
+    final size = space(24).clamp(18.0, 30.0);
+
+    // When active, show the live custom colour; otherwise a rainbow gradient.
+    final Widget circle = widget.isCustom
+        ? Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: widget.currentColor,
+              border: Border.all(
+                color: Theme.of(context).colorScheme.primary,
+                width: 2,
+              ),
+            ),
+          )
+        : Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const SweepGradient(
+                colors: [
+                  Color(0xFFFF0000),
+                  Color(0xFFFFFF00),
+                  Color(0xFF00FF00),
+                  Color(0xFF00FFFF),
+                  Color(0xFF0000FF),
+                  Color(0xFFFF00FF),
+                  Color(0xFFFF0000),
+                ],
+              ),
+              border: Border.all(
+                color: Colors.transparent,
+                width: 2,
+              ),
+            ),
+          );
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _open,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            circle,
+            SizedBox(width: space(8)),
+            Text(
+              'Custom',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Converts a [Color] to a 6-char uppercase hex string (no alpha, no #).
+String _toHex(Color c) {
+  final r = (c.r * 255).round().toRadixString(16).padLeft(2, '0');
+  final g = (c.g * 255).round().toRadixString(16).padLeft(2, '0');
+  final b = (c.b * 255).round().toRadixString(16).padLeft(2, '0');
+  return '$r$g$b'.toUpperCase();
+}
+
+/// Parses a 3- or 6-char hex string (with or without #) into a [Color].
+/// Returns null if unparseable.
+Color? _fromHex(String raw) {
+  var s = raw.trim().replaceAll('#', '');
+  if (s.length == 3) {
+    s = '${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}';
+  }
+  if (s.length != 6) return null;
+  final value = int.tryParse('FF$s', radix: 16);
+  return value == null ? null : Color(value);
 }
