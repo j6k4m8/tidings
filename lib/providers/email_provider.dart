@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/email_models.dart';
 import '../models/folder_models.dart';
+import '../search/search_query.dart';
 import '../state/send_queue.dart';
 
 enum ProviderStatus {
@@ -22,6 +23,20 @@ abstract class EmailProvider extends ChangeNotifier {
   List<FolderSection> get folderSections;
   String get selectedFolderPath;
   bool isFolderLoading(String path);
+
+  // ── Search ──────────────────────────────────────────────────────────────
+
+  /// The active search query, or null if not in search mode.
+  SearchQuery? get activeSearch;
+
+  /// True when a server-side search is in progress.
+  bool get isSearchLoading;
+
+  /// Executes [query] as a server search and switches to the search pseudo-folder.
+  /// Pass null to clear the search and return to the previous folder.
+  Future<void> search(SearchQuery? query);
+
+  // ── Folder navigation ────────────────────────────────────────────────────
 
   Future<void> initialize();
   Future<void> refresh();

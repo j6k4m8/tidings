@@ -4,6 +4,7 @@ enum FolderSectionKind {
   mailboxes,
   folders,
   labels,
+  savedSearches,
 }
 
 @immutable

@@ -8,6 +8,8 @@ import 'package:googleapis/gmail/v1.dart' as gmail;
 
 import '../models/email_models.dart';
 import '../models/folder_models.dart';
+import '../search/search_query.dart';
+import '../search/query_serializer.dart';
 import '../state/send_queue.dart';
 import 'email_provider.dart';
 import '../utils/email_address_utils.dart';
@@ -96,6 +98,9 @@ class GmailEmailProvider extends EmailProvider {
   ProviderStatus _status = ProviderStatus.idle;
   String? _errorMessage;
   String _selectedLabelId = _kInbox;
+  String? _priorLabelId; // folder to restore after clearing search
+  SearchQuery? _activeSearch;
+  bool _isSearchLoading = false;
   DateTime? _lastMutationAt;
   Timer? _refreshTimer;
   int _checkMailIntervalMinutes = 5;
@@ -145,6 +150,12 @@ class GmailEmailProvider extends EmailProvider {
 
   @override
   bool isFolderLoading(String path) => _loadingLabels.contains(path);
+
+  @override
+  SearchQuery? get activeSearch => _activeSearch;
+
+  @override
+  bool get isSearchLoading => _isSearchLoading;
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -210,7 +221,11 @@ class GmailEmailProvider extends EmailProvider {
 
   @override
   Future<void> selectFolder(String path) async {
-    if (path == _selectedLabelId) return;
+    if (path == _selectedLabelId && _activeSearch == null) return;
+    // Clear any active search when navigating to a real folder.
+    _activeSearch = null;
+    _isSearchLoading = false;
+    _priorLabelId = null;
     _selectedLabelId = path;
     _errorMessage = null;
     final cached = _labelCache[path];
@@ -225,6 +240,105 @@ class GmailEmailProvider extends EmailProvider {
     if (path != kOutboxFolderPath) {
       _startLabelLoad(path, showErrors: cached == null);
     }
+  }
+
+  @override
+  Future<void> search(SearchQuery? query) async {
+    if (query == null) {
+      // Clear search — return to prior folder.
+      final prior = _priorLabelId ?? _kInbox;
+      _activeSearch = null;
+      _isSearchLoading = false;
+      _priorLabelId = null;
+      await selectFolder(prior);
+      return;
+    }
+    _priorLabelId ??= _selectedLabelId == kSearchFolderPath
+        ? (_priorLabelId ?? _kInbox)
+        : _selectedLabelId;
+    _activeSearch = query;
+    _selectedLabelId = kSearchFolderPath;
+    _threads.clear();
+    _messages.clear();
+    _status = ProviderStatus.loading;
+    _isSearchLoading = true;
+    notifyListeners();
+    _startSearchLoad(query);
+  }
+
+  void _startSearchLoad(SearchQuery query) {
+    final token = ++_loadCounter;
+    _loadTokens[kSearchFolderPath] = token;
+    if (_loadingLabels.add(kSearchFolderPath)) notifyListeners();
+    _loadSearchInBackground(query, token);
+  }
+
+  Future<void> _loadSearchInBackground(SearchQuery query, int token) async {
+    try {
+      final gmailQuery = query.toGmailQuery();
+      final data = await _fetchSearchResults(gmailQuery);
+      if (_loadTokens[kSearchFolderPath] != token) return;
+      if (_selectedLabelId == kSearchFolderPath) {
+        _threads
+          ..clear()
+          ..addAll(data.threads);
+        _messages
+          ..clear()
+          ..addAll(data.messages);
+        _status = ProviderStatus.ready;
+        _isSearchLoading = false;
+        notifyListeners();
+      }
+    } catch (error) {
+      if (_loadTokens[kSearchFolderPath] != token) return;
+      if (_selectedLabelId == kSearchFolderPath) {
+        _status = ProviderStatus.error;
+        _errorMessage = error.toString();
+        _isSearchLoading = false;
+        notifyListeners();
+      }
+    } finally {
+      if (_loadTokens[kSearchFolderPath] == token &&
+          _loadingLabels.remove(kSearchFolderPath)) {
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<_LabelData> _fetchSearchResults(String gmailQuery) async {
+    final api = _gmailApi;
+    if (api == null) return _LabelData.empty;
+
+    final listResponse = await api.users.threads.list(
+      'me',
+      q: gmailQuery,
+      maxResults: _kMaxThreads,
+    );
+
+    final threadSummaries = listResponse.threads ?? [];
+    if (threadSummaries.isEmpty) return _LabelData.empty;
+
+    // Phase 1 — placeholders.
+    final threads = <EmailThread>[];
+    final messages = <String, List<EmailMessage>>{};
+    for (final summary in threadSummaries) {
+      final id = summary.id;
+      if (id == null) continue;
+      threads.add(EmailThread(
+        id: id,
+        subject: summary.snippet ?? '(loading…)',
+        participants: const [],
+        time: '',
+        unread: false,
+        starred: false,
+      ));
+      messages[id] = [];
+    }
+    final phase1 = _LabelData(threads: threads, messages: messages);
+
+    // Phase 2 — full bodies (reuse existing helper).
+    final phase2 = await _fetchThreadBodies(phase1);
+    return phase2 ?? phase1;
   }
 
   @override

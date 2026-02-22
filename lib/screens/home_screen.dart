@@ -7,12 +7,15 @@ import '../models/email_models.dart';
 import '../models/folder_models.dart';
 import '../providers/email_provider.dart';
 import '../providers/unified_email_provider.dart';
+import '../search/search_query.dart';
 import '../state/app_state.dart';
+import '../state/saved_searches.dart';
 import '../state/send_queue.dart';
 import '../state/tidings_settings.dart';
 import '../state/shortcut_definitions.dart';
 import '../state/keyboard_shortcut.dart';
 import '../theme/glass.dart';
+import '../utils/saved_search_section.dart';
 import '../widgets/settings/shortcut_recorder.dart';
 import '../widgets/tidings_background.dart';
 import 'compose/compose_sheet.dart';
@@ -29,6 +32,7 @@ import 'keyboard/go_to_dialog.dart';
 import 'keyboard/move_to_folder_dialog.dart';
 import 'keyboard/shortcuts_sheet.dart';
 import 'onboarding_screen.dart';
+import 'search/search_overlay.dart';
 import 'settings/settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -85,6 +89,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _compactRailOpen = false;
   bool _compactRailExpanded = false;
   bool _inlineReplyFocused = false;
+  SearchQuery? _activeSearch;
+  final SavedSearchesStore _savedSearches = SavedSearchesStore.instance;
 
   @override
   void initState() {
@@ -93,6 +99,8 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.appState.addListener(_handleAppStateChange);
     widget.appState.setMenuActionHandler(_handleMenuAction);
     FocusManager.instance.addListener(_handleGlobalFocusChange);
+    _savedSearches.addListener(_onSavedSearchesChanged);
+    _savedSearches.ensureLoaded();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _rootFocusNode.requestFocus();
@@ -119,6 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.appState.updateMenuSelection(hasSelection: false, isUnread: false);
     FocusManager.instance.removeListener(_handleGlobalFocusChange);
     _settings?.removeListener(_handleSettingsChange);
+    _savedSearches.removeListener(_onSavedSearchesChanged);
     _searchFocusNode.dispose();
     _rootFocusNode.dispose();
     _threadListFocusNode.dispose();
@@ -288,7 +297,26 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _handleFolderSelected(EmailProvider provider, int index) {
-    final path = _folderPathForIndex(provider.folderSections, index);
+    // Resolve path from the augmented sections (includes saved searches).
+    final augmentedSections = _augmentedFolderSections(provider);
+    final path = _folderPathForIndex(augmentedSections, index);
+
+    // Handle saved-search virtual items.
+    if (path != null) {
+      final searchQuery = queryFromSavedSearchPath(path);
+      if (searchQuery != null) {
+        final query = SearchQuery.parse(searchQuery);
+        setState(() {
+          _activeSearch = query;
+          _selectedThreadIndex = 0;
+          _threadPanelOpen = true;
+          _showSettings = false;
+        });
+        provider.search(query);
+        return;
+      }
+    }
+
     if (_isUnifiedInbox && path != kOutboxFolderPath && path != 'INBOX') {
       return;
     }
@@ -304,6 +332,41 @@ class _HomeScreenState extends State<HomeScreen> {
     if (path != null) {
       provider.selectFolder(path);
     }
+  }
+
+  /// Returns provider folder sections augmented with the saved searches section.
+  List<FolderSection> _augmentedFolderSections(EmailProvider provider) {
+    return withSavedSearchesSection(provider.folderSections, _savedSearches);
+  }
+
+  void _onSavedSearchesChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _handleSearchTap(EmailProvider provider) async {
+    final result = await showSearchOverlay(
+      context,
+      accent: widget.accent,
+      accounts: widget.appState.accounts,
+      savedSearches: _savedSearches,
+      initialQuery: _activeSearch?.rawQuery ?? '',
+    );
+    if (!mounted) return;
+    if (result == null) {
+      // Cancelled — clear search if active
+      if (_activeSearch != null) {
+        setState(() => _activeSearch = null);
+        await provider.search(null);
+      }
+      return;
+    }
+    setState(() => _activeSearch = result);
+    await provider.search(result);
+  }
+
+  void _clearSearch(EmailProvider provider) {
+    setState(() => _activeSearch = null);
+    provider.search(null);
   }
 
   void _openOutbox(EmailProvider provider) {
@@ -344,41 +407,45 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isTextInputFocused() {
     final focus = FocusManager.instance.primaryFocus;
-    if (focus == null) {
+    if (focus == null) return false;
+    final ctx = focus.context;
+    if (ctx == null) return false;
+    if (ctx is Element && !ctx.debugIsActive) return false;
+    final widget = ctx.widget;
+    if (widget is EditableText || widget is QuillEditor) return true;
+    try {
+      return ctx.findAncestorWidgetOfExactType<EditableText>() != null ||
+          ctx.findAncestorWidgetOfExactType<QuillEditor>() != null ||
+          ctx.findAncestorWidgetOfExactType<InlineReplyComposer>() != null;
+    } catch (_) {
       return false;
     }
-    final context = focus.context;
-    if (context == null) {
-      return false;
-    }
-    final widget = context.widget;
-    if (widget is EditableText || widget is QuillEditor) {
-      return true;
-    }
-    return context.findAncestorWidgetOfExactType<EditableText>() != null ||
-        context.findAncestorWidgetOfExactType<QuillEditor>() != null ||
-        context.findAncestorWidgetOfExactType<InlineReplyComposer>() != null;
   }
 
   bool _isShortcutRecorderFocused() {
     final focus = FocusManager.instance.primaryFocus;
-    if (focus == null) {
+    if (focus == null) return false;
+    final ctx = focus.context;
+    if (ctx == null) return false;
+    // Guard against looking up ancestors on a deactivated element.
+    if (ctx is Element && !ctx.debugIsActive) return false;
+    try {
+      return ctx.findAncestorWidgetOfExactType<ShortcutRecorder>() != null;
+    } catch (_) {
       return false;
     }
-    final context = focus.context;
-    if (context == null) {
-      return false;
-    }
-    return context.findAncestorWidgetOfExactType<ShortcutRecorder>() != null;
   }
 
   _HomeScope _resolveScope() {
     final focus = FocusManager.instance.primaryFocus;
-    final context = focus?.context;
-    if (context != null &&
-        context.findAncestorWidgetOfExactType<InlineReplyComposer>() != null) {
-      return _HomeScope.editor;
-    }
+    final ctx = focus?.context;
+    final context = (ctx is Element && ctx.debugIsActive) ? ctx : null;
+    try {
+      if (context != null &&
+          context.findAncestorWidgetOfExactType<InlineReplyComposer>() != null) {
+        return _HomeScope.editor;
+      }
+    } catch (_) {}
     if (_threadDetailFocusNode.hasFocus) {
       return _HomeScope.detail;
     }
@@ -982,7 +1049,7 @@ class _HomeScreenState extends State<HomeScreen> {
         await _showGoToDialog(currentAccountOnly: true);
         break;
       case ShortcutAction.focusSearch:
-        _searchFocusNode.requestFocus();
+        await _handleSearchTap(provider);
         break;
       case ShortcutAction.openSettings:
         setState(() {
@@ -1076,9 +1143,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 builder: (context, constraints) {
                   final isWide = constraints.maxWidth >= kWideSidebarBreakpoint;
                   final showSettings = _showSettings;
+                  final augmentedSections =
+                      _augmentedFolderSections(listProvider);
                   final effectiveFolderIndex =
                       _folderIndexForPath(
-                        listProvider.folderSections,
+                        augmentedSections,
                         listProvider.selectedFolderPath,
                       ) ??
                       _selectedFolderIndex;
@@ -1139,6 +1208,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                 accent: widget.accent,
                                 isUnified: _isUnifiedInbox,
                                 provider: listProvider,
+                                onSearchTap: () =>
+                                    _handleSearchTap(listProvider),
+                                activeSearchQuery: _activeSearch?.rawQuery,
+                                onSearchClear: () =>
+                                    _clearSearch(listProvider),
+                                folderSectionsOverride: augmentedSections,
                                 selectedThreadIndex: _selectedThreadIndex,
                                 onThreadSelected: (index) =>
                                     _handleThreadSelected(listProvider, index),
@@ -1224,6 +1299,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     index,
                                   );
                                 },
+                                savedSearches: _savedSearches,
                               )
                             : showSettings
                             ? SettingsScreen(
@@ -1239,6 +1315,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                 accent: widget.accent,
                                 isUnified: _isUnifiedInbox,
                                 provider: listProvider,
+                                onSearchTap: () =>
+                                    _handleSearchTap(listProvider),
+                                activeSearchQuery: _activeSearch?.rawQuery,
+                                onSearchClear: () =>
+                                    _clearSearch(listProvider),
+                                folderSectionsOverride: augmentedSections,
                                 selectedThreadIndex: _selectedThreadIndex,
                                 onThreadSelected: (index) =>
                                     _handleThreadSelected(listProvider, index),
@@ -1301,6 +1383,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 currentUserEmailForThread: (thread) =>
                                     _currentUserEmailForThread(thread, account),
                                 accountCount: widget.appState.accounts.length,
+                                savedSearches: _savedSearches,
                               ),
                       ),
                     ),

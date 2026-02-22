@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/account_models.dart';
 import '../models/email_models.dart';
 import '../models/folder_models.dart';
+import '../search/search_query.dart';
 import '../state/app_state.dart';
 import '../state/send_queue.dart';
 import 'email_provider.dart';
@@ -164,6 +165,14 @@ class UnifiedEmailProvider extends EmailProvider {
   bool isFolderLoading(String path) => false;
 
   @override
+  SearchQuery? get activeSearch =>
+      _providers.values.map((p) => p.activeSearch).nonNulls.firstOrNull;
+
+  @override
+  bool get isSearchLoading =>
+      _providers.values.any((p) => p.isSearchLoading);
+
+  @override
   Future<void> initialize() async {
     for (final provider in _providers.values) {
       if (provider.status == ProviderStatus.idle) {
@@ -182,6 +191,15 @@ class UnifiedEmailProvider extends EmailProvider {
   @override
   Future<void> selectFolder(String path) async {
     _selectedFolderPath = path;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> search(SearchQuery? query) async {
+    // Fan out to all sub-providers; each manages its own search state.
+    await Future.wait(
+      _providers.values.map((p) => p.search(query)),
+    );
     notifyListeners();
   }
 

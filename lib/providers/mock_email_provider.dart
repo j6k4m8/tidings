@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/email_models.dart';
 import '../models/folder_models.dart';
+import '../search/search_query.dart';
 import '../state/send_queue.dart';
 import '../utils/email_address_utils.dart';
 import '../utils/outbox_section.dart';
@@ -28,6 +29,22 @@ class MockEmailProvider extends EmailProvider {
 
   @override
   String? get errorMessage => _errorMessage;
+
+  // ── Search — mock provider does client-side filtering only ───────────────
+  SearchQuery? _activeSearch;
+  bool _isSearchLoading = false;
+
+  @override
+  SearchQuery? get activeSearch => _activeSearch;
+
+  @override
+  bool get isSearchLoading => _isSearchLoading;
+
+  @override
+  Future<void> search(SearchQuery? query) async {
+    _activeSearch = query;
+    notifyListeners();
+  }
 
   @override
   List<EmailThread> get threads {

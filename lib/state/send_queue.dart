@@ -9,6 +9,7 @@ import 'package:yaml/yaml.dart';
 import 'config_store.dart';
 
 const String kOutboxFolderPath = 'OUTBOX';
+const String kSearchFolderPath = 'SEARCH_RESULTS';
 const Duration kUndoSendDelay = Duration(seconds: 8);
 
 enum OutboxStatus {

@@ -8,6 +8,8 @@ import 'package:mailer/smtp_server.dart';
 import '../models/account_models.dart';
 import '../models/email_models.dart';
 import '../models/folder_models.dart';
+import '../search/search_query.dart';
+import '../search/query_serializer.dart';
 import '../state/send_queue.dart';
 import '../utils/email_address_utils.dart';
 import '../utils/outbox_section.dart';
@@ -45,6 +47,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
   int _loadCounter = 0;
   String _selectedFolderPath = 'INBOX';
   String _currentMailboxPath = 'INBOX';
+  String? _priorFolderPath; // folder to restore after clearing search
+  SearchQuery? _activeSearch;
+  bool _isSearchLoading = false;
   String? _sentMailboxPath;
   String? _draftsMailboxPath;
   String? _archiveMailboxPath;
@@ -90,6 +95,12 @@ class ImapSmtpEmailProvider extends EmailProvider {
 
   @override
   bool isFolderLoading(String path) => _loadingFolders.contains(path);
+
+  @override
+  SearchQuery? get activeSearch => _activeSearch;
+
+  @override
+  bool get isSearchLoading => _isSearchLoading;
 
   @override
   Future<void> initialize() async {
@@ -207,9 +218,13 @@ class ImapSmtpEmailProvider extends EmailProvider {
 
   @override
   Future<void> selectFolder(String path) async {
-    if (_selectedFolderPath == path) {
+    if (_selectedFolderPath == path && _activeSearch == null) {
       return;
     }
+    // Clear any active search when navigating to a real folder.
+    _activeSearch = null;
+    _isSearchLoading = false;
+    _priorFolderPath = null;
     _selectedFolderPath = path;
     if (path == kOutboxFolderPath) {
       _errorMessage = null;
@@ -230,6 +245,127 @@ class ImapSmtpEmailProvider extends EmailProvider {
     }
     _startFolderLoad(path, showErrors: cached == null);
     _warmThreadingFolders();
+  }
+
+  @override
+  Future<void> search(SearchQuery? query) async {
+    if (query == null) {
+      // Clear search — return to prior folder.
+      final prior = _priorFolderPath ?? _currentMailboxPath;
+      _activeSearch = null;
+      _isSearchLoading = false;
+      _priorFolderPath = null;
+      await selectFolder(prior);
+      return;
+    }
+    _priorFolderPath ??= _selectedFolderPath == kSearchFolderPath
+        ? (_priorFolderPath ?? _currentMailboxPath)
+        : _selectedFolderPath;
+    _activeSearch = query;
+    _selectedFolderPath = kSearchFolderPath;
+    _threads.clear();
+    _messages.clear();
+    _status = ProviderStatus.loading;
+    _isSearchLoading = true;
+    notifyListeners();
+    _startSearchLoad(query);
+  }
+
+  void _startSearchLoad(SearchQuery query) {
+    final token = ++_loadCounter;
+    _loadTokens[kSearchFolderPath] = token;
+    if (_loadingFolders.add(kSearchFolderPath)) notifyListeners();
+    _loadSearchInBackground(query, token);
+  }
+
+  Future<void> _loadSearchInBackground(SearchQuery query, int token) async {
+    try {
+      final data = await _fetchSearchResults(query);
+      if (_loadTokens[kSearchFolderPath] != token) return;
+      if (_selectedFolderPath == kSearchFolderPath) {
+        _threads
+          ..clear()
+          ..addAll(data.threads);
+        _messages
+          ..clear()
+          ..addAll(data.messages);
+        _status = ProviderStatus.ready;
+        _isSearchLoading = false;
+        notifyListeners();
+      }
+    } catch (error) {
+      if (_loadTokens[kSearchFolderPath] != token) return;
+      if (_selectedFolderPath == kSearchFolderPath) {
+        _status = ProviderStatus.error;
+        _errorMessage = error.toString();
+        _isSearchLoading = false;
+        notifyListeners();
+      }
+    } finally {
+      if (_loadTokens[kSearchFolderPath] == token &&
+          _loadingFolders.remove(kSearchFolderPath)) {
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<_MailboxData> _fetchSearchResults(SearchQuery query) async {
+    final client = _client;
+    if (client == null) throw StateError('IMAP client not connected.');
+
+    // Search across INBOX (and cross-folder paths if enabled).
+    final paths = [_currentMailboxPath];
+    if (_crossFolderThreadingEnabled) {
+      paths.addAll(_threadingFolderPaths(includeOtherFolders: true)
+          .where((p) => !paths.contains(p)));
+    }
+
+    final imapCriteria = query.toImapSearch();
+    final allThreads = <String, List<EmailMessage>>{};
+
+    for (final path in paths) {
+      try {
+        final mailbox = await client.selectMailboxByPath(path);
+        if (mailbox.messagesExists <= 0) continue;
+
+        // Use IMAP SEARCH to get matching sequence numbers, then fetch them.
+        final searchResult = await client.searchMessages(
+          searchCriteria: imapCriteria,
+        );
+        final matchingSeq = searchResult.matchingSequence;
+        if (matchingSeq == null || matchingSeq.isEmpty) continue;
+
+        // Fetch headers for matched messages.
+        final seq = matchingSeq;
+        final fetchResult = await client.fetchMessages(
+          seq,
+          '(UID FLAGS ENVELOPE)',
+        );
+
+        for (final message in fetchResult.messages) {
+          if (message.envelope == null) continue;
+          final uid = message.uid;
+          final threadId = _resolveThreadId(
+            subject: message.envelope!.subject ?? '(No subject)',
+            messageId: message.envelope!.messageId,
+            inReplyTo: message.envelope!.inReplyTo,
+          );
+          final emailMsg = _buildEmailMessage(message, includeBody: false);
+          if (uid != null) {
+            allThreads.putIfAbsent(threadId, () => []).add(emailMsg);
+          }
+        }
+      } catch (_) {
+        // Skip folders that error out during search.
+      }
+    }
+
+    if (allThreads.isEmpty) {
+      return const _MailboxData(threads: [], messages: {});
+    }
+
+    final threads = _buildThreads(allThreads);
+    return _MailboxData(threads: threads, messages: allThreads);
   }
 
   @override
