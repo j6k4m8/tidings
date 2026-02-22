@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -10,6 +11,7 @@ import '../widgets/forms/auth_fields.dart';
 import '../widgets/forms/labeled_field.dart';
 import '../widgets/forms/toggle_row.dart';
 import '../widgets/tidings_background.dart';
+import 'qr_scanner_screen.dart';
 
 class OnboardingScreen extends StatelessWidget {
   const OnboardingScreen({
@@ -80,6 +82,27 @@ class OnboardingScreen extends StatelessWidget {
                     onTap: appState.addMockAccount,
                     subtle: true,
                   ),
+                  // QR scanner is only available on mobile platforms.
+                  if (defaultTargetPlatform == TargetPlatform.iOS ||
+                      defaultTargetPlatform == TargetPlatform.android) ...[
+                    const SizedBox(height: 16),
+                    _OnboardingCard(
+                      title: 'Scan from desktop',
+                      subtitle:
+                          'Import accounts by scanning a QR code from Tidings on your Mac.',
+                      cta: 'Scan QR code',
+                      accent: accent,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => QrScannerScreen(
+                            appState: appState,
+                            accent: accent,
+                          ),
+                        ),
+                      ),
+                      subtle: true,
+                    ),
+                  ],
                 ],
               ),
             ),

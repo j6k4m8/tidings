@@ -535,6 +535,78 @@ class TidingsSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Returns the subset of settings that can be transferred via QR code.
+  ///
+  /// Excludes device-local state: sidebar layout, panel fraction,
+  /// pinned folder paths, and startup account ID (which references a
+  /// local account UUID that won't exist on the receiving device).
+  Map<String, Object?> transferableSettingsMap() => {
+        'themeMode': _themeMode.name,
+        'layoutDensity': _layoutDensity.name,
+        'cornerRadiusStyle': _cornerRadiusStyle.name,
+        'autoExpandUnread': _autoExpandUnread,
+        'autoExpandLatest': _autoExpandLatest,
+        'hideThreadSubjects': _hideThreadSubjects,
+        'hideSelfInThreadList': _hideSelfInThreadList,
+        'messageCollapseMode': _messageCollapseMode.name,
+        'collapsedMaxLines': _collapsedMaxLines,
+        'showFolderLabels': _showFolderLabels,
+        'showFolderUnreadCounts': _showFolderUnreadCounts,
+        'tintThreadListByAccountAccent': _tintThreadListByAccountAccent,
+        'showThreadAccountPill': _showThreadAccountPill,
+        'moveEntireThreadByDefault': _moveEntireThreadByDefault,
+        'showMessageFolderSource': _showMessageFolderSource,
+        'dateOrder': _dateOrder.name,
+        'use24HourTime': _use24HourTime,
+      };
+
+  /// Applies a settings map received via QR code.
+  ///
+  /// Only recognised transferable keys are applied; unknown keys are ignored
+  /// so old QR codes never crash newer app versions.
+  void applyFromQr(Map<String, Object?> map) {
+    _themeMode = _themeModeFromStorage(map['themeMode']);
+    _layoutDensity = _layoutDensityFromStorage(map['layoutDensity']);
+    _cornerRadiusStyle = _cornerRadiusFromStorage(map['cornerRadiusStyle']);
+    _autoExpandUnread =
+        _boolFromStorage(map['autoExpandUnread'], _autoExpandUnread);
+    _autoExpandLatest =
+        _boolFromStorage(map['autoExpandLatest'], _autoExpandLatest);
+    _hideThreadSubjects =
+        _boolFromStorage(map['hideThreadSubjects'], _hideThreadSubjects);
+    _hideSelfInThreadList =
+        _boolFromStorage(map['hideSelfInThreadList'], _hideSelfInThreadList);
+    _messageCollapseMode =
+        _collapseModeFromStorage(map['messageCollapseMode']);
+    _collapsedMaxLines =
+        _intFromStorage(map['collapsedMaxLines'], _collapsedMaxLines)
+            .clamp(2, 20);
+    _showFolderLabels =
+        _boolFromStorage(map['showFolderLabels'], _showFolderLabels);
+    _showFolderUnreadCounts =
+        _boolFromStorage(map['showFolderUnreadCounts'], _showFolderUnreadCounts);
+    _tintThreadListByAccountAccent = _boolFromStorage(
+      map['tintThreadListByAccountAccent'],
+      _tintThreadListByAccountAccent,
+    );
+    _showThreadAccountPill = _boolFromStorage(
+      map['showThreadAccountPill'],
+      _showThreadAccountPill,
+    );
+    _moveEntireThreadByDefault = _boolFromStorage(
+      map['moveEntireThreadByDefault'],
+      _moveEntireThreadByDefault,
+    );
+    _showMessageFolderSource = _boolFromStorage(
+      map['showMessageFolderSource'],
+      _showMessageFolderSource,
+    );
+    _dateOrder = _dateOrderFromStorage(map['dateOrder']);
+    _use24HourTime = _boolFromStorage(map['use24HourTime'], _use24HourTime);
+    unawaited(_persist());
+    notifyListeners();
+  }
+
   bool isFolderPinned(String path) {
     return _pinnedFolderPaths.contains(path);
   }
@@ -644,10 +716,19 @@ extension TidingsSettingsContext on BuildContext {
 }
 
 /// Viewport-width below which the UI switches to compact (mobile) presentation.
-/// Sheets and dialogs become bottom sheets; the thread panel is full-screen.
+///
+/// Below this threshold:
+///   - The home screen uses CompactLayout (single-column) instead of WideLayout
+///   - Sheets and dialogs become bottom sheets
+///   - The thread panel opens full-screen instead of as a side panel
+///
+/// 720dp sits between phone landscape (~667–926dp depending on device) and
+/// a narrow tablet, so phones always get CompactLayout and tablets/desktops
+/// always get WideLayout.
 const double kCompactBreakpoint = 720.0;
 
-/// Viewport-width below which the wide sidebar layout collapses.
+/// Minimum viewport width for the expanded sidebar panel within WideLayout.
+/// Below this the sidebar collapses to a rail automatically.
 const double kWideSidebarBreakpoint = 500.0;
 
 enum DateOrder {

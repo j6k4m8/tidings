@@ -12,6 +12,7 @@ import '../../widgets/accent/accent_presets.dart';
 import '../../widgets/accent_switch.dart';
 import '../../widgets/settings/settings_rows.dart';
 import '../onboarding_screen.dart';
+import 'qr_transfer_dialog.dart';
 
 const _kStartupUnified = 'unified';
 
@@ -108,6 +109,17 @@ class AccountsSettings extends StatelessWidget {
         ],
 
         _AddAccountSection(appState: appState, accent: accent),
+
+        SizedBox(height: context.space(10)),
+        OutlinedButton.icon(
+          onPressed: () => showQrTransferDialog(
+            context,
+            appState: appState,
+            accent: accent,
+          ),
+          icon: const Icon(Icons.qr_code_rounded, size: 16),
+          label: const Text('Transfer to mobile'),
+        ),
 
         SizedBox(height: context.space(16)),
         OutlinedButton.icon(
