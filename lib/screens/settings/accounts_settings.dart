@@ -35,13 +35,15 @@ class AccountsSettings extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Accounts', style: Theme.of(context).textTheme.titleLarge),
-          SizedBox(height: context.space(12)),
+          SizedBox(height: context.space(16)),
           Text(
-            'No accounts added.',
+            'No accounts added yet.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: ColorTokens.textSecondary(context),
             ),
           ),
+          SizedBox(height: context.space(20)),
+          _AddAccountSection(appState: appState, accent: accent),
         ],
       );
     }
@@ -105,7 +107,9 @@ class AccountsSettings extends StatelessWidget {
           SizedBox(height: context.space(10)),
         ],
 
-        SizedBox(height: context.space(4)),
+        _AddAccountSection(appState: appState, accent: accent),
+
+        SizedBox(height: context.space(16)),
         OutlinedButton.icon(
           onPressed: () async {
             final error = await appState.openConfigDirectory();
@@ -128,7 +132,176 @@ class AccountsSettings extends StatelessWidget {
   }
 }
 
-// ── Per-account card ───────────────────────────────────────────────────────────
+// ── Add-account row ────────────────────────────────────────────────────────────
+
+class _AddAccountSection extends StatelessWidget {
+  const _AddAccountSection({
+    required this.appState,
+    required this.accent,
+  });
+
+  final AppState appState;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final glassStyle = GlassTheme.resolve(
+      context,
+      variant: GlassVariant.panel,
+      accent: accent,
+    );
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        color: glassStyle.fill,
+        borderRadius: BorderRadius.circular(context.radius(16)),
+        border: Border.all(color: glassStyle.border),
+        boxShadow: glassStyle.shadow,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(context.radius(16)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: context.space(16),
+                vertical: context.space(14),
+              ),
+              child: Text(
+                'Add account',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+            Divider(color: ColorTokens.border(context, 0.1), height: 1),
+            // Gmail
+            InkWell(
+              onTap: () => connectGmail(context, appState, accent),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.space(16),
+                  vertical: context.space(13),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF4285F4).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.mail_rounded,
+                        size: 16,
+                        color: Color(0xFF4285F4),
+                      ),
+                    ),
+                    SizedBox(width: context.space(12)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Add Gmail account',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w500),
+                          ),
+                          Text(
+                            'Sign in with Google OAuth',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: ColorTokens.textSecondary(context),
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: ColorTokens.textSecondary(context, 0.5),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Divider(color: ColorTokens.border(context, 0.08), height: 1),
+            // IMAP
+            InkWell(
+              onTap: () => showAccountSetupSheet(
+                context,
+                appState: appState,
+                accent: accent,
+              ),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.space(16),
+                  vertical: context.space(13),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: ColorTokens.cardFill(context, 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.dns_rounded,
+                        size: 16,
+                        color: ColorTokens.textSecondary(context, 0.7),
+                      ),
+                    ),
+                    SizedBox(width: context.space(12)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Add IMAP/SMTP account',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w500),
+                          ),
+                          Text(
+                            'Connect any mailbox manually',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: ColorTokens.textSecondary(context),
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: ColorTokens.textSecondary(context, 0.5),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Per-account card ────────────────────────────────────────────────────────────
 
 class AccountSection extends StatefulWidget {
   const AccountSection({

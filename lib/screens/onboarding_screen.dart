@@ -54,7 +54,7 @@ class OnboardingScreen extends StatelessWidget {
                         'Sign in with Google to sync your Gmail inbox.',
                     cta: 'Add Gmail account',
                     accent: accent,
-                    onTap: () => _connectGmail(context, appState, accent),
+                    onTap: () => connectGmail(context, appState, accent),
                   ),
                   const SizedBox(height: 16),
                   _OnboardingCard(
@@ -90,7 +90,7 @@ class OnboardingScreen extends StatelessWidget {
   }
 }
 
-Future<void> _connectGmail(
+Future<void> connectGmail(
   BuildContext context,
   AppState appState,
   Color accent,
@@ -420,7 +420,7 @@ class _AccountPickerSheet extends StatelessWidget {
                   // after the sheet is popped.
                   final ctx = callerContext ?? context;
                   Navigator.of(context).pop();
-                  await _connectGmail(ctx, appState, accent);
+                  await connectGmail(ctx, appState, accent);
                 },
               ),
               // Add IMAP account button

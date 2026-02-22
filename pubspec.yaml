@@ -44,6 +44,7 @@ dependencies:
     googleapis: ^13.2.0
     extension_google_sign_in_as_googleapis_auth: ^2.0.12
     flutter_colorpicker: ^1.1.0
+    flutter_secure_storage: ^9.2.4
 
     # The following adds the Cupertino Icons font to your application.
     # Use with the CupertinoIcons class for iOS style icons.
