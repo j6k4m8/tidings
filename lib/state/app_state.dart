@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -14,6 +13,7 @@ import '../providers/imap_smtp_email_provider.dart';
 import '../providers/mock_email_provider.dart';
 import 'shortcut_definitions.dart';
 import 'config_store.dart';
+import 'credential_store.dart';
 
 class AppState extends ChangeNotifier {
   final Random _random = Random();
@@ -125,12 +125,15 @@ class AppState extends ChangeNotifier {
           continue;
         }
         final configMap = configJson.cast<String, Object?>();
-        final password = _decodePassword(configMap['passwordB64']);
+        // Credentials are stored exclusively in the platform keychain.
+        final creds = await CredentialStore.instance.loadImapCredentials(id);
+        final password = creds.password;
+        final smtpPassword = creds.smtpPassword;
         if (password == null || password.isEmpty) {
+          // No keychain entry — account is unusable; skip and rewrite config.
           needsPersist = true;
           continue;
         }
-        final smtpPassword = _decodePassword(configMap['smtpPasswordB64']);
         imapConfig = ImapAccountConfig.fromStorageJson(
           configMap,
           password: password,
@@ -377,6 +380,9 @@ class AppState extends ChangeNotifier {
     if (removed == null) {
       return;
     }
+    if (removed.providerType == EmailProviderType.imap) {
+      await CredentialStore.instance.deleteImapCredentials(id);
+    }
     await _persistConfig();
   }
 
@@ -447,30 +453,33 @@ class AppState extends ChangeNotifier {
 
   Future<void> _persistConfig() async {
     final existing = await TidingsConfigStore.loadConfigOrEmpty();
+
+    // ── Save IMAP credentials to keychain first (async, outside .map) ───────
+    for (final account in _accounts) {
+      if (account.providerType == EmailProviderType.imap &&
+          account.imapConfig != null) {
+        final separateSmtp = !account.imapConfig!.smtpUseImapCredentials &&
+            account.imapConfig!.smtpPassword.isNotEmpty;
+        await CredentialStore.instance.saveImapCredentials(
+          accountId: account.id,
+          password: account.imapConfig!.password,
+          smtpPassword: separateSmtp ? account.imapConfig!.smtpPassword : null,
+        );
+      }
+    }
+
+    // ── Build the config payload (no passwords — keychain only) ──────────────
     final payload = <String, Object?>{
       'selectedAccountId': selectedAccount?.id,
       'accounts': _accounts.map((account) {
         final json = account.toStorageJson();
         if (account.providerType == EmailProviderType.imap &&
             account.imapConfig != null) {
-          final configJson = Map<String, Object?>.from(
-            account.imapConfig!.toStorageJson(),
-          );
-          configJson['passwordB64'] = base64Encode(
-            utf8.encode(account.imapConfig!.password),
-          );
-          if (!account.imapConfig!.smtpUseImapCredentials &&
-              account.imapConfig!.smtpPassword.isNotEmpty) {
-            configJson['smtpPasswordB64'] = base64Encode(
-              utf8.encode(account.imapConfig!.smtpPassword),
-            );
-          }
-          json['imapConfig'] = configJson;
+          // Non-secret server/port/username settings only — no passwords.
+          json['imapConfig'] = account.imapConfig!.toStorageJson();
         } else if (account.providerType == EmailProviderType.gmail &&
             account.gmailConfig != null) {
-          // OAuth tokens are managed by the platform keychain via google_sign_in.
-          // We only persist the email address so we can call signInSilently on
-          // startup with the right account hint.
+          // OAuth tokens managed by platform keychain via google_sign_in.
           json['gmailConfig'] = account.gmailConfig!.toStorageJson();
         }
         return json;
@@ -598,17 +607,6 @@ class AppState extends ChangeNotifier {
       log.writeln('SMTP failed: $error');
       log.writeln('Total: ${total.elapsedMilliseconds}ms');
       return ConnectionTestReport(ok: false, log: log.toString());
-    }
-  }
-
-  String? _decodePassword(Object? raw) {
-    if (raw is! String || raw.isEmpty) {
-      return null;
-    }
-    try {
-      return utf8.decode(base64Decode(raw));
-    } catch (_) {
-      return null;
     }
   }
 

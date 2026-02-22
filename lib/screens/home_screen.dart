@@ -699,7 +699,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _toast('No thread selected.');
       return;
     }
-    final isWide = MediaQuery.sizeOf(context).width >= kWideSidebarBreakpoint;
+    final isWide = MediaQuery.sizeOf(context).width >= kCompactBreakpoint;
     final detailOpen = isWide && _threadPanelOpen && !_showSettings;
     if (!detailOpen) {
       await _openReplyFromList(provider, account, thread, mode);
@@ -1061,7 +1061,7 @@ class _HomeScreenState extends State<HomeScreen> {
         await _inlineReplyController.send();
         break;
       case ShortcutAction.toggleSidebar:
-        if (MediaQuery.sizeOf(context).width < kWideSidebarBreakpoint) {
+        if (MediaQuery.sizeOf(context).width < kCompactBreakpoint) {
           return;
         }
         setState(() {
@@ -1141,7 +1141,7 @@ class _HomeScreenState extends State<HomeScreen> {
               autofocus: true,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= kWideSidebarBreakpoint;
+                  final isWide = constraints.maxWidth >= kCompactBreakpoint;
                   final showSettings = _showSettings;
                   final augmentedSections =
                       _augmentedFolderSections(listProvider);
