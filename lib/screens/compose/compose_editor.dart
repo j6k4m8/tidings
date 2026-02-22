@@ -427,6 +427,7 @@ class _ComposeEditorState extends State<ComposeEditor> {
                       },
                     ),
                   },
+                  // ignore: experimental_member_use
                   onKeyPressed: (event, _) {
                     if (event is KeyDownEvent &&
                         event.logicalKey == LogicalKeyboardKey.escape) {

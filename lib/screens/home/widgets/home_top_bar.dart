@@ -17,6 +17,9 @@ class HomeTopBar extends StatelessWidget {
     required this.isRefreshing,
     required this.outboxCount,
     required this.outboxSelected,
+    this.onSearchTap,
+    this.activeSearchQuery,
+    this.onSearchClear,
   });
 
   final Color accent;
@@ -27,6 +30,13 @@ class HomeTopBar extends StatelessWidget {
   final bool isRefreshing;
   final int outboxCount;
   final bool outboxSelected;
+  /// When provided, tapping the search bar opens the search overlay instead
+  /// of accepting direct input.
+  final VoidCallback? onSearchTap;
+  /// Active query to display in the decoy search bar.
+  final String? activeSearchQuery;
+  /// When provided, tapping the clear (×) icon in the decoy bar calls this.
+  final VoidCallback? onSearchClear;
 
   @override
   Widget build(BuildContext context) {
@@ -76,36 +86,48 @@ class HomeTopBar extends StatelessWidget {
                     alignment: Alignment.center,
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 520),
-                      child: TextField(
-                        focusNode: searchFocusNode,
-                        decoration: InputDecoration(
-                          hintText: 'Search',
-                          prefixIcon: const Icon(
-                            Icons.search_rounded,
-                            size: 18,
-                          ),
-                          isDense: true,
-                          filled: true,
-                          fillColor: searchFill,
-                          contentPadding: EdgeInsets.symmetric(
-                            vertical: context.space(10),
-                            horizontal: context.space(12),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: borderRadius,
-                            borderSide: BorderSide(
-                              color: ColorTokens.border(context, 0.12),
+                      child: onSearchTap != null
+                          ? Hero(
+                              tag: 'search-bar',
+                              child: _SearchDecoy(
+                                accent: accent,
+                                searchFill: searchFill,
+                                borderRadius: borderRadius,
+                                onTap: onSearchTap!,
+                                activeQuery: activeSearchQuery,
+                                onClear: onSearchClear,
+                              ),
+                            )
+                          : TextField(
+                              focusNode: searchFocusNode,
+                              decoration: InputDecoration(
+                                hintText: 'Search',
+                                prefixIcon: const Icon(
+                                  Icons.search_rounded,
+                                  size: 18,
+                                ),
+                                isDense: true,
+                                filled: true,
+                                fillColor: searchFill,
+                                contentPadding: EdgeInsets.symmetric(
+                                  vertical: context.space(10),
+                                  horizontal: context.space(12),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: borderRadius,
+                                  borderSide: BorderSide(
+                                    color: ColorTokens.border(context, 0.12),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: borderRadius,
+                                  borderSide: BorderSide(
+                                    color: accent.withValues(alpha: 0.45),
+                                    width: 1.2,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: borderRadius,
-                            borderSide: BorderSide(
-                              color: accent.withValues(alpha: 0.45),
-                              width: 1.2,
-                            ),
-                          ),
-                        ),
-                      ),
                     ),
                   ),
                 ),
@@ -134,3 +156,88 @@ class HomeTopBar extends StatelessWidget {
   }
 }
 
+/// A non-interactive widget that looks like the search bar but opens the
+/// search overlay on tap instead of accepting keyboard input directly.
+class _SearchDecoy extends StatelessWidget {
+  const _SearchDecoy({
+    required this.accent,
+    required this.searchFill,
+    required this.borderRadius,
+    required this.onTap,
+    this.activeQuery,
+    this.onClear,
+  });
+
+  final Color accent;
+  final Color searchFill;
+  final BorderRadius borderRadius;
+  final VoidCallback onTap;
+  final String? activeQuery;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasQuery = activeQuery != null && activeQuery!.isNotEmpty;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: EdgeInsets.symmetric(
+          vertical: context.space(10),
+          horizontal: context.space(12),
+        ),
+        decoration: BoxDecoration(
+          color: hasQuery ? accent.withValues(alpha: 0.1) : searchFill,
+          borderRadius: borderRadius,
+          border: Border.all(
+            color: hasQuery
+                ? accent.withValues(alpha: 0.35)
+                : ColorTokens.border(context, 0.12),
+            width: hasQuery ? 1.2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.search_rounded,
+              size: 18,
+              color: hasQuery
+                  ? accent
+                  : Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.4),
+            ),
+            SizedBox(width: context.space(8)),
+            Expanded(
+              child: Text(
+                hasQuery ? activeQuery! : 'Search',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: hasQuery
+                      ? Theme.of(context).colorScheme.onSurface
+                      : Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.4),
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+            if (hasQuery)
+              GestureDetector(
+                onTap: onClear,
+                behavior: HitTestBehavior.opaque,
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 16,
+                  color: accent.withValues(alpha: 0.6),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}

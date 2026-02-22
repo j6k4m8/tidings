@@ -6,6 +6,10 @@ These are unfortunately now outdated! But fortunately there's a new hot look! Ho
 
 <img width="1236" height="935" alt="Image" src="https://github.com/user-attachments/assets/a5482344-63ad-4df9-aa03-e8e20c47838a" />
 
+## Search!
+
+<img width="691" height="259" alt="Image" src="https://github.com/user-attachments/assets/fbda4757-31f2-40b0-bd87-e7d5fefc464e" />
+
 ## Inline replies
 
 <img width="1292" height="1016" alt="image" src="https://github.com/user-attachments/assets/f30e677e-04f1-44d8-bb66-a23bd111616a" />

@@ -4,20 +4,19 @@ import 'package:flutter/services.dart';
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
 import '../../providers/unified_email_provider.dart';
+import '../../state/saved_searches.dart';
 import '../../state/tidings_settings.dart';
 import '../../utils/email_time.dart';
 import '../../theme/account_accent.dart';
+import '../../theme/glass.dart';
+import '../search/token_coloring_controller.dart';
 import 'home_utils.dart';
 import '../../theme/color_tokens.dart';
 import '../../widgets/animations/staggered_fade_in.dart';
 import 'provider_body.dart';
 
 class ThreadSearchRow extends StatefulWidget {
-  const ThreadSearchRow({
-    super.key,
-    required this.accent,
-    this.focusNode,
-  });
+  const ThreadSearchRow({super.key, required this.accent, this.focusNode});
 
   final Color accent;
   final FocusNode? focusNode;
@@ -97,8 +96,10 @@ class _ThreadSearchRowState extends State<ThreadSearchRow> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: borderRadius,
-              borderSide:
-                  BorderSide(color: widget.accent.withValues(alpha: 0.4), width: 1.2),
+              borderSide: BorderSide(
+                color: widget.accent.withValues(alpha: 0.4),
+                width: 1.2,
+              ),
             ),
           ),
         ),
@@ -122,6 +123,8 @@ class ThreadListPanel extends StatelessWidget {
     required this.currentUserEmail,
     this.searchFocusNode,
     this.showSearch = true,
+    this.activeSearchQuery,
+    this.savedSearches,
   });
 
   final Color accent;
@@ -132,6 +135,8 @@ class ThreadListPanel extends StatelessWidget {
   final String currentUserEmail;
   final FocusNode? searchFocusNode;
   final bool showSearch;
+  final String? activeSearchQuery;
+  final SavedSearchesStore? savedSearches;
 
   @override
   Widget build(BuildContext context) {
@@ -144,8 +149,9 @@ class ThreadListPanel extends StatelessWidget {
         final tintByAccount =
             context.tidingsSettings.tintThreadListByAccountAccent;
         final showAccountPill = context.tidingsSettings.showThreadAccountPill;
-        final unifiedProvider =
-            provider is UnifiedEmailProvider ? provider as UnifiedEmailProvider : null;
+        final unifiedProvider = provider is UnifiedEmailProvider
+            ? provider as UnifiedEmailProvider
+            : null;
 
         Color? tintForThread(EmailThread thread) {
           if (!tintByAccount) {
@@ -158,10 +164,7 @@ class ThreadListPanel extends StatelessWidget {
               final baseAccent = account.accentColorValue == null
                   ? accentFromAccount(account.id)
                   : Color(account.accentColorValue!);
-              tint = resolveAccent(
-                baseAccent,
-                Theme.of(context).brightness,
-              );
+              tint = resolveAccent(baseAccent, Theme.of(context).brightness);
             }
           }
           return tint;
@@ -191,23 +194,31 @@ class ThreadListPanel extends StatelessWidget {
             accent: resolved,
           );
         }
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (!isCompact) ...[
-              Row(
-                children: [
-                  Text(
-                    folderLabelForPath(
-                          provider.folderSections,
-                          provider.selectedFolderPath,
-                        ) ??
-                        'Inbox',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const Spacer(),
-                ],
-              ),
+              if (activeSearchQuery != null && activeSearchQuery!.isNotEmpty)
+                _SearchHeader(
+                  query: activeSearchQuery!,
+                  accent: accent,
+                  savedSearches: savedSearches,
+                )
+              else
+                Row(
+                  children: [
+                    Text(
+                      folderLabelForPath(
+                            provider.folderSections,
+                            provider.selectedFolderPath,
+                          ) ??
+                          'Inbox',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const Spacer(),
+                  ],
+                ),
               if (showSearch) ...[
                 SizedBox(height: context.space(12)),
                 ThreadSearchRow(accent: accent, focusNode: searchFocusNode),
@@ -231,8 +242,9 @@ class ThreadListPanel extends StatelessWidget {
                     }
                     final thread = entry.thread!;
                     final selected = entry.index == selectedIndex;
-                    final latestMessage =
-                        provider.latestMessageForThread(thread.id);
+                    final latestMessage = provider.latestMessageForThread(
+                      thread.id,
+                    );
                     final participants = _filterParticipants(
                       thread.participants,
                       currentUserEmail,
@@ -336,22 +348,20 @@ class _ThreadTileState extends State<ThreadTile> {
     final fill = _hovered || _pressed
         ? Color.alphaBlend(hoverOverlay, baseFill)
         : baseFill;
-    final baseParticipantStyle =
-        Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: widget.selected
-                  ? scheme.onSurface.withValues(alpha: 0.85)
-                  : scheme.onSurface.withValues(
-                      alpha: isUnread ? 0.7 : 0.55,
-                    ),
-              fontWeight: FontWeight.w500,
-            );
+    final baseParticipantStyle = Theme.of(context).textTheme.labelMedium
+        ?.copyWith(
+          color: widget.selected
+              ? scheme.onSurface.withValues(alpha: 0.85)
+              : scheme.onSurface.withValues(alpha: isUnread ? 0.7 : 0.55),
+          fontWeight: FontWeight.w500,
+        );
     final latestSender = latestMessage?.from.email;
     final highlightParticipantStyle = baseParticipantStyle?.copyWith(
       color: widget.selected
           ? scheme.onSurface
           : (isUnread
-              ? tokens.onSurface
-              : scheme.onSurface.withValues(alpha: 0.85)),
+                ? tokens.onSurface
+                : scheme.onSurface.withValues(alpha: 0.85)),
       fontWeight: FontWeight.w600,
     );
     final settings = context.tidingsSettings;
@@ -374,8 +384,8 @@ class _ThreadTileState extends State<ThreadTile> {
     final subjectSnippet = subject.isEmpty
         ? snippet
         : snippet.isEmpty
-            ? subject
-            : '$subject — $snippet';
+        ? subject
+        : '$subject — $snippet';
     const previewLines = 2;
 
     return MouseRegion(
@@ -429,8 +439,9 @@ class _ThreadTileState extends State<ThreadTile> {
                                   Container(
                                     width: context.space(6),
                                     height: context.space(6),
-                                    margin:
-                                        EdgeInsets.only(right: context.space(6)),
+                                    margin: EdgeInsets.only(
+                                      right: context.space(6),
+                                    ),
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       color: widget.accent,
@@ -444,20 +455,25 @@ class _ThreadTileState extends State<ThreadTile> {
                                     overflow: TextOverflow.ellipsis,
                                     text: TextSpan(
                                       children: [
-                                        for (var i = 0;
-                                            i < widget.participants.length;
-                                            i++)
+                                        for (
+                                          var i = 0;
+                                          i < widget.participants.length;
+                                          i++
+                                        )
                                           TextSpan(
-                                            text: widget.participants[i]
+                                            text:
+                                                widget
+                                                    .participants[i]
                                                     .normalizedDisplayName +
                                                 (i ==
-                                                        widget.participants
+                                                        widget
+                                                                .participants
                                                                 .length -
                                                             1
                                                     ? ''
                                                     : ', '),
-                                            style: widget.participants[i]
-                                                        .email ==
+                                            style:
+                                                widget.participants[i].email ==
                                                     latestSender
                                                 ? highlightParticipantStyle
                                                 : baseParticipantStyle,
@@ -543,9 +559,7 @@ class _ThreadTileState extends State<ThreadTile> {
                               subjectSnippet,
                               maxLines: previewLines,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
+                              style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     fontWeight: widget.thread.unread
                                         ? FontWeight.w600
@@ -590,8 +604,7 @@ class _SenderStack extends StatelessWidget {
         final maxCircle = context.space(40);
         final minCircle = context.space(30);
         final circleSize = (maxHeight / count).clamp(minCircle, maxCircle);
-        final spacing =
-            count == 1 ? 0 : (maxHeight - circleSize) / (count - 1);
+        final spacing = count == 1 ? 0 : (maxHeight - circleSize) / (count - 1);
         final width = circleSize + 6;
         return SizedBox(
           width: width,
@@ -647,8 +660,9 @@ List<EmailAddress> _orderedParticipants(
   if (latestSender == null) {
     return participants;
   }
-  final index =
-      participants.indexWhere((participant) => participant.email == latestSender);
+  final index = participants.indexWhere(
+    (participant) => participant.email == latestSender,
+  );
   if (index <= 0) {
     return participants;
   }
@@ -672,11 +686,8 @@ List<EmailAddress> _filterParticipants(
   return filtered.isEmpty ? participants : filtered;
 }
 
-
 class _ThreadListEntry {
-  const _ThreadListEntry.header(this.header)
-      : thread = null,
-        index = null;
+  const _ThreadListEntry.header(this.header) : thread = null, index = null;
   const _ThreadListEntry.thread(this.thread, this.index) : header = null;
 
   final String? header;
@@ -715,6 +726,362 @@ String _sectionLabel(DateTime? timestamp) {
   return 'Earlier';
 }
 
+// ── Search result header with save/edit modal ─────────────────────────────────
+
+class _SearchHeader extends StatelessWidget {
+  const _SearchHeader({
+    required this.query,
+    required this.accent,
+    this.savedSearches,
+  });
+
+  final String query;
+  final Color accent;
+  final SavedSearchesStore? savedSearches;
+
+  SavedSearch? _existingSaved() =>
+      savedSearches?.items.where((s) => s.query == query).firstOrNull;
+
+  void _openModal(BuildContext context) {
+    final existing = _existingSaved();
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.35),
+      builder: (_) => _SavedSearchDialog(
+        accent: accent,
+        currentQuery: query,
+        existing: existing,
+        savedSearches: savedSearches!,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final existing = _existingSaved();
+    final isSaved = existing != null;
+    final title = (isSaved && existing.name.isNotEmpty) ? existing.name : query;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: Theme.of(context).textTheme.titleLarge,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (savedSearches != null) ...[
+          const SizedBox(width: 6),
+          Tooltip(
+            message: isSaved ? 'Edit saved search' : 'Save this search',
+            child: IconButton(
+              onPressed: () => _openModal(context),
+              icon: Icon(
+                isSaved ? Icons.tune_rounded : Icons.bookmark_add_outlined,
+                size: 18,
+              ),
+              color: isSaved ? accent : scheme.onSurface.withValues(alpha: 0.4),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Modal dialog for saving a new search or editing/deleting an existing one.
+class _SavedSearchDialog extends StatefulWidget {
+  const _SavedSearchDialog({
+    required this.accent,
+    required this.currentQuery,
+    required this.savedSearches,
+    this.existing,
+  });
+
+  final Color accent;
+  final String currentQuery;
+  final SavedSearch? existing;
+  final SavedSearchesStore savedSearches;
+
+  @override
+  State<_SavedSearchDialog> createState() => _SavedSearchDialogState();
+}
+
+class _SavedSearchDialogState extends State<_SavedSearchDialog> {
+  late final TextEditingController _nameController;
+  late final TokenColoringController _queryController;
+  late final FocusNode _nameFocus;
+  bool _saving = false;
+  bool _deleting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.existing?.name ?? '');
+    _queryController = TokenColoringController(accent: widget.accent)
+      ..text = widget.existing?.query ?? widget.currentQuery;
+    _nameFocus = FocusNode();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _nameFocus.requestFocus();
+      _nameController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _nameController.text.length,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _queryController.dispose();
+    _nameFocus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _commit() async {
+    final name = _nameController.text.trim();
+    final query = _queryController.text.trim();
+    if (name.isEmpty || query.isEmpty) return;
+    setState(() => _saving = true);
+    final existing = widget.existing;
+    if (existing != null) {
+      await widget.savedSearches.update(
+        existing.copyWith(name: name, query: query),
+      );
+    } else {
+      await widget.savedSearches.create(name: name, query: query);
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _delete() async {
+    final existing = widget.existing;
+    if (existing == null) return;
+    setState(() => _deleting = true);
+    await widget.savedSearches.remove(existing.id);
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  Widget _buildField({
+    required BuildContext context,
+    required String label,
+    required TextEditingController controller,
+    FocusNode? focusNode,
+    String? hintText,
+    TextInputAction textInputAction = TextInputAction.next,
+    VoidCallback? onSubmitted,
+    bool syntaxHighlight = false,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    // Query field uses same style as the search bar overlay.
+    final textStyle = syntaxHighlight
+        ? Theme.of(context).textTheme.bodyMedium?.copyWith(letterSpacing: 0)
+        : Theme.of(context).textTheme.bodyMedium;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: ColorTokens.textSecondary(context, 0.55),
+            letterSpacing: 0.3,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Container(
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: widget.accent.withValues(alpha: 0.45),
+                width: 1.5,
+              ),
+            ),
+          ),
+          child: TextField(
+            controller: controller,
+            focusNode: focusNode,
+            style: textStyle,
+            decoration: InputDecoration.collapsed(
+              hintText: hintText,
+              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurface.withValues(alpha: 0.35),
+                letterSpacing: syntaxHighlight ? 0 : null,
+              ),
+            ),
+            textInputAction: textInputAction,
+            onSubmitted: onSubmitted != null ? (_) => onSubmitted() : null,
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isNew = widget.existing == null;
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: GlassPanel(
+          borderRadius: BorderRadius.circular(20),
+          padding: const EdgeInsets.all(20),
+          variant: GlassVariant.sheet,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Title row ─────────────────────────────────────────────────
+              Row(
+                children: [
+                  Icon(
+                    isNew ? Icons.bookmark_add_rounded : Icons.tune_rounded,
+                    size: 16,
+                    color: widget.accent,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    isNew ? 'Save search' : 'Edit saved search',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded, size: 16),
+                    color: scheme.onSurface.withValues(alpha: 0.35),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 28,
+                      height: 28,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              // ── Name field ────────────────────────────────────────────────
+              _buildField(
+                context: context,
+                label: 'NAME',
+                controller: _nameController,
+                focusNode: _nameFocus,
+                hintText: 'e.g. From Jordan',
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 16),
+              // ── Query field (syntax-highlighted) ─────────────────────────
+              _buildField(
+                context: context,
+                label: 'QUERY',
+                controller: _queryController,
+                hintText: 'e.g. from:jordan is:unread',
+                textInputAction: TextInputAction.done,
+                onSubmitted: _commit,
+                syntaxHighlight: true,
+              ),
+              const SizedBox(height: 24),
+              // ── Action buttons ────────────────────────────────────────────
+              Row(
+                children: [
+                  if (!isNew) ...[
+                    // Delete button
+                    _deleting
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation(scheme.error),
+                            ),
+                          )
+                        : TextButton.icon(
+                            onPressed: _delete,
+                            icon: Icon(
+                              Icons.delete_outline_rounded,
+                              size: 15,
+                              color: scheme.error.withValues(alpha: 0.8),
+                            ),
+                            label: Text(
+                              'Delete',
+                              style: Theme.of(context).textTheme.labelMedium
+                                  ?.copyWith(
+                                    color: scheme.error.withValues(alpha: 0.8),
+                                  ),
+                            ),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
+                              ),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                  ],
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(
+                      'Cancel',
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: scheme.onSurface.withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _saving
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(widget.accent),
+                          ),
+                        )
+                      : FilledButton(
+                          onPressed: _commit,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: widget.accent,
+                            foregroundColor:
+                                ThemeData.estimateBrightnessForColor(
+                                      widget.accent,
+                                    ) ==
+                                    Brightness.light
+                                ? Colors.black.withValues(alpha: 0.85)
+                                : Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 0,
+                            ),
+                            minimumSize: const Size(0, 34),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: Text(
+                            isNew ? 'Save' : 'Update',
+                            style: Theme.of(context).textTheme.labelMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ThreadSectionHeader extends StatelessWidget {
   const _ThreadSectionHeader({required this.label});
 
@@ -723,9 +1090,9 @@ class _ThreadSectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: ColorTokens.textSecondary(context, 0.6),
-          letterSpacing: 0.6,
-        );
+      color: ColorTokens.textSecondary(context, 0.6),
+      letterSpacing: 0.6,
+    );
     return Padding(
       padding: EdgeInsets.only(
         top: context.space(12),

@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 
 import '../../models/account_models.dart';
 import '../../models/email_models.dart';
+import '../../models/folder_models.dart';
 import '../../providers/email_provider.dart';
 import '../../state/app_state.dart';
+import '../../state/saved_searches.dart';
 import '../../state/tidings_settings.dart';
+import '../../theme/color_tokens.dart';
 import '../../widgets/animations/page_reveal.dart';
 import '../../widgets/outbox_button.dart';
 import '../../widgets/paper_panel.dart';
@@ -64,6 +67,11 @@ class WideLayout extends StatelessWidget {
     required this.onMessageSelected,
     this.onReplyFocusChange,
     this.isUnified = false,
+    this.onSearchTap,
+    this.activeSearchQuery,
+    this.onSearchClear,
+    this.folderSectionsOverride,
+    this.savedSearches,
   });
 
   final AppState appState;
@@ -71,6 +79,12 @@ class WideLayout extends StatelessWidget {
   final Color accent;
   final EmailProvider provider;
   final bool isUnified;
+  final VoidCallback? onSearchTap;
+  final String? activeSearchQuery;
+  final VoidCallback? onSearchClear;
+  /// When provided, used instead of provider.folderSections in the sidebar.
+  final List<FolderSection>? folderSectionsOverride;
+  final SavedSearchesStore? savedSearches;
   final String listCurrentUserEmail;
   final String detailCurrentUserEmail;
   final int selectedThreadIndex;
@@ -111,7 +125,7 @@ class WideLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final threads = provider.threads;
-    final folderSections = provider.folderSections;
+    final folderSections = folderSectionsOverride ?? provider.folderSections;
     final safeIndex = threads.isEmpty
         ? 0
         : selectedIndex(selectedThreadIndex, threads.length);
@@ -139,6 +153,9 @@ class WideLayout extends StatelessWidget {
           isRefreshing: isRefreshing,
           outboxCount: outboxCount,
           outboxSelected: outboxSelected,
+          onSearchTap: onSearchTap,
+          activeSearchQuery: activeSearchQuery,
+          onSearchClear: onSearchClear,
         ),
         SizedBox(height: context.space(14)),
         Expanded(
@@ -222,6 +239,8 @@ class WideLayout extends StatelessWidget {
                                               listCurrentUserEmail,
                                           searchFocusNode: searchFocusNode,
                                           showSearch: false,
+                                          activeSearchQuery: activeSearchQuery,
+                                          savedSearches: savedSearches,
                                         ),
                                       ),
                                     ),
@@ -310,6 +329,8 @@ class WideLayout extends StatelessWidget {
                                             listCurrentUserEmail,
                                         searchFocusNode: searchFocusNode,
                                         showSearch: false,
+                                        activeSearchQuery: activeSearchQuery,
+                                        savedSearches: savedSearches,
                                       ),
                                     ),
                                   ),
@@ -428,6 +449,11 @@ class CompactLayout extends StatelessWidget {
     required this.currentUserEmailForThread,
     this.isUnified = false,
     this.accountCount = 0,
+    this.onSearchTap,
+    this.activeSearchQuery,
+    this.onSearchClear,
+    this.folderSectionsOverride,
+    this.savedSearches,
   });
 
   final EmailAccount account;
@@ -435,6 +461,12 @@ class CompactLayout extends StatelessWidget {
   final EmailProvider provider;
   final bool isUnified;
   final int accountCount;
+  final VoidCallback? onSearchTap;
+  final String? activeSearchQuery;
+  final VoidCallback? onSearchClear;
+  /// When provided, used instead of provider.folderSections in the sidebar.
+  final List<FolderSection>? folderSectionsOverride;
+  final SavedSearchesStore? savedSearches;
   final int selectedThreadIndex;
   final ValueChanged<int> onThreadSelected;
   final int selectedFolderIndex;
@@ -463,8 +495,10 @@ class CompactLayout extends StatelessWidget {
     final isMac = defaultTargetPlatform == TargetPlatform.macOS;
     final topPadding =
         topInset + context.space(isMac ? 22 : 6);
+    final effectiveFolderSections =
+        folderSectionsOverride ?? provider.folderSections;
     final pinnedFolderItems = pinnedItems(
-      provider.folderSections,
+      effectiveFolderSections,
       context.tidingsSettings.pinnedFolderPaths,
     );
     final railWidth = context.space(72);
@@ -494,10 +528,20 @@ class CompactLayout extends StatelessWidget {
               ),
               SizedBox(width: context.space(8)),
               Expanded(
-                child: ThreadSearchRow(
-                  accent: accent,
-                  focusNode: searchFocusNode,
-                ),
+                child: onSearchTap != null
+                    ? Hero(
+                        tag: 'search-bar',
+                        child: _CompactSearchDecoy(
+                          accent: accent,
+                          onTap: onSearchTap!,
+                          activeQuery: activeSearchQuery,
+                          onClear: onSearchClear,
+                        ),
+                      )
+                    : ThreadSearchRow(
+                        accent: accent,
+                        focusNode: searchFocusNode,
+                      ),
               ),
               SizedBox(width: context.space(8)),
               OutboxButton(
@@ -561,6 +605,8 @@ class CompactLayout extends StatelessWidget {
                               isCompact: true,
                               currentUserEmail: listCurrentUserEmail,
                               searchFocusNode: searchFocusNode,
+                              activeSearchQuery: activeSearchQuery,
+                              savedSearches: savedSearches,
                             ),
                           ),
                         ),
@@ -598,7 +644,7 @@ class CompactLayout extends StatelessWidget {
                             account: account,
                             accent: accent,
                             provider: provider,
-                            sections: provider.folderSections,
+                            sections: effectiveFolderSections,
                             selectedIndex: selectedFolderIndex,
                             onSelected: (index) {
                               onFolderSelected(index);
@@ -616,7 +662,7 @@ class CompactLayout extends StatelessWidget {
                             account: account,
                             accent: accent,
                             isUnified: isUnified,
-                            mailboxItems: mailboxItems(provider.folderSections),
+                            mailboxItems: mailboxItems(effectiveFolderSections),
                             pinnedItems: pinnedFolderItems,
                             selectedIndex: selectedFolderIndex,
                             onSelected: (index) {
@@ -638,3 +684,89 @@ class CompactLayout extends StatelessWidget {
   }
 }
 
+/// A compact-layout search bar decoy that opens the search overlay on tap.
+class _CompactSearchDecoy extends StatelessWidget {
+  const _CompactSearchDecoy({
+    required this.accent,
+    required this.onTap,
+    this.activeQuery,
+    this.onClear,
+  });
+
+  final Color accent;
+  final VoidCallback onTap;
+  final String? activeQuery;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hasQuery = activeQuery != null && activeQuery!.isNotEmpty;
+    final searchFill = isDark
+        ? Colors.white.withValues(alpha: 0.1)
+        : Colors.white.withValues(alpha: 0.7);
+    final borderRadius = BorderRadius.circular(context.radius(18));
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: EdgeInsets.symmetric(
+          vertical: context.space(10),
+          horizontal: context.space(12),
+        ),
+        decoration: BoxDecoration(
+          color: hasQuery ? accent.withValues(alpha: 0.1) : searchFill,
+          borderRadius: borderRadius,
+          border: Border.all(
+            color: hasQuery
+                ? accent.withValues(alpha: 0.35)
+                : ColorTokens.border(context, 0.12),
+            width: hasQuery ? 1.2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.search_rounded,
+              size: 18,
+              color: hasQuery
+                  ? accent
+                  : Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.4),
+            ),
+            SizedBox(width: context.space(8)),
+            Expanded(
+              child: Text(
+                hasQuery ? activeQuery! : 'Search',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: hasQuery
+                      ? Theme.of(context).colorScheme.onSurface
+                      : Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.4),
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+            if (hasQuery)
+              GestureDetector(
+                onTap: onClear,
+                behavior: HitTestBehavior.opaque,
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 16,
+                  color: accent.withValues(alpha: 0.6),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
