@@ -68,7 +68,6 @@ class QueryLexer {
       final fieldName = word.toLowerCase();
       if (kQueryFields.contains(fieldName)) {
         _pos++; // consume ':'
-        final valueStart = _pos;
         final value = _readValue();
         if (value != null) {
           // Emit two tokens: the field qualifier and the value

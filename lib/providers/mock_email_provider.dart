@@ -32,7 +32,7 @@ class MockEmailProvider extends EmailProvider {
 
   // ── Search — mock provider does client-side filtering only ───────────────
   SearchQuery? _activeSearch;
-  bool _isSearchLoading = false;
+  final bool _isSearchLoading = false;
 
   @override
   SearchQuery? get activeSearch => _activeSearch;

@@ -1,4 +1,4 @@
-/// AST nodes for the query language.
+// AST nodes for the query language.
 
 sealed class QueryNode {
   const QueryNode();

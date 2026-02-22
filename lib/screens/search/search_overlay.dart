@@ -218,7 +218,7 @@ class _SearchOverlayState extends State<_SearchOverlay> {
                   // ── Search field ─────────────────────────────────────
                   Hero(
                     tag: 'search-bar',
-                    flightShuttleBuilder: (_, animation, __, fromCtx, toCtx) {
+                    flightShuttleBuilder: (p1, animation, p2, fromCtx, toCtx) {
                       final radius = BorderRadiusTween(
                         begin: BorderRadius.circular(18),
                         end: BorderRadius.circular(16),
@@ -227,7 +227,7 @@ class _SearchOverlayState extends State<_SearchOverlay> {
                         type: MaterialType.transparency,
                         child: AnimatedBuilder(
                           animation: animation,
-                          builder: (_, __) => Container(
+                          builder: (p1, p2) => Container(
                             decoration: BoxDecoration(
                               color: isDark
                                   ? Colors.white.withValues(alpha: 0.12)

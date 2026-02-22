@@ -9,7 +9,6 @@ import 'package:googleapis/gmail/v1.dart' as gmail;
 import '../models/email_models.dart';
 import '../models/folder_models.dart';
 import '../search/search_query.dart';
-import '../search/query_serializer.dart';
 import '../state/send_queue.dart';
 import 'email_provider.dart';
 import '../utils/email_address_utils.dart';
