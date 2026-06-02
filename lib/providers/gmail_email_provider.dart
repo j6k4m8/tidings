@@ -11,6 +11,7 @@ import '../models/folder_models.dart';
 import '../search/search_query.dart';
 import '../state/send_queue.dart';
 import 'email_provider.dart';
+import 'gmail_mime_builder.dart';
 import '../utils/email_address_utils.dart';
 
 // ---------------------------------------------------------------------------
@@ -68,8 +69,8 @@ class GmailEmailProvider extends EmailProvider {
     required this.accountId,
     required GoogleSignIn googleSignIn,
     GoogleSignInAccount? existingAccount,
-  })  : _googleSignIn = googleSignIn,
-        _gsiAccount = existingAccount {
+  }) : _googleSignIn = googleSignIn,
+       _gsiAccount = existingAccount {
     _sendQueue = SendQueue(
       accountKey: accountId,
       onChanged: notifyListeners,
@@ -141,8 +142,7 @@ class GmailEmailProvider extends EmailProvider {
   int get outboxCount => _sendQueue.pendingCount;
 
   @override
-  List<FolderSection> get folderSections =>
-      List.unmodifiable(_folderSections);
+  List<FolderSection> get folderSections => List.unmodifiable(_folderSections);
 
   @override
   String get selectedFolderPath => _selectedLabelId;
@@ -323,14 +323,16 @@ class GmailEmailProvider extends EmailProvider {
     for (final summary in threadSummaries) {
       final id = summary.id;
       if (id == null) continue;
-      threads.add(EmailThread(
-        id: id,
-        subject: summary.snippet ?? '(loading…)',
-        participants: const [],
-        time: '',
-        unread: false,
-        starred: false,
-      ));
+      threads.add(
+        EmailThread(
+          id: id,
+          subject: summary.snippet ?? '(loading…)',
+          participants: const [],
+          time: '',
+          unread: false,
+          starred: false,
+        ),
+      );
       messages[id] = [];
     }
     final phase1 = _LabelData(threads: threads, messages: messages);
@@ -370,6 +372,16 @@ class GmailEmailProvider extends EmailProvider {
       replyMessageId = latest?.messageId;
       replyInReplyTo = latest?.inReplyTo;
     }
+    validateGmailRfc2822Headers(
+      from: email,
+      to: toLine,
+      cc: ccLine,
+      bcc: bccLine,
+      subject: subject,
+      replyMessageId: replyMessageId,
+      replyInReplyTo: replyInReplyTo,
+      requireRecipient: true,
+    );
     final draft = OutboxDraft(
       accountKey: accountId,
       threadId: thread?.id,
@@ -400,7 +412,7 @@ class GmailEmailProvider extends EmailProvider {
   }) async {
     final api = _gmailApi;
     if (api == null) return;
-    final raw = _buildRfc2822(
+    final raw = buildGmailRfc2822(
       from: email,
       to: toLine,
       cc: ccLine,
@@ -529,7 +541,9 @@ class GmailEmailProvider extends EmailProvider {
     final account = _gsiAccount;
     if (account == null) return;
     final httpClient = await _googleSignIn.authenticatedClient();
-    if (httpClient == null) throw Exception('Could not get authenticated HTTP client.');
+    if (httpClient == null) {
+      throw Exception('Could not get authenticated HTTP client.');
+    }
     _gmailApi = gmail.GmailApi(httpClient);
   }
 
@@ -561,23 +575,27 @@ class GmailEmailProvider extends EmailProvider {
         orElse: () => gmail.Label()..id = id,
       );
       final unread = label.messagesUnread ?? 0;
-      mailboxItems.add(FolderItem(
-        index: index++,
-        name: _kSystemLabelNames[id] ?? id,
-        path: id,
-        unreadCount: unread,
-        icon: _iconForSystemLabel(id),
-      ));
+      mailboxItems.add(
+        FolderItem(
+          index: index++,
+          name: _kSystemLabelNames[id] ?? id,
+          path: id,
+          unreadCount: unread,
+          icon: _iconForSystemLabel(id),
+        ),
+      );
     }
 
     // Outbox virtual folder.
-    mailboxItems.add(FolderItem(
-      index: index++,
-      name: 'Outbox',
-      path: kOutboxFolderPath,
-      unreadCount: outboxCount,
-      icon: Icons.outbox_outlined,
-    ));
+    mailboxItems.add(
+      FolderItem(
+        index: index++,
+        name: 'Outbox',
+        path: kOutboxFolderPath,
+        unreadCount: outboxCount,
+        icon: Icons.outbox_outlined,
+      ),
+    );
 
     // User labels — skip system ones and internal ones (prefixed with CATEGORY_).
     final systemIds = {
@@ -600,29 +618,35 @@ class GmailEmailProvider extends EmailProvider {
       // Compute nesting depth from '/' separators.
       final depth = '/'.allMatches(name).length;
       final displayName = name.split('/').last;
-      labelItems.add(FolderItem(
-        index: index++,
-        name: displayName,
-        path: id,
-        depth: depth,
-        unreadCount: label.messagesUnread ?? 0,
-        icon: Icons.label_outline,
-      ));
+      labelItems.add(
+        FolderItem(
+          index: index++,
+          name: displayName,
+          path: id,
+          depth: depth,
+          unreadCount: label.messagesUnread ?? 0,
+          icon: Icons.label_outline,
+        ),
+      );
     }
 
     _folderSections
       ..clear()
-      ..add(FolderSection(
-        title: 'Mailboxes',
-        items: mailboxItems,
-        kind: FolderSectionKind.mailboxes,
-      ));
+      ..add(
+        FolderSection(
+          title: 'Mailboxes',
+          items: mailboxItems,
+          kind: FolderSectionKind.mailboxes,
+        ),
+      );
     if (labelItems.isNotEmpty) {
-      _folderSections.add(FolderSection(
-        title: 'Labels',
-        items: labelItems,
-        kind: FolderSectionKind.labels,
-      ));
+      _folderSections.add(
+        FolderSection(
+          title: 'Labels',
+          items: labelItems,
+          kind: FolderSectionKind.labels,
+        ),
+      );
     }
     notifyListeners();
   }
@@ -792,17 +816,19 @@ class GmailEmailProvider extends EmailProvider {
       final participants = <EmailAddress>{latest.from, ...latest.to}.toList();
       final isUnread = parsedMessages.any((m) => m.isUnread);
 
-      threads.add(EmailThread(
-        id: threadId,
-        subject: latest.subject,
-        participants: participants,
-        time: latest.time,
-        unread: isUnread,
-        starred: gmailMessages.any(
-          (m) => m.labelIds?.contains(_kStarred) ?? false,
+      threads.add(
+        EmailThread(
+          id: threadId,
+          subject: latest.subject,
+          participants: participants,
+          time: latest.time,
+          unread: isUnread,
+          starred: gmailMessages.any(
+            (m) => m.labelIds?.contains(_kStarred) ?? false,
+          ),
+          receivedAt: latest.receivedAt,
         ),
-        receivedAt: latest.receivedAt,
-      ));
+      );
       messages[threadId] = parsedMessages;
     }
 
@@ -896,7 +922,10 @@ class GmailEmailProvider extends EmailProvider {
     return (bodyText, bodyHtml);
   }
 
-  void _walkParts(gmail.MessagePart part, void Function(gmail.MessagePart) visit) {
+  void _walkParts(
+    gmail.MessagePart part,
+    void Function(gmail.MessagePart) visit,
+  ) {
     visit(part);
     for (final child in part.parts ?? <gmail.MessagePart>[]) {
       _walkParts(child, visit);
@@ -1000,7 +1029,7 @@ class GmailEmailProvider extends EmailProvider {
     final api = _gmailApi;
     if (api == null) throw Exception('Gmail API not initialised.');
 
-    final raw = _buildRfc2822(
+    final raw = buildGmailRfc2822(
       from: email,
       to: item.toLine,
       cc: item.ccLine,
@@ -1010,6 +1039,7 @@ class GmailEmailProvider extends EmailProvider {
       bodyText: item.bodyText,
       replyMessageId: item.replyMessageId,
       replyInReplyTo: item.replyInReplyTo,
+      requireRecipient: true,
     );
     final encoded = base64UrlEncode(utf8.encode(raw));
     final message = gmail.Message()
@@ -1021,7 +1051,7 @@ class GmailEmailProvider extends EmailProvider {
   Future<void> _saveQueuedDraft(OutboxItem item) async {
     final api = _gmailApi;
     if (api == null) throw Exception('Gmail API not initialised.');
-    final raw = _buildRfc2822(
+    final raw = buildGmailRfc2822(
       from: email,
       to: item.toLine,
       cc: item.ccLine,
@@ -1113,20 +1143,10 @@ class GmailEmailProvider extends EmailProvider {
   String _outboxThreadId(OutboxItem item) => 'outbox-${item.id}';
 
   MessageSendStatus _toSendStatus(OutboxStatus status) => switch (status) {
-        OutboxStatus.queued => MessageSendStatus.queued,
-        OutboxStatus.sending => MessageSendStatus.sending,
-        OutboxStatus.failed => MessageSendStatus.failed,
-      };
-
-  // ---------------------------------------------------------------------------
-  // Utilities — address parsing
-  // ---------------------------------------------------------------------------
-
-
-
-  // ---------------------------------------------------------------------------
-  // Utilities — time formatting
-  // ---------------------------------------------------------------------------
+    OutboxStatus.queued => MessageSendStatus.queued,
+    OutboxStatus.sending => MessageSendStatus.sending,
+    OutboxStatus.failed => MessageSendStatus.failed,
+  };
 
   // ---------------------------------------------------------------------------
   // Utilities — RFC 2822 date parsing
@@ -1145,50 +1165,5 @@ class GmailEmailProvider extends EmailProvider {
     } catch (_) {
       return null;
     }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Utilities — RFC 2822 message building
-  // ---------------------------------------------------------------------------
-
-  String _buildRfc2822({
-    required String from,
-    required String to,
-    String? cc,
-    String? bcc,
-    required String subject,
-    required String bodyHtml,
-    required String bodyText,
-    String? replyMessageId,
-    String? replyInReplyTo,
-  }) {
-    final boundary = 'tidings_${DateTime.now().millisecondsSinceEpoch}';
-    final buf = StringBuffer();
-    buf.writeln('From: $from');
-    buf.writeln('To: $to');
-    if (cc != null && cc.isNotEmpty) buf.writeln('Cc: $cc');
-    if (bcc != null && bcc.isNotEmpty) buf.writeln('Bcc: $bcc');
-    buf.writeln('Subject: =?UTF-8?B?${base64Encode(utf8.encode(subject))}?=');
-    buf.writeln('MIME-Version: 1.0');
-    if (replyMessageId != null) buf.writeln('In-Reply-To: $replyMessageId');
-    if (replyInReplyTo != null) {
-      buf.writeln('References: $replyInReplyTo $replyMessageId');
-    }
-    buf.writeln('Content-Type: multipart/alternative; boundary="$boundary"');
-    buf.writeln();
-    if (bodyText.isNotEmpty) {
-      buf.writeln('--$boundary');
-      buf.writeln('Content-Type: text/plain; charset=UTF-8');
-      buf.writeln('Content-Transfer-Encoding: base64');
-      buf.writeln();
-      buf.writeln(base64Encode(utf8.encode(bodyText)));
-    }
-    buf.writeln('--$boundary');
-    buf.writeln('Content-Type: text/html; charset=UTF-8');
-    buf.writeln('Content-Transfer-Encoding: base64');
-    buf.writeln();
-    buf.writeln(base64Encode(utf8.encode(bodyHtml)));
-    buf.writeln('--$boundary--');
-    return buf.toString();
   }
 }
