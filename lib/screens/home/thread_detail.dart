@@ -10,6 +10,7 @@ import '../../providers/unified_email_provider.dart';
 import '../../state/shortcut_definitions.dart';
 import '../../state/send_queue.dart';
 import '../../state/tidings_settings.dart';
+import '../../utils/email_html_sanitizer.dart';
 import '../../utils/email_time.dart';
 import '../../utils/subject_utils.dart';
 import '../../theme/color_tokens.dart';
@@ -57,6 +58,7 @@ class CurrentThreadPanel extends StatefulWidget {
 
 class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
   final Map<String, bool> _expandedState = {};
+  final Set<String> _remoteContentAllowedMessageIds = {};
   late ScrollController _scrollController;
   bool _ownsScrollController = false;
   bool _showEscHint = false;
@@ -91,6 +93,9 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
   @override
   void didUpdateWidget(covariant CurrentThreadPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.thread.id != widget.thread.id) {
+      _remoteContentAllowedMessageIds.clear();
+    }
     if (oldWidget.scrollController != widget.scrollController) {
       if (_ownsScrollController) {
         _scrollController.dispose();
@@ -141,7 +146,10 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
   String _buildHeaderSnippet(EmailThread thread, EmailMessage? latest) {
     final headline = _participantHeadline(thread);
     final subject = thread.subject.isEmpty ? 'No subject' : thread.subject;
-    final snippet = _cleanSnippet(latest?.bodyPlainText ?? '', _headerSnippetMaxLength);
+    final snippet = _cleanSnippet(
+      latest?.bodyPlainText ?? '',
+      _headerSnippetMaxLength,
+    );
     if (snippet.isEmpty) {
       return '$headline: $subject';
     }
@@ -174,10 +182,7 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
     return provider;
   }
 
-  EmailThread? _threadForOutboxItem(
-    EmailProvider provider,
-    OutboxItem item,
-  ) {
+  EmailThread? _threadForOutboxItem(EmailProvider provider, OutboxItem item) {
     final threadId = item.threadId;
     if (threadId == null || threadId.isEmpty) {
       return null;
@@ -191,14 +196,17 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _toggleThreadRead() async {
     final messages = widget.provider.messagesForThread(widget.thread.id);
     final hasUnreadMessage = messages.any((message) => message.isUnread);
-    final isUnread =
-        messages.isNotEmpty ? hasUnreadMessage : widget.thread.unread;
+    final isUnread = messages.isNotEmpty
+        ? hasUnreadMessage
+        : widget.thread.unread;
     final error = await widget.provider.setThreadUnread(
       widget.thread,
       !isUnread,
@@ -216,18 +224,14 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
     final item = OutboxStore.instance.findById(outboxId);
     if (item == null) {
       if (mounted) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Unable to undo')),
-        );
+        messenger.showSnackBar(const SnackBar(content: Text('Unable to undo')));
       }
       return;
     }
     final provider = _providerForOutboxItem(item);
     if (provider == null) {
       if (mounted) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Unable to undo')),
-        );
+        messenger.showSnackBar(const SnackBar(content: Text('Unable to undo')));
       }
       return;
     }
@@ -241,9 +245,7 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
       return;
     }
     if (!undone) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Unable to undo')),
-      );
+      messenger.showSnackBar(const SnackBar(content: Text('Unable to undo')));
       return;
     }
     if (widget.replyController != null) {
@@ -318,8 +320,9 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
     if (result == null || !mounted) {
       return;
     }
-    final effectiveSingleMessage =
-        result.moveEntireThread ? null : singleMessage;
+    final effectiveSingleMessage = result.moveEntireThread
+        ? null
+        : singleMessage;
     final error = await provider.moveToFolder(
       widget.thread,
       result.folderPath,
@@ -349,8 +352,9 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
             ? messages.last
             : widget.provider.latestMessageForThread(widget.thread.id);
         final hasUnreadMessage = messages.any((message) => message.isUnread);
-        final threadIsUnread =
-            messages.isNotEmpty ? hasUnreadMessage : widget.thread.unread;
+        final threadIsUnread = messages.isNotEmpty
+            ? hasUnreadMessage
+            : widget.thread.unread;
         final headerSnippet = _buildHeaderSnippet(widget.thread, latestMessage);
         return Stack(
           children: [
@@ -431,11 +435,12 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                           headerSnippet,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurface.withValues(alpha: 0.6),
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withValues(alpha: 0.6),
+                              ),
                         ),
                         SizedBox(height: context.space(12)),
                         Expanded(
@@ -447,8 +452,9 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                             emptyMessage: 'No messages in this thread.',
                             child: ListView.separated(
                               controller: _scrollController,
-                              padding:
-                                  EdgeInsets.only(bottom: context.space(16)),
+                              padding: EdgeInsets.only(
+                                bottom: context.space(16),
+                              ),
                               itemCount: messages.length,
                               separatorBuilder: (context, index) => Divider(
                                 height: context.space(16),
@@ -463,7 +469,8 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                     (settings.autoExpandUnread &&
                                         message.isUnread);
                                 final outboxId = _outboxIdForMessage(message);
-                                final canUndo = outboxId != null &&
+                                final canUndo =
+                                    outboxId != null &&
                                     message.sendStatus ==
                                         MessageSendStatus.queued;
                                 final undoId = canUndo ? outboxId : null;
@@ -488,12 +495,24 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                   onUndoSend: undoId == null
                                       ? null
                                       : () => _undoSend(undoId),
-                                  onMoveToFolder: () =>
-                                      _handleMoveToFolder(singleMessage: message),
+                                  onMoveToFolder: () => _handleMoveToFolder(
+                                    singleMessage: message,
+                                  ),
                                   showFolderSource:
                                       settings.showMessageFolderSource,
                                   currentFolderPath:
                                       widget.provider.selectedFolderPath,
+                                  allowRemoteContent:
+                                      _remoteContentAllowedMessageIds.contains(
+                                        message.id,
+                                      ),
+                                  onLoadRemoteContent: () {
+                                    setState(() {
+                                      _remoteContentAllowedMessageIds.add(
+                                        message.id,
+                                      );
+                                    });
+                                  },
                                 );
                               },
                             ),
@@ -556,6 +575,8 @@ class MessageCard extends StatelessWidget {
     this.onMoveToFolder,
     this.showFolderSource = false,
     this.currentFolderPath,
+    this.allowRemoteContent = false,
+    this.onLoadRemoteContent,
   });
 
   final EmailMessage message;
@@ -570,6 +591,8 @@ class MessageCard extends StatelessWidget {
   final VoidCallback? onMoveToFolder;
   final bool showFolderSource;
   final String? currentFolderPath;
+  final bool allowRemoteContent;
+  final VoidCallback? onLoadRemoteContent;
 
   static const int _collapsedCharLimit = 420;
 
@@ -694,7 +717,9 @@ class MessageCard extends StatelessWidget {
     final bodyHtml = message.bodyHtml;
     final bodyText = message.bodyText;
     final bodyPlainText = message.bodyPlainText;
-    final sanitized = bodyHtml != null ? _sanitizeHtml(bodyHtml) : null;
+    final sanitized = bodyHtml != null
+        ? sanitizeEmailHtml(bodyHtml, loadRemoteContent: allowRemoteContent)
+        : null;
 
     final metadata = StringBuffer()
       ..writeln('=== MESSAGE METADATA ===')
@@ -736,16 +761,23 @@ class MessageCard extends StatelessWidget {
       )
       ..writeln()
       ..writeln('=== SANITIZED HTML ===')
-      ..writeln('Length: ${sanitized?.length ?? 0}')
+      ..writeln('Length: ${sanitized?.html.length ?? 0}')
       ..writeln('Is null: ${sanitized == null}')
-      ..writeln('Is empty: ${sanitized?.isEmpty ?? true}')
+      ..writeln('Is empty: ${sanitized?.html.isEmpty ?? true}')
       ..writeln(
-        'Has HTML tags: ${sanitized?.contains(RegExp(r"<[a-zA-Z]")) ?? false}',
+        'Blocked remote content: ${sanitized?.blockedRemoteContentCount ?? 0}',
+      )
+      ..writeln(
+        'Removed unsafe content: ${sanitized?.removedUnsafeContentCount ?? 0}',
+      )
+      ..writeln(
+        'Has HTML tags: ${sanitized?.html.contains(RegExp(r"<[a-zA-Z]")) ?? false}',
       )
       ..writeln()
       ..writeln('--- Content (first 1000 chars) ---')
       ..writeln(
-        sanitized?.substring(0, sanitized.length.clamp(0, 1000)) ?? '(null)',
+        sanitized?.html.substring(0, sanitized.html.length.clamp(0, 1000)) ??
+            '(null)',
       );
 
     final content = metadata.toString();
@@ -783,79 +815,69 @@ class MessageCard extends StatelessWidget {
     );
   }
 
-  String _sanitizeHtml(String html) {
-    var value = html;
-
-    // Remove scripts (security)
-    value = value.replaceAll(
-      RegExp(r'<script[^>]*>[\s\S]*?</script>', caseSensitive: false),
-      '',
-    );
-
-    // Remove event handlers (security)
-    value = value.replaceAll(
-      RegExp(r'\s+on\w+\s*=\s*"[^"]*"', caseSensitive: false),
-      '',
-    );
-    value = value.replaceAll(
-      RegExp(r"\s+on\w+\s*=\s*'[^']*'", caseSensitive: false),
-      '',
-    );
-
-    // Strip inline width/height from <img> tags.
-    //
-    // flutter_widget_from_html wraps images that have both a width and height
-    // attribute in a RenderAspectRatio widget. When those images appear inside
-    // a <table>, the table's multi-pass dry-layout algorithm asks each cell for
-    // its dry size, which in turn calls RenderAspectRatio.computeDryLayout —
-    // and that method illegally accesses RenderBox.size, triggering a Flutter
-    // assertion. Removing explicit dimensions prevents the AspectRatio wrapper
-    // from being created; the image will still honour max-width:100% applied
-    // by the customStylesBuilder below and will render at its natural size or
-    // fill the available width.
-    value = value.replaceAllMapped(
-      RegExp(
-        r'(<img\b[^>]*?)\s+width\s*=\s*"[^"]*"',
-        caseSensitive: false,
+  Widget _buildRemoteContentNotice(BuildContext context, int blockedCount) {
+    final scheme = Theme.of(context).colorScheme;
+    final canLoad = onLoadRemoteContent != null;
+    return Container(
+      margin: EdgeInsets.only(bottom: context.space(8)),
+      padding: EdgeInsets.symmetric(
+        horizontal: context.space(10),
+        vertical: context.space(8),
       ),
-      (m) => m.group(1)!,
-    );
-    value = value.replaceAllMapped(
-      RegExp(
-        r'(<img\b[^>]*?)\s+height\s*=\s*"[^"]*"',
-        caseSensitive: false,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(context.radius(8)),
+        border: Border.all(color: ColorTokens.border(context, 0.12)),
       ),
-      (m) => m.group(1)!,
-    );
-    // Also strip width/height from inline style on <img>.
-    value = value.replaceAllMapped(
-      RegExp(
-        r'(<img\b[^>]*?style\s*=\s*")[^"]*"',
-        caseSensitive: false,
+      child: Row(
+        children: [
+          Icon(
+            Icons.image_not_supported_outlined,
+            size: 18,
+            color: scheme.onSurfaceVariant,
+          ),
+          SizedBox(width: context.space(8)),
+          Expanded(
+            child: Text(
+              blockedCount == 1
+                  ? 'Remote content blocked'
+                  : '$blockedCount remote items blocked',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          if (canLoad)
+            TextButton(
+              onPressed: onLoadRemoteContent,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.symmetric(horizontal: context.space(8)),
+                minimumSize: Size(0, context.space(28)),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Load'),
+            ),
+        ],
       ),
-      (m) {
-        final tag = m.group(1)!;
-        // Remove width and height declarations from the style value.
-        // We rebuild only the parts we want to keep.
-        final styleAttr = m.group(0)!.substring(tag.length);
-        // styleAttr is currently like: `...style="width:100px; height:50px"`,
-        // but we matched starting after the opening quote so it looks like
-        // `width:100px; height:50px"`.  Strip the closing quote we included.
-        final rawStyle = styleAttr.endsWith('"')
-            ? styleAttr.substring(0, styleAttr.length - 1)
-            : styleAttr;
-        final cleaned = rawStyle
-            .split(';')
-            .where((part) {
-              final p = part.trim().toLowerCase();
-              return !p.startsWith('width') && !p.startsWith('height');
-            })
-            .join(';');
-        return '$tag$cleaned"';
-      },
     );
+  }
 
-    return value.trim();
+  Widget _withRemoteContentNotice(
+    BuildContext context,
+    SanitizedEmailHtml sanitized,
+    Widget child,
+  ) {
+    if (!sanitized.hasBlockedRemoteContent || allowRemoteContent) {
+      return child;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildRemoteContentNotice(context, sanitized.blockedRemoteContentCount),
+        child,
+      ],
+    );
   }
 
   @override
@@ -866,8 +888,10 @@ class MessageCard extends StatelessWidget {
     final collapseMode = settings.messageCollapseMode;
     final maxLines = settings.collapsedMaxLines;
     final toggleReadLabel = threadIsUnread ? 'Mark as Read' : 'Mark as Unread';
-    final toggleReadHint =
-        settings.shortcutLabel(ShortcutAction.toggleRead, includeSecondary: false);
+    final toggleReadHint = settings.shortcutLabel(
+      ShortcutAction.toggleRead,
+      includeSecondary: false,
+    );
     final cardRadius = context.radius(12);
     final bodyText = message.bodyPlainText;
     final bodyHtml = message.bodyHtml;
@@ -878,10 +902,7 @@ class MessageCard extends StatelessWidget {
     // works naturally with border radius and doesn't overlap padded text.
     final Border? isMeBorder = (!isSelected && message.isMe)
         ? Border(
-            left: BorderSide(
-              color: accent.withValues(alpha: 0.35),
-              width: 2.5,
-            ),
+            left: BorderSide(color: accent.withValues(alpha: 0.35), width: 2.5),
           )
         : null;
 
@@ -909,324 +930,332 @@ class MessageCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final nameMaxWidth =
-                                (constraints.maxWidth * 0.6).clamp(
-                                      120.0,
-                                      constraints.maxWidth,
-                                    );
-                            return Wrap(
-                              spacing: context.space(8),
-                              runSpacing: context.space(2),
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              children: [
-                                ConstrainedBox(
-                                  constraints:
-                                      BoxConstraints(maxWidth: nameMaxWidth),
-                                  child: Text(
-                                    message.from.displayName,
-                                    style:
-                                        Theme.of(context).textTheme.titleMedium,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                Text(
-                                  () {
-                                    final s = context.tidingsSettings;
-                                    final ts = message.receivedAt;
-                                    return ts != null
-                                        ? formatEmailTime(ts, dateOrder: s.dateOrder, use24h: s.use24HourTime)
-                                        : message.time;
-                                  }(),
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelSmall
-                                      ?.copyWith(
-                                        color: scheme.onSurface
-                                            .withValues(alpha: 0.6),
-                                      ),
-                                ),
-                                if (message.sendStatus != null)
-                                  _SendStatusChip(
-                                    status: message.sendStatus!,
-                                    accent: accent,
-                                  ),
-                                if (showFolderSource &&
-                                    message.folderPath != null &&
-                                    message.folderPath!.isNotEmpty &&
-                                    message.folderPath != currentFolderPath)
-                                  _FolderSourceChip(
-                                    folderPath: message.folderPath!,
-                                  ),
-                              ],
-                            );
-                          },
-                        ),
-                      ),
-                      PopupMenuButton<String>(
-                        icon: Icon(
-                          Icons.more_horiz_rounded,
-                          color: scheme.onSurface.withValues(alpha: 0.5),
-                        ),
-                        padding: EdgeInsets.zero,
-                        onSelected: (value) {
-                          if (value == 'toggle') {
-                            onToggleExpanded();
-                          } else if (value == 'toggle-read') {
-                            onToggleRead?.call();
-                          } else if (value == 'move') {
-                            onMoveToFolder?.call();
-                          } else if (value == 'metadata') {
-                            _showMetadataDialog(context);
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                            value: 'toggle',
-                            child: Text(expanded ? 'Collapse' : 'Expand'),
-                          ),
-                          PopupMenuItem(
-                            value: 'toggle-read',
-                            enabled: onToggleRead != null,
-                            child: Row(
-                              children: [
-                                Expanded(child: Text(toggleReadLabel)),
-                                SizedBox(width: context.space(8)),
-                                KeyHint(keyLabel: toggleReadHint, small: true),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: 'move',
-                            enabled: onMoveToFolder != null,
-                            child: const Text('Move to folder…'),
-                          ),
-                          const PopupMenuItem(
-                            value: 'metadata',
-                            child: Text('View metadata'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: context.space(6)),
-                  if (onUndoSend != null) ...[
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: onUndoSend,
-                        icon: const Icon(Icons.undo_rounded, size: 16),
-                        label: const Text('Undo send'),
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: context.space(6),
-                            vertical: 0,
-                          ),
-                          minimumSize: Size(0, context.space(28)),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: context.space(4)),
-                  ],
-                  if (showSubject) ...[
-                    Text(
-                      message.subject,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(fontWeight: FontWeight.w600),
-                    ),
-                    SizedBox(height: context.space(6)),
-                  ],
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 180),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, animation) =>
-                        FadeTransition(opacity: animation, child: child),
+              Row(
+                children: [
+                  Expanded(
                     child: LayoutBuilder(
-                      key: ValueKey(
-                        'body-${expanded ? 'expanded' : 'collapsed'}-$collapseMode',
-                      ),
                       builder: (context, constraints) {
-                        final boundedWidth = constraints.maxWidth.isFinite;
-
-                        final hasTextContent = bodyText.isNotEmpty;
-
-                        Widget contentWidget;
-
-                        if (bodyHtml != null && bodyHtml.trim().isNotEmpty) {
-                          final sanitized = _sanitizeHtml(bodyHtml);
-                          if (sanitized.isNotEmpty) {
-                            contentWidget = HtmlWidget(
-                              sanitized,
-                              textStyle: Theme.of(context).textTheme.bodyLarge,
-                              onTapUrl: (url) {
-                                final uri = Uri.tryParse(url);
-                                if (uri != null) {
-                                  launchUrl(
-                                    uri,
-                                    mode: LaunchMode.externalApplication,
-                                  );
-                                }
-                                return true;
-                              },
-                              customStylesBuilder: (element) {
-                                final isDark =
-                                    Theme.of(context).brightness ==
-                                    Brightness.dark;
-                                switch (element.localName) {
-                                  case 'a':
-                                    return {'color': '#1a73e8'};
-                                  case 'img':
-                                  case 'video':
-                                  case 'iframe':
-                                  case 'table':
-                                    return {'max-width': '100%'};
-                                  case 'pre':
-                                    return {
-                                      'white-space': 'pre-wrap',
-                                      'word-break': 'break-word',
-                                    };
-                                  case 'code':
-                                    return {
-                                      'font-family':
-                                          'SF Mono, Menlo, monospace',
-                                    };
-                                  case 'blockquote':
-                                    // Clear any browser-default margin/border,
-                                    // then add a clear left rule + indent.
-                                    return {
-                                      'margin': '4px 0',
-                                      'padding': '0 0 0 12px',
-                                      'border-left':
-                                          '3px solid ${isDark ? '#ffffff33' : '#00000033'}',
-                                      'color':
-                                          isDark ? '#ffffffaa' : '#00000099',
-                                    };
-                                }
-                                return null;
-                              },
-                            );
-                          } else {
-                            contentWidget = Text(
-                              bodyText,
-                              style: Theme.of(context).textTheme.bodyLarge,
-                            );
-                          }
-                        } else if (hasTextContent) {
-                          contentWidget = Text(
-                            bodyText,
-                            style: Theme.of(context).textTheme.bodyLarge,
-                          );
-                        } else {
-                          contentWidget = Text(
-                            '[No content]',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyLarge
-                                ?.copyWith(
-                                  fontStyle: FontStyle.italic,
-                                  color:
-                                      scheme.onSurface.withValues(alpha: 0.5),
-                                ),
-                          );
-                        }
-                        final content = ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minWidth: boundedWidth ? constraints.maxWidth : 0,
-                            maxWidth: boundedWidth
-                                ? constraints.maxWidth
-                                : double.infinity,
-                          ),
-                          child: contentWidget,
+                        final nameMaxWidth = (constraints.maxWidth * 0.6).clamp(
+                          120.0,
+                          constraints.maxWidth,
                         );
-
-                        // Long message, expanded → show full content + "Show less" below.
-                        if (!shouldClamp) {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              content,
-                              if (_isLongBody(bodyText, collapseMode, maxLines))
-                                _buildToggleButton(context, expand: false),
-                            ],
-                          );
-                        }
-
-                        // Long message, collapsed → clip to computed height.
-                        // The fade gradient is overlaid on the clip via a Stack,
-                        // and the "Show more" button lives *below* the clip in a
-                        // Column so it never overlaps readable text.
-                        final collapsedHeight =
-                            collapseMode == MessageCollapseMode.beforeQuotes
-                            ? _collapsedHeightForQuotes(context, bodyText)
-                            : _collapsedHeight(context, maxLines);
-
-                        final clippedContent = Stack(
+                        return Wrap(
+                          spacing: context.space(8),
+                          runSpacing: context.space(2),
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            ClipRRect(
-                              borderRadius:
-                                  BorderRadius.circular(context.radius(4)),
-                              child: SizedBox(
-                                height: collapsedHeight,
-                                width:
-                                    boundedWidth ? constraints.maxWidth : null,
-                                child: SingleChildScrollView(
-                                  physics:
-                                      const NeverScrollableScrollPhysics(),
-                                  child: content,
-                                ),
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: nameMaxWidth,
+                              ),
+                              child: Text(
+                                message.from.displayName,
+                                style: Theme.of(context).textTheme.titleMedium,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            // Gradient fade over the bottom ~36px of the clip —
-                            // purely decorative, indicates more content below.
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              height: 36,
-                              child: IgnorePointer(
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [
-                                        Theme.of(context).colorScheme.surface
-                                            .withValues(alpha: 0),
-                                        Theme.of(context).colorScheme.surface
-                                            .withValues(alpha: 1),
-                                      ],
+                            Text(
+                              () {
+                                final s = context.tidingsSettings;
+                                final ts = message.receivedAt;
+                                return ts != null
+                                    ? formatEmailTime(
+                                        ts,
+                                        dateOrder: s.dateOrder,
+                                        use24h: s.use24HourTime,
+                                      )
+                                    : message.time;
+                              }(),
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: scheme.onSurface.withValues(
+                                      alpha: 0.6,
                                     ),
                                   ),
-                                ),
-                              ),
                             ),
-                          ],
-                        );
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            clippedContent,
-                            _buildToggleButton(context, expand: true),
+                            if (message.sendStatus != null)
+                              _SendStatusChip(
+                                status: message.sendStatus!,
+                                accent: accent,
+                              ),
+                            if (showFolderSource &&
+                                message.folderPath != null &&
+                                message.folderPath!.isNotEmpty &&
+                                message.folderPath != currentFolderPath)
+                              _FolderSourceChip(
+                                folderPath: message.folderPath!,
+                              ),
                           ],
                         );
                       },
                     ),
                   ),
+                  PopupMenuButton<String>(
+                    icon: Icon(
+                      Icons.more_horiz_rounded,
+                      color: scheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                    padding: EdgeInsets.zero,
+                    onSelected: (value) {
+                      if (value == 'toggle') {
+                        onToggleExpanded();
+                      } else if (value == 'toggle-read') {
+                        onToggleRead?.call();
+                      } else if (value == 'move') {
+                        onMoveToFolder?.call();
+                      } else if (value == 'metadata') {
+                        _showMetadataDialog(context);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'toggle',
+                        child: Text(expanded ? 'Collapse' : 'Expand'),
+                      ),
+                      PopupMenuItem(
+                        value: 'toggle-read',
+                        enabled: onToggleRead != null,
+                        child: Row(
+                          children: [
+                            Expanded(child: Text(toggleReadLabel)),
+                            SizedBox(width: context.space(8)),
+                            KeyHint(keyLabel: toggleReadHint, small: true),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'move',
+                        enabled: onMoveToFolder != null,
+                        child: const Text('Move to folder…'),
+                      ),
+                      const PopupMenuItem(
+                        value: 'metadata',
+                        child: Text('View metadata'),
+                      ),
+                    ],
+                  ),
                 ],
               ),
+              SizedBox(height: context.space(6)),
+              if (onUndoSend != null) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: onUndoSend,
+                    icon: const Icon(Icons.undo_rounded, size: 16),
+                    label: const Text('Undo send'),
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: context.space(6),
+                        vertical: 0,
+                      ),
+                      minimumSize: Size(0, context.space(28)),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ),
+                SizedBox(height: context.space(4)),
+              ],
+              if (showSubject) ...[
+                Text(
+                  message.subject,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                SizedBox(height: context.space(6)),
+              ],
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) =>
+                    FadeTransition(opacity: animation, child: child),
+                child: LayoutBuilder(
+                  key: ValueKey(
+                    'body-${expanded ? 'expanded' : 'collapsed'}-$collapseMode',
+                  ),
+                  builder: (context, constraints) {
+                    final boundedWidth = constraints.maxWidth.isFinite;
+
+                    final hasTextContent = bodyText.isNotEmpty;
+
+                    Widget contentWidget;
+
+                    if (bodyHtml != null && bodyHtml.trim().isNotEmpty) {
+                      final sanitized = sanitizeEmailHtml(
+                        bodyHtml,
+                        loadRemoteContent: allowRemoteContent,
+                      );
+                      if (sanitized.html.isNotEmpty) {
+                        final htmlWidget = HtmlWidget(
+                          sanitized.html,
+                          textStyle: Theme.of(context).textTheme.bodyLarge,
+                          onTapUrl: (url) async {
+                            final uri = Uri.tryParse(url);
+                            if (uri != null &&
+                                uri.hasScheme &&
+                                isSafeEmailLink(url)) {
+                              await launchUrl(
+                                uri,
+                                mode: LaunchMode.externalApplication,
+                              );
+                            }
+                            return true;
+                          },
+                          customStylesBuilder: (element) {
+                            final isDark =
+                                Theme.of(context).brightness == Brightness.dark;
+                            switch (element.localName) {
+                              case 'a':
+                                return {'color': '#1a73e8'};
+                              case 'img':
+                              case 'table':
+                                return {'max-width': '100%'};
+                              case 'pre':
+                                return {
+                                  'white-space': 'pre-wrap',
+                                  'word-break': 'break-word',
+                                };
+                              case 'code':
+                                return {
+                                  'font-family': 'SF Mono, Menlo, monospace',
+                                };
+                              case 'blockquote':
+                                // Clear any browser-default margin/border,
+                                // then add a clear left rule + indent.
+                                return {
+                                  'margin': '4px 0',
+                                  'padding': '0 0 0 12px',
+                                  'border-left':
+                                      '3px solid ${isDark ? '#ffffff33' : '#00000033'}',
+                                  'color': isDark ? '#ffffffaa' : '#00000099',
+                                };
+                            }
+                            return null;
+                          },
+                        );
+                        contentWidget = _withRemoteContentNotice(
+                          context,
+                          sanitized,
+                          htmlWidget,
+                        );
+                      } else if (sanitized.hasBlockedRemoteContent) {
+                        contentWidget = _buildRemoteContentNotice(
+                          context,
+                          sanitized.blockedRemoteContentCount,
+                        );
+                      } else {
+                        contentWidget = Text(
+                          bodyText,
+                          style: Theme.of(context).textTheme.bodyLarge,
+                        );
+                      }
+                    } else if (hasTextContent) {
+                      contentWidget = Text(
+                        bodyText,
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      );
+                    } else {
+                      contentWidget = Text(
+                        '[No content]',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontStyle: FontStyle.italic,
+                          color: scheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                      );
+                    }
+                    final content = ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minWidth: boundedWidth ? constraints.maxWidth : 0,
+                        maxWidth: boundedWidth
+                            ? constraints.maxWidth
+                            : double.infinity,
+                      ),
+                      child: contentWidget,
+                    );
+
+                    // Long message, expanded → show full content + "Show less" below.
+                    if (!shouldClamp) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          content,
+                          if (_isLongBody(bodyText, collapseMode, maxLines))
+                            _buildToggleButton(context, expand: false),
+                        ],
+                      );
+                    }
+
+                    // Long message, collapsed → clip to computed height.
+                    // The fade gradient is overlaid on the clip via a Stack,
+                    // and the "Show more" button lives *below* the clip in a
+                    // Column so it never overlaps readable text.
+                    final collapsedHeight =
+                        collapseMode == MessageCollapseMode.beforeQuotes
+                        ? _collapsedHeightForQuotes(context, bodyText)
+                        : _collapsedHeight(context, maxLines);
+
+                    final clippedContent = Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(
+                            context.radius(4),
+                          ),
+                          child: SizedBox(
+                            height: collapsedHeight,
+                            width: boundedWidth ? constraints.maxWidth : null,
+                            child: SingleChildScrollView(
+                              physics: const NeverScrollableScrollPhysics(),
+                              child: content,
+                            ),
+                          ),
+                        ),
+                        // Gradient fade over the bottom ~36px of the clip —
+                        // purely decorative, indicates more content below.
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          height: 36,
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Theme.of(
+                                      context,
+                                    ).colorScheme.surface.withValues(alpha: 0),
+                                    Theme.of(
+                                      context,
+                                    ).colorScheme.surface.withValues(alpha: 1),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        clippedContent,
+                        _buildToggleButton(context, expand: true),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ),
+      ),
     );
   }
 }
@@ -1261,9 +1290,9 @@ class _SendStatusChip extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: scheme.onSurface.withValues(alpha: 0.7),
-              fontWeight: FontWeight.w600,
-            ),
+          color: scheme.onSurface.withValues(alpha: 0.7),
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -1307,8 +1336,8 @@ class _FolderSourceChip extends StatelessWidget {
           Text(
             _displayName,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: color.withValues(alpha: 0.6),
-                ),
+              color: color.withValues(alpha: 0.6),
+            ),
           ),
         ],
       ),
@@ -1371,8 +1400,9 @@ class ThreadScreen extends StatefulWidget {
 class _ThreadScreenState extends State<ThreadScreen> {
   final InlineReplyController _replyController = InlineReplyController();
   bool _inlineReplyFocused = false;
-  final FocusNode _shortcutFocusNode =
-      FocusNode(debugLabel: 'ThreadScreenShortcuts');
+  final FocusNode _shortcutFocusNode = FocusNode(
+    debugLabel: 'ThreadScreenShortcuts',
+  );
 
   @override
   void initState() {
@@ -1424,22 +1454,13 @@ class _ThreadScreenState extends State<ThreadScreen> {
       }
     }
 
-    addShortcut(
-      ShortcutAction.reply,
-      const _ReplyIntent(ReplyMode.reply),
-    );
+    addShortcut(ShortcutAction.reply, const _ReplyIntent(ReplyMode.reply));
     addShortcut(
       ShortcutAction.replyAll,
       const _ReplyIntent(ReplyMode.replyAll),
     );
-    addShortcut(
-      ShortcutAction.forward,
-      const _ReplyIntent(ReplyMode.forward),
-    );
-    addShortcut(
-      ShortcutAction.toggleRead,
-      const _ToggleReadIntent(),
-    );
+    addShortcut(ShortcutAction.forward, const _ReplyIntent(ReplyMode.forward));
+    addShortcut(ShortcutAction.toggleRead, const _ToggleReadIntent());
     shortcuts[LogicalKeySet(LogicalKeyboardKey.escape)] = const _PopIntent();
     return shortcuts;
   }
@@ -1458,14 +1479,17 @@ class _ThreadScreenState extends State<ThreadScreen> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _toggleThreadRead() async {
     final messages = widget.provider.messagesForThread(widget.thread.id);
     final hasUnreadMessage = messages.any((message) => message.isUnread);
-    final isUnread =
-        messages.isNotEmpty ? hasUnreadMessage : widget.thread.unread;
+    final isUnread = messages.isNotEmpty
+        ? hasUnreadMessage
+        : widget.thread.unread;
     final error = await widget.provider.setThreadUnread(
       widget.thread,
       !isUnread,
@@ -1529,8 +1553,9 @@ class _ThreadScreenState extends State<ThreadScreen> {
                 statusBarIconBrightness: isDark
                     ? Brightness.light
                     : Brightness.dark,
-                statusBarBrightness:
-                    isDark ? Brightness.dark : Brightness.light,
+                statusBarBrightness: isDark
+                    ? Brightness.dark
+                    : Brightness.light,
               ),
               child: TidingsBackground(
                 child: SafeArea(

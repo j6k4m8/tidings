@@ -36,6 +36,7 @@ dependencies:
     flutter_quill: ^11.5.0
     dart_quill_delta: ^10.8.3
     flutter_widget_from_html: ^0.17.1
+    html: ^0.15.6
     shared_preferences: ^2.3.2
     url_launcher: ^6.3.0
     yaml: ^3.1.2
