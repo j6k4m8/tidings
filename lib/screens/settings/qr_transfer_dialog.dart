@@ -41,6 +41,7 @@ class _QrTransferDialogState extends State<_QrTransferDialog> {
   bool _includeSettings = true;
   // The currently-displayed QR payload string (refreshed every 5 min).
   String? _qrData;
+  String? _transferCode;
   // Seconds remaining until current QR expires.
   int _secondsLeft = 0;
   Timer? _countdownTimer;
@@ -106,17 +107,17 @@ class _QrTransferDialogState extends State<_QrTransferDialog> {
     if (payloads.isEmpty) {
       setState(() {
         _qrData = null;
+        _transferCode = null;
         _secondsLeft = 0;
       });
       return;
     }
 
-    final data = payloads.length == 1
-        ? payloads.first.encode()
-        : _encodeMulti(payloads);
+    final export = createQrTransferExport(payloads);
 
     setState(() {
-      _qrData = data;
+      _qrData = export.qrData;
+      _transferCode = export.transferCode;
       _secondsLeft = _kExpirySeconds;
     });
 
@@ -124,7 +125,8 @@ class _QrTransferDialogState extends State<_QrTransferDialog> {
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(
-          () => _secondsLeft = (_secondsLeft - 1).clamp(0, _kExpirySeconds));
+        () => _secondsLeft = (_secondsLeft - 1).clamp(0, _kExpirySeconds),
+      );
     });
 
     // Regenerate slightly before expiry so the scanner never sees a stale code.
@@ -132,12 +134,6 @@ class _QrTransferDialogState extends State<_QrTransferDialog> {
       const Duration(seconds: _kExpirySeconds - 10),
       _buildQr,
     );
-  }
-
-  /// Encodes multiple payloads joined with the multi-prefix format.
-  static String _encodeMulti(List<QrTransferPayload> payloads) {
-    final joined = payloads.map((p) => p.encode()).join(',');
-    return 'multi:[$joined]';
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -186,11 +182,11 @@ class _QrTransferDialogState extends State<_QrTransferDialog> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Scan this QR code in Tidings on your phone to import accounts and settings.',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: ColorTokens.textSecondary(context),
-                                    ),
+                            'Scan this encrypted QR code in Tidings on your phone, then enter the transfer code.',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: ColorTokens.textSecondary(context),
+                                ),
                           ),
                         ],
                       ),
@@ -263,6 +259,7 @@ class _QrTransferDialogState extends State<_QrTransferDialog> {
                         )
                       : _QrCodeView(
                           data: _qrData ?? '',
+                          transferCode: _transferCode ?? '',
                           secondsLeft: _secondsLeft,
                           totalSeconds: _kExpirySeconds,
                           timerLabel: _timerLabel,
@@ -289,11 +286,11 @@ class _QrTransferDialogState extends State<_QrTransferDialog> {
                     const SizedBox(width: 5),
                     Expanded(
                       child: Text(
-                        'QR codes expire after 5 minutes. Passwords are included in plain text — keep the code private.',
+                        'QR codes expire after 5 minutes. Account credentials are encrypted and require the transfer code shown above.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: ColorTokens.textSecondary(context, 0.45),
-                              fontSize: 11,
-                            ),
+                          color: ColorTokens.textSecondary(context, 0.45),
+                          fontSize: 11,
+                        ),
                       ),
                     ),
                   ],
@@ -318,9 +315,9 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       label,
-      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+      style: Theme.of(
+        context,
+      ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
     );
   }
 }
@@ -394,25 +391,24 @@ class _AccountCheckRow extends StatelessWidget {
                 children: [
                   Text(
                     account.displayName,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w500),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                   if (isGmail)
                     Text(
                       'Email only — OAuth not transferable',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: ColorTokens.textSecondary(context, 0.5),
-                            fontSize: 11,
-                          ),
+                        color: ColorTokens.textSecondary(context, 0.5),
+                        fontSize: 11,
+                      ),
                     )
                   else
                     Text(
                       account.email,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: ColorTokens.textSecondary(context),
-                          ),
+                        color: ColorTokens.textSecondary(context),
+                      ),
                     ),
                 ],
               ),
@@ -479,17 +475,16 @@ class _SimpleCheckRow extends StatelessWidget {
                 children: [
                   Text(
                     label,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w500),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                   Text(
                     subtitle,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: ColorTokens.textSecondary(context, 0.55),
-                          fontSize: 11,
-                        ),
+                      color: ColorTokens.textSecondary(context, 0.55),
+                      fontSize: 11,
+                    ),
                   ),
                 ],
               ),
@@ -513,6 +508,7 @@ class _SimpleCheckRow extends StatelessWidget {
 class _QrCodeView extends StatelessWidget {
   const _QrCodeView({
     required this.data,
+    required this.transferCode,
     required this.secondsLeft,
     required this.totalSeconds,
     required this.timerLabel,
@@ -521,6 +517,7 @@ class _QrCodeView extends StatelessWidget {
   });
 
   final String data;
+  final String transferCode;
   final int secondsLeft;
   final int totalSeconds;
   final String timerLabel;
@@ -573,6 +570,48 @@ class _QrCodeView extends StatelessWidget {
 
         const SizedBox(height: 14),
 
+        Container(
+          width: 260,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: ColorTokens.cardFill(context, 0.06),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: ColorTokens.border(context, 0.12)),
+          ),
+          child: Column(
+            children: [
+              Text(
+                'Transfer code',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: ColorTokens.textSecondary(context, 0.62),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 5),
+              SelectableText(
+                transferCode,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontFamily: 'SF Mono',
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Enter this on the receiving device.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: ColorTokens.textSecondary(context, 0.55),
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
         // Progress bar.
         SizedBox(
           width: 220,
@@ -600,9 +639,9 @@ class _QrCodeView extends StatelessWidget {
             Text(
               'Expires in $timerLabel',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: timerColor,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+                color: timerColor,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
             const SizedBox(width: 10),
             TextButton.icon(
@@ -611,8 +650,7 @@ class _QrCodeView extends StatelessWidget {
               label: const Text('Refresh'),
               style: TextButton.styleFrom(
                 visualDensity: VisualDensity.compact,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 textStyle: const TextStyle(fontSize: 12),
               ),
             ),
@@ -626,10 +664,7 @@ class _QrCodeView extends StatelessWidget {
 // ── Empty state placeholder ────────────────────────────────────────────────────
 
 class _EmptyQrPlaceholder extends StatelessWidget {
-  const _EmptyQrPlaceholder({
-    required this.hasAccounts,
-    required this.accent,
-  });
+  const _EmptyQrPlaceholder({required this.hasAccounts, required this.accent});
 
   final bool hasAccounts;
   final Color accent;
@@ -660,8 +695,8 @@ class _EmptyQrPlaceholder extends StatelessWidget {
                   : 'Nothing selected to transfer.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: ColorTokens.textSecondary(context, 0.4),
-                  ),
+                color: ColorTokens.textSecondary(context, 0.4),
+              ),
             ),
           ],
         ),

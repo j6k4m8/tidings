@@ -58,13 +58,22 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
 
     await _controller.stop();
 
-    final payloads = _decodePayloads(raw);
+    final payloads = await _decodePayloads(raw);
 
     if (payloads == null) {
       setState(() {
         _processing = false;
-        _errorMessage = 'QR code is invalid or has expired. '
-            'Generate a new one on your desktop and try again.';
+        _errorMessage =
+            'QR code is invalid, expired, or the transfer code '
+            'was incorrect. Generate a new one on your desktop and try again.';
+      });
+      await _controller.start();
+      return;
+    }
+    if (payloads.isEmpty) {
+      setState(() {
+        _processing = false;
+        _errorMessage = null;
       });
       await _controller.start();
       return;
@@ -93,24 +102,62 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   }
 
   /// Decodes a raw QR string into one or more payloads.
-  /// Returns null if invalid/expired.
-  List<QrTransferPayload>? _decodePayloads(String raw) {
-    // Multi-payload format: "multi:[<encoded1>,<encoded2>,...]"
-    if (raw.startsWith('multi:[') && raw.endsWith(']')) {
-      final inner = raw.substring('multi:['.length, raw.length - 1);
-      final parts = inner.split(',');
-      final results = <QrTransferPayload>[];
-      for (final part in parts) {
-        final p = QrTransferPayload.decode(part.trim());
-        if (p == null) return null; // any expired payload fails the whole scan
-        results.add(p);
-      }
-      return results.isEmpty ? null : results;
-    }
+  /// Returns null if invalid/expired, and an empty list when cancelled.
+  Future<List<QrTransferPayload>?> _decodePayloads(String raw) async {
+    if (!isEncryptedQrTransfer(raw)) return null;
+    final transferCode = await _promptForTransferCode();
+    if (transferCode == null) return const [];
+    return decodeQrTransferExport(raw, transferCode: transferCode);
+  }
 
-    // Single payload.
-    final p = QrTransferPayload.decode(raw);
-    return p == null ? null : [p];
+  Future<String?> _promptForTransferCode() async {
+    if (!mounted) return null;
+    final controller = TextEditingController();
+    try {
+      return showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Enter transfer code'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Type the code shown next to the QR code on your desktop.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                autocorrect: false,
+                enableSuggestions: false,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Transfer code',
+                  hintText: 'ABCD-EFGH-JKLM-NPQR',
+                ),
+                onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(controller.text.trim()),
+              child: const Text('Decrypt'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      controller.dispose();
+    }
   }
 
   /// Imports a single decoded payload.  Returns an error string on failure.
@@ -145,10 +192,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       body: Stack(
         children: [
           // ── Camera view ────────────────────────────────────────────────
-          MobileScanner(
-            controller: _controller,
-            onDetect: _onDetect,
-          ),
+          MobileScanner(controller: _controller, onDetect: _onDetect),
 
           // ── Overlay ────────────────────────────────────────────────────
           _ScannerOverlay(accent: widget.accent),
@@ -156,8 +200,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
           // ── Top bar ────────────────────────────────────────────────────
           SafeArea(
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
                   // Close
@@ -193,7 +236,9 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                   borderRadius: BorderRadius.circular(20),
                   variant: GlassVariant.sheet,
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 20, vertical: 16),
+                    horizontal: 20,
+                    vertical: 16,
+                  ),
                   child: _processing
                       ? _ProcessingIndicator(accent: widget.accent)
                       : _Instructions(errorMessage: _errorMessage),
@@ -233,7 +278,10 @@ class _OverlayPainter extends CustomPainter {
     final cx = size.width / 2;
     final cy = size.height / 2 - 40; // shifted slightly above centre
     final rect = Rect.fromCenter(
-        center: Offset(cx, cy), width: cutSize, height: cutSize);
+      center: Offset(cx, cy),
+      width: cutSize,
+      height: cutSize,
+    );
 
     // Dark overlay.
     final paint = Paint()..color = Colors.black.withValues(alpha: 0.55);
@@ -242,7 +290,8 @@ class _OverlayPainter extends CustomPainter {
       Path.combine(
         PathOperation.difference,
         Path()..addRect(full),
-        Path()..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(16))),
+        Path()
+          ..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(16))),
       ),
       paint,
     );
@@ -253,7 +302,9 @@ class _OverlayPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.5;
     canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(16)), borderPaint);
+      RRect.fromRectAndRadius(rect, const Radius.circular(16)),
+      borderPaint,
+    );
 
     // Corner accents.
     const cornerLen = 24.0;
@@ -265,25 +316,49 @@ class _OverlayPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     // Top-left
-    canvas.drawLine(Offset(rect.left + r, rect.top),
-        Offset(rect.left + r + cornerLen, rect.top), cornerPaint);
-    canvas.drawLine(Offset(rect.left, rect.top + r),
-        Offset(rect.left, rect.top + r + cornerLen), cornerPaint);
+    canvas.drawLine(
+      Offset(rect.left + r, rect.top),
+      Offset(rect.left + r + cornerLen, rect.top),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(rect.left, rect.top + r),
+      Offset(rect.left, rect.top + r + cornerLen),
+      cornerPaint,
+    );
     // Top-right
-    canvas.drawLine(Offset(rect.right - r - cornerLen, rect.top),
-        Offset(rect.right - r, rect.top), cornerPaint);
-    canvas.drawLine(Offset(rect.right, rect.top + r),
-        Offset(rect.right, rect.top + r + cornerLen), cornerPaint);
+    canvas.drawLine(
+      Offset(rect.right - r - cornerLen, rect.top),
+      Offset(rect.right - r, rect.top),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(rect.right, rect.top + r),
+      Offset(rect.right, rect.top + r + cornerLen),
+      cornerPaint,
+    );
     // Bottom-left
-    canvas.drawLine(Offset(rect.left + r, rect.bottom),
-        Offset(rect.left + r + cornerLen, rect.bottom), cornerPaint);
-    canvas.drawLine(Offset(rect.left, rect.bottom - r - cornerLen),
-        Offset(rect.left, rect.bottom - r), cornerPaint);
+    canvas.drawLine(
+      Offset(rect.left + r, rect.bottom),
+      Offset(rect.left + r + cornerLen, rect.bottom),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(rect.left, rect.bottom - r - cornerLen),
+      Offset(rect.left, rect.bottom - r),
+      cornerPaint,
+    );
     // Bottom-right
-    canvas.drawLine(Offset(rect.right - r - cornerLen, rect.bottom),
-        Offset(rect.right - r, rect.bottom), cornerPaint);
-    canvas.drawLine(Offset(rect.right, rect.bottom - r - cornerLen),
-        Offset(rect.right, rect.bottom - r), cornerPaint);
+    canvas.drawLine(
+      Offset(rect.right - r - cornerLen, rect.bottom),
+      Offset(rect.right - r, rect.bottom),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(rect.right, rect.bottom - r - cornerLen),
+      Offset(rect.right, rect.bottom - r),
+      cornerPaint,
+    );
   }
 
   @override
@@ -301,7 +376,9 @@ class _Instructions extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(
-          hasError ? Icons.error_outline_rounded : Icons.qr_code_scanner_rounded,
+          hasError
+              ? Icons.error_outline_rounded
+              : Icons.qr_code_scanner_rounded,
           size: 20,
           color: hasError
               ? Colors.orangeAccent
@@ -316,19 +393,20 @@ class _Instructions extends StatelessWidget {
               Text(
                 hasError ? 'Scan failed' : 'Point at the QR code',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: hasError ? Colors.orangeAccent : null,
-                    ),
+                  fontWeight: FontWeight.w600,
+                  color: hasError ? Colors.orangeAccent : null,
+                ),
               ),
               const SizedBox(height: 3),
               Text(
                 hasError
                     ? errorMessage!
                     : 'Open Tidings on your desktop → Settings → Accounts → '
-                        '"Transfer to mobile", then scan the QR code.',
+                          '"Transfer to mobile", then scan the QR code and enter '
+                          'the transfer code.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: ColorTokens.textSecondary(context, 0.65),
-                    ),
+                  color: ColorTokens.textSecondary(context, 0.65),
+                ),
               ),
             ],
           ),
@@ -357,9 +435,9 @@ class _ProcessingIndicator extends StatelessWidget {
         const SizedBox(width: 12),
         Text(
           'Importing account…',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w500,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
         ),
       ],
     );
@@ -389,9 +467,7 @@ class _GlassIconButton extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.45),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.15),
-            ),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
           ),
           child: Icon(icon, color: Colors.white, size: 20),
         ),
