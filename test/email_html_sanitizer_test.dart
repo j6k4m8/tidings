@@ -16,6 +16,7 @@ void main() {
 
       expect(result.hasBlockedRemoteContent, isTrue);
       expect(result.blockedRemoteContentCount, 1);
+      expect(result.blockedRemoteDomains, {'tracker.example'});
       expect(result.removedUnsafeContentCount, greaterThanOrEqualTo(4));
       expect(result.html, isNot(contains('<script')));
       expect(result.html, isNot(contains('<iframe')));
@@ -45,6 +46,29 @@ void main() {
       expect(loaded.html, contains('srcset='));
       expect(loaded.blockedRemoteContentCount, 0);
     });
+
+    test(
+      'loads exact allowed remote domains while reporting blocked hosts',
+      () {
+        final result = sanitizeEmailHtml(
+          '<img src="https://img.example.com/a.png" '
+          'srcset="https://img.example.com/a.png 1x, '
+          'https://cdn.example.com/b.png 2x"> '
+          '<img src="//tracking.example.com/pixel.png">',
+          allowedRemoteContentDomains: {'IMG.EXAMPLE.COM.'},
+        );
+
+        expect(result.html, contains('https://img.example.com/a.png'));
+        expect(result.html, contains('srcset='));
+        expect(result.html, isNot(contains('https://cdn.example.com/b.png')));
+        expect(result.html, isNot(contains('tracking.example.com')));
+        expect(result.blockedRemoteContentCount, 2);
+        expect(result.blockedRemoteDomains, {
+          'cdn.example.com',
+          'tracking.example.com',
+        });
+      },
+    );
 
     test('keeps safe links and strips unsafe links', () {
       final result = sanitizeEmailHtml('''

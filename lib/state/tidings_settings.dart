@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
 import 'dart:async';
+
+import 'package:flutter/material.dart';
 
 import '../theme/theme_palette.dart';
 import 'config_store.dart';
@@ -7,6 +8,10 @@ import 'keyboard_shortcut.dart';
 import 'shortcut_definitions.dart';
 
 class TidingsSettings extends ChangeNotifier {
+  TidingsSettings({bool persistEnabled = true})
+    : _persistEnabled = persistEnabled;
+
+  final bool _persistEnabled;
   ThemeMode _themeMode = ThemeMode.system;
   ThemePaletteSource _paletteSource = ThemePaletteSource.defaultPalette;
   LayoutDensity _layoutDensity = LayoutDensity.standard;
@@ -27,10 +32,14 @@ class TidingsSettings extends ChangeNotifier {
   bool _showMessageFolderSource = false;
   DateOrder _dateOrder = DateOrder.mdy;
   bool _use24HourTime = false;
-  String? _startupAccountId; // null = last used, 'unified' = unified inbox, else account id
+
+  /// null = last used, 'unified' = unified inbox, else account id.
+  String? _startupAccountId;
   final Set<String> _pinnedFolderPaths = {};
   final Map<ShortcutAction, KeyboardShortcut> _shortcutPrimary = {};
   final Map<ShortcutAction, KeyboardShortcut?> _shortcutSecondary = {};
+  final Map<String, Set<String>> _remoteContentSenderAllowlist = {};
+  final Map<String, Set<String>> _remoteContentDomainAllowlist = {};
 
   ThemeMode get themeMode => _themeMode;
   ThemePaletteSource get paletteSource => _paletteSource;
@@ -84,10 +93,7 @@ class TidingsSettings extends ChangeNotifier {
     return _shortcutSecondary[action];
   }
 
-  String shortcutLabel(
-    ShortcutAction action, {
-    bool includeSecondary = true,
-  }) {
+  String shortcutLabel(ShortcutAction action, {bool includeSecondary = true}) {
     final primary = shortcutFor(action).label();
     final secondary = secondaryShortcutFor(action);
     if (!includeSecondary || secondary == null) {
@@ -107,25 +113,40 @@ class TidingsSettings extends ChangeNotifier {
       settings['paletteSource'] as String?,
     );
     _layoutDensity = _layoutDensityFromStorage(settings['layoutDensity']);
-    _cornerRadiusStyle =
-        _cornerRadiusFromStorage(settings['cornerRadiusStyle']);
-    _autoExpandUnread =
-        _boolFromStorage(settings['autoExpandUnread'], _autoExpandUnread);
-    _autoExpandLatest =
-        _boolFromStorage(settings['autoExpandLatest'], _autoExpandLatest);
-    _hideThreadSubjects =
-        _boolFromStorage(settings['hideThreadSubjects'], _hideThreadSubjects);
-    _hideSelfInThreadList =
-        _boolFromStorage(settings['hideSelfInThreadList'], _hideSelfInThreadList);
-    _messageCollapseMode =
-        _collapseModeFromStorage(settings['messageCollapseMode']);
-    _collapsedMaxLines =
-        _intFromStorage(settings['collapsedMaxLines'], _collapsedMaxLines)
-            .clamp(2, 20);
-    _showFolderLabels =
-        _boolFromStorage(settings['showFolderLabels'], _showFolderLabels);
-    _showFolderUnreadCounts =
-        _boolFromStorage(settings['showFolderUnreadCounts'], _showFolderUnreadCounts);
+    _cornerRadiusStyle = _cornerRadiusFromStorage(
+      settings['cornerRadiusStyle'],
+    );
+    _autoExpandUnread = _boolFromStorage(
+      settings['autoExpandUnread'],
+      _autoExpandUnread,
+    );
+    _autoExpandLatest = _boolFromStorage(
+      settings['autoExpandLatest'],
+      _autoExpandLatest,
+    );
+    _hideThreadSubjects = _boolFromStorage(
+      settings['hideThreadSubjects'],
+      _hideThreadSubjects,
+    );
+    _hideSelfInThreadList = _boolFromStorage(
+      settings['hideSelfInThreadList'],
+      _hideSelfInThreadList,
+    );
+    _messageCollapseMode = _collapseModeFromStorage(
+      settings['messageCollapseMode'],
+    );
+    _collapsedMaxLines = _intFromStorage(
+      settings['collapsedMaxLines'],
+      _collapsedMaxLines,
+    ).clamp(2, 20);
+    _showFolderLabels = _boolFromStorage(
+      settings['showFolderLabels'],
+      _showFolderLabels,
+    );
+    _showFolderUnreadCounts = _boolFromStorage(
+      settings['showFolderUnreadCounts'],
+      _showFolderUnreadCounts,
+    );
     _tintThreadListByAccountAccent = _boolFromStorage(
       settings['tintThreadListByAccountAccent'],
       _tintThreadListByAccountAccent,
@@ -134,8 +155,10 @@ class TidingsSettings extends ChangeNotifier {
       settings['showThreadAccountPill'],
       _showThreadAccountPill,
     );
-    _sidebarCollapsed =
-        _boolFromStorage(settings['sidebarCollapsed'], _sidebarCollapsed);
+    _sidebarCollapsed = _boolFromStorage(
+      settings['sidebarCollapsed'],
+      _sidebarCollapsed,
+    );
     _threadPanelFraction = _doubleFromStorage(
       settings['threadPanelFraction'],
       _threadPanelFraction,
@@ -149,11 +172,15 @@ class TidingsSettings extends ChangeNotifier {
       _showMessageFolderSource,
     );
     _dateOrder = _dateOrderFromStorage(settings['dateOrder']);
-    _use24HourTime = _boolFromStorage(settings['use24HourTime'], _use24HourTime);
+    _use24HourTime = _boolFromStorage(
+      settings['use24HourTime'],
+      _use24HourTime,
+    );
     _startupAccountId = settings['startupAccountId'] as String?;
     _pinnedFolderPaths
       ..clear()
       ..addAll(_stringListFromStorage(settings['pinnedFolderPaths']));
+    _loadRemoteContentSettings(settings['remoteContent']);
 
     final rawShortcuts = settings['shortcuts'];
     if (rawShortcuts is Map) {
@@ -161,12 +188,45 @@ class TidingsSettings extends ChangeNotifier {
     }
   }
 
+  void _loadRemoteContentSettings(Object? raw) {
+    _remoteContentSenderAllowlist.clear();
+    _remoteContentDomainAllowlist.clear();
+    if (raw is! Map) {
+      return;
+    }
+    for (final entry in raw.entries) {
+      final key = entry.key;
+      if (key is! String) {
+        continue;
+      }
+      final accountKey = _normalizeRemoteContentAccountKey(key);
+      final accountRaw = entry.value;
+      if (accountKey == null || accountRaw is! Map) {
+        continue;
+      }
+      final account = accountRaw.cast<String, Object?>();
+      final senders = _stringListFromStorage(
+        account['senders'],
+      ).map(_normalizeRemoteContentEmail).whereType<String>().toSet();
+      final domains = _stringListFromStorage(
+        account['domains'],
+      ).map(_normalizeRemoteContentDomain).whereType<String>().toSet();
+      if (senders.isNotEmpty) {
+        _remoteContentSenderAllowlist[accountKey] = senders;
+      }
+      if (domains.isNotEmpty) {
+        _remoteContentDomainAllowlist[accountKey] = domains;
+      }
+    }
+  }
+
   void _loadShortcuts(Map<String, Object?> raw) {
     final primary = raw['primary'];
     final secondary = raw['secondary'];
     final primaryMap = primary is Map ? primary.cast<String, Object?>() : null;
-    final secondaryMap =
-        secondary is Map ? secondary.cast<String, Object?>() : null;
+    final secondaryMap = secondary is Map
+        ? secondary.cast<String, Object?>()
+        : null;
     for (final definition in shortcutDefinitions) {
       final primaryRaw = primaryMap?[definition.action.name] as String?;
       final secondaryRaw = secondaryMap?[definition.action.name] as String?;
@@ -197,6 +257,9 @@ class TidingsSettings extends ChangeNotifier {
   }
 
   Future<void> _persist() async {
+    if (!_persistEnabled) {
+      return;
+    }
     final config = await TidingsConfigStore.loadConfigOrEmpty();
     config['settings'] = _settingsToMap();
     await TidingsConfigStore.writeConfig(config);
@@ -206,14 +269,16 @@ class TidingsSettings extends ChangeNotifier {
     final primary = <String, String>{};
     final secondary = <String, String>{};
     for (final definition in shortcutDefinitions) {
-      primary[definition.action.name] =
-          shortcutFor(definition.action).serialize();
+      primary[definition.action.name] = shortcutFor(
+        definition.action,
+      ).serialize();
       final secondaryShortcut = secondaryShortcutFor(definition.action);
       if (secondaryShortcut != null) {
         secondary[definition.action.name] = secondaryShortcut.serialize();
       }
     }
     final pinned = _pinnedFolderPaths.toList()..sort();
+    final remoteContent = _remoteContentSettingsToMap();
     return {
       'themeMode': _themeMode.name,
       'paletteSource': _paletteSource.storageKey,
@@ -241,7 +306,34 @@ class TidingsSettings extends ChangeNotifier {
         'primary': primary,
         if (secondary.isNotEmpty) 'secondary': secondary,
       },
+      if (remoteContent.isNotEmpty) 'remoteContent': remoteContent,
     };
+  }
+
+  Map<String, Object?> _remoteContentSettingsToMap() {
+    final accountKeys = <String>{
+      ..._remoteContentSenderAllowlist.keys,
+      ..._remoteContentDomainAllowlist.keys,
+    }.toList()..sort();
+    final result = <String, Object?>{};
+    for (final accountKey in accountKeys) {
+      final senders =
+          (_remoteContentSenderAllowlist[accountKey] ?? const <String>{})
+              .toList()
+            ..sort();
+      final domains =
+          (_remoteContentDomainAllowlist[accountKey] ?? const <String>{})
+              .toList()
+            ..sort();
+      if (senders.isEmpty && domains.isEmpty) {
+        continue;
+      }
+      result[accountKey] = {
+        if (senders.isNotEmpty) 'senders': senders,
+        if (domains.isNotEmpty) 'domains': domains,
+      };
+    }
+    return result;
   }
 
   ThemeMode _themeModeFromStorage(Object? raw) {
@@ -535,30 +627,110 @@ class TidingsSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool isRemoteContentSenderAllowed({
+    required String accountKey,
+    required String senderEmail,
+  }) {
+    final normalizedAccount = _normalizeRemoteContentAccountKey(accountKey);
+    final normalizedSender = _normalizeRemoteContentEmail(senderEmail);
+    if (normalizedAccount == null || normalizedSender == null) {
+      return false;
+    }
+    return _remoteContentSenderAllowlist[normalizedAccount]?.contains(
+          normalizedSender,
+        ) ??
+        false;
+  }
+
+  bool isRemoteContentDomainAllowed({
+    required String accountKey,
+    required String domain,
+  }) {
+    final normalizedAccount = _normalizeRemoteContentAccountKey(accountKey);
+    final normalizedDomain = _normalizeRemoteContentDomain(domain);
+    if (normalizedAccount == null || normalizedDomain == null) {
+      return false;
+    }
+    return _remoteContentDomainAllowlist[normalizedAccount]?.contains(
+          normalizedDomain,
+        ) ??
+        false;
+  }
+
+  Set<String> remoteContentAllowedDomains(String accountKey) {
+    final normalizedAccount = _normalizeRemoteContentAccountKey(accountKey);
+    if (normalizedAccount == null) {
+      return const <String>{};
+    }
+    return Set.unmodifiable(
+      _remoteContentDomainAllowlist[normalizedAccount] ?? const <String>{},
+    );
+  }
+
+  void allowRemoteContentSender({
+    required String accountKey,
+    required String senderEmail,
+  }) {
+    final normalizedAccount = _normalizeRemoteContentAccountKey(accountKey);
+    final normalizedSender = _normalizeRemoteContentEmail(senderEmail);
+    if (normalizedAccount == null || normalizedSender == null) {
+      return;
+    }
+    final senders = _remoteContentSenderAllowlist.putIfAbsent(
+      normalizedAccount,
+      () => <String>{},
+    );
+    if (!senders.add(normalizedSender)) {
+      return;
+    }
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void allowRemoteContentDomain({
+    required String accountKey,
+    required String domain,
+  }) {
+    final normalizedAccount = _normalizeRemoteContentAccountKey(accountKey);
+    final normalizedDomain = _normalizeRemoteContentDomain(domain);
+    if (normalizedAccount == null || normalizedDomain == null) {
+      return;
+    }
+    final domains = _remoteContentDomainAllowlist.putIfAbsent(
+      normalizedAccount,
+      () => <String>{},
+    );
+    if (!domains.add(normalizedDomain)) {
+      return;
+    }
+    unawaited(_persist());
+    notifyListeners();
+  }
+
   /// Returns the subset of settings that can be transferred via QR code.
   ///
   /// Excludes device-local state: sidebar layout, panel fraction,
   /// pinned folder paths, and startup account ID (which references a
   /// local account UUID that won't exist on the receiving device).
   Map<String, Object?> transferableSettingsMap() => {
-        'themeMode': _themeMode.name,
-        'layoutDensity': _layoutDensity.name,
-        'cornerRadiusStyle': _cornerRadiusStyle.name,
-        'autoExpandUnread': _autoExpandUnread,
-        'autoExpandLatest': _autoExpandLatest,
-        'hideThreadSubjects': _hideThreadSubjects,
-        'hideSelfInThreadList': _hideSelfInThreadList,
-        'messageCollapseMode': _messageCollapseMode.name,
-        'collapsedMaxLines': _collapsedMaxLines,
-        'showFolderLabels': _showFolderLabels,
-        'showFolderUnreadCounts': _showFolderUnreadCounts,
-        'tintThreadListByAccountAccent': _tintThreadListByAccountAccent,
-        'showThreadAccountPill': _showThreadAccountPill,
-        'moveEntireThreadByDefault': _moveEntireThreadByDefault,
-        'showMessageFolderSource': _showMessageFolderSource,
-        'dateOrder': _dateOrder.name,
-        'use24HourTime': _use24HourTime,
-      };
+    'themeMode': _themeMode.name,
+    'layoutDensity': _layoutDensity.name,
+    'cornerRadiusStyle': _cornerRadiusStyle.name,
+    'autoExpandUnread': _autoExpandUnread,
+    'autoExpandLatest': _autoExpandLatest,
+    'hideThreadSubjects': _hideThreadSubjects,
+    'hideSelfInThreadList': _hideSelfInThreadList,
+    'messageCollapseMode': _messageCollapseMode.name,
+    'collapsedMaxLines': _collapsedMaxLines,
+    'showFolderLabels': _showFolderLabels,
+    'showFolderUnreadCounts': _showFolderUnreadCounts,
+    'tintThreadListByAccountAccent': _tintThreadListByAccountAccent,
+    'showThreadAccountPill': _showThreadAccountPill,
+    'moveEntireThreadByDefault': _moveEntireThreadByDefault,
+    'showMessageFolderSource': _showMessageFolderSource,
+    'dateOrder': _dateOrder.name,
+    'use24HourTime': _use24HourTime,
+  };
 
   /// Applies a settings map received via QR code.
   ///
@@ -568,23 +740,35 @@ class TidingsSettings extends ChangeNotifier {
     _themeMode = _themeModeFromStorage(map['themeMode']);
     _layoutDensity = _layoutDensityFromStorage(map['layoutDensity']);
     _cornerRadiusStyle = _cornerRadiusFromStorage(map['cornerRadiusStyle']);
-    _autoExpandUnread =
-        _boolFromStorage(map['autoExpandUnread'], _autoExpandUnread);
-    _autoExpandLatest =
-        _boolFromStorage(map['autoExpandLatest'], _autoExpandLatest);
-    _hideThreadSubjects =
-        _boolFromStorage(map['hideThreadSubjects'], _hideThreadSubjects);
-    _hideSelfInThreadList =
-        _boolFromStorage(map['hideSelfInThreadList'], _hideSelfInThreadList);
-    _messageCollapseMode =
-        _collapseModeFromStorage(map['messageCollapseMode']);
-    _collapsedMaxLines =
-        _intFromStorage(map['collapsedMaxLines'], _collapsedMaxLines)
-            .clamp(2, 20);
-    _showFolderLabels =
-        _boolFromStorage(map['showFolderLabels'], _showFolderLabels);
-    _showFolderUnreadCounts =
-        _boolFromStorage(map['showFolderUnreadCounts'], _showFolderUnreadCounts);
+    _autoExpandUnread = _boolFromStorage(
+      map['autoExpandUnread'],
+      _autoExpandUnread,
+    );
+    _autoExpandLatest = _boolFromStorage(
+      map['autoExpandLatest'],
+      _autoExpandLatest,
+    );
+    _hideThreadSubjects = _boolFromStorage(
+      map['hideThreadSubjects'],
+      _hideThreadSubjects,
+    );
+    _hideSelfInThreadList = _boolFromStorage(
+      map['hideSelfInThreadList'],
+      _hideSelfInThreadList,
+    );
+    _messageCollapseMode = _collapseModeFromStorage(map['messageCollapseMode']);
+    _collapsedMaxLines = _intFromStorage(
+      map['collapsedMaxLines'],
+      _collapsedMaxLines,
+    ).clamp(2, 20);
+    _showFolderLabels = _boolFromStorage(
+      map['showFolderLabels'],
+      _showFolderLabels,
+    );
+    _showFolderUnreadCounts = _boolFromStorage(
+      map['showFolderUnreadCounts'],
+      _showFolderUnreadCounts,
+    );
     _tintThreadListByAccountAccent = _boolFromStorage(
       map['tintThreadListByAccountAccent'],
       _tintThreadListByAccountAccent,
@@ -620,14 +804,38 @@ class TidingsSettings extends ChangeNotifier {
     unawaited(_persist());
     notifyListeners();
   }
-
 }
 
-enum LayoutDensity {
-  compact,
-  standard,
-  spacious,
+String? _normalizeRemoteContentAccountKey(String accountKey) {
+  final normalized = accountKey.trim().toLowerCase();
+  return normalized.isEmpty ? null : normalized;
 }
+
+String? _normalizeRemoteContentEmail(String email) {
+  final normalized = email.trim().toLowerCase();
+  return normalized.isEmpty ? null : normalized;
+}
+
+String? _normalizeRemoteContentDomain(String domain) {
+  var normalized = domain.trim();
+  if (normalized.isEmpty) {
+    return null;
+  }
+  final uriText = normalized.startsWith('//')
+      ? 'https:$normalized'
+      : normalized;
+  final uri = Uri.tryParse(uriText);
+  if (uri != null && uri.host.isNotEmpty) {
+    normalized = uri.host;
+  }
+  normalized = normalized.toLowerCase();
+  if (normalized.endsWith('.')) {
+    normalized = normalized.substring(0, normalized.length - 1);
+  }
+  return normalized.isEmpty ? null : normalized;
+}
+
+enum LayoutDensity { compact, standard, spacious }
 
 extension LayoutDensityMeta on LayoutDensity {
   String get label {
@@ -653,11 +861,7 @@ extension LayoutDensityMeta on LayoutDensity {
   }
 }
 
-enum CornerRadiusStyle {
-  pointy,
-  traditional,
-  babyProofed,
-}
+enum CornerRadiusStyle { pointy, traditional, babyProofed }
 
 extension CornerRadiusStyleMeta on CornerRadiusStyle {
   String get label {
@@ -691,8 +895,8 @@ class TidingsSettingsScope extends InheritedNotifier<TidingsSettings> {
   }) : super(notifier: settings);
 
   static TidingsSettings of(BuildContext context) {
-    final scope =
-        context.dependOnInheritedWidgetOfExactType<TidingsSettingsScope>();
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<TidingsSettingsScope>();
     final settings = scope?.notifier;
     if (settings == null) {
       throw StateError('TidingsSettingsScope not found in context.');
@@ -731,11 +935,7 @@ const double kCompactBreakpoint = 720.0;
 /// Below this the sidebar collapses to a rail automatically.
 const double kWideSidebarBreakpoint = 500.0;
 
-enum DateOrder {
-  mdy,
-  dmy,
-  ymd,
-}
+enum DateOrder { mdy, dmy, ymd }
 
 extension DateOrderMeta on DateOrder {
   String get label {
@@ -761,10 +961,7 @@ extension DateOrderMeta on DateOrder {
   }
 }
 
-enum MessageCollapseMode {
-  maxLines,
-  beforeQuotes,
-}
+enum MessageCollapseMode { maxLines, beforeQuotes }
 
 extension MessageCollapseModeMeta on MessageCollapseMode {
   String get label {

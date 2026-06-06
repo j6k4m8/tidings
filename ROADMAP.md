@@ -10,15 +10,15 @@
 
 ### High
 
--   [ ] [HIGH] Add email-client privacy controls to HTML message rendering.
+-   [x] [HIGH] Add email-client privacy controls to HTML message rendering.
     -   Current risk: the regex sanitizer only strips scripts and quoted event handlers, still allows remote-capable media/frames, and URI launch handling is too permissive.
-    -   Fix target: block remote loads by default, restrict supported URI schemes, remove dangerous elements/attributes with a parser-backed sanitizer, and add a per-message "load remote content" affordance.
--   [ ] [HIGH] Replace QR account transfer payloads that expose IMAP passwords in base64/plain text.
+    -   Fixed: HTML email rendering now uses a parser-backed sanitizer, blocks remote media by default, restricts launched link schemes, strips dangerous elements/attributes/styles, and exposes a per-message "Load" affordance for remote content.
+-   [x] [HIGH] Replace QR account transfer payloads that expose IMAP passwords in base64/plain text.
     -   Current risk: QR transfer serializes credentials in recoverable form.
-    -   Fix target: require an encrypted transfer format, explicit expiry, and clear UX around credential scope.
--   [ ] [HIGH] Remove the global `FlutterError` overflow suppression in `main.dart`.
+    -   Fixed: QR transfer now emits an encrypted v2 envelope, requires a separate transfer code to decrypt on the receiving device, keeps the 5-minute expiry, rejects legacy plaintext payloads, and has codec regression tests.
+-   [x] [HIGH] Remove the global `FlutterError` overflow suppression in `main.dart`.
     -   Current risk: real layout bugs can be hidden in production and during review.
-    -   Fix target: fix offending layouts directly and keep framework errors visible.
+    -   Fixed: the global error filter is removed; email HTML image/table layout risk is handled by sanitizer-side remote blocking and image dimension stripping so framework errors stay visible.
 -   [ ] [HIGH] Make IMAP account edits transactional.
     -   Current risk: editing an account persists the new config/provider before validation and can leave a broken account if validation fails.
     -   Fix target: validate first, then commit config/provider atomically, with rollback on failures.
