@@ -24,6 +24,7 @@ void main() {
       expect(result.html, isNot(contains('onmouseover')));
       expect(result.html, isNot(contains('javascript:')));
       expect(result.html, isNot(contains('https://tracker.example')));
+      expect(result.html, isNot(contains('<img')));
       expect(result.html, isNot(contains('width=')));
       expect(result.html, isNot(contains('height=')));
       expect(result.html, contains('[remote image blocked]'));
@@ -35,6 +36,8 @@ void main() {
         'srcset="https://example.com/a.png 1x, https://example.com/b.png 2x">',
       );
       expect(blocked.html, isNot(contains('https://example.com/a.png')));
+      expect(blocked.html, isNot(contains('<img')));
+      expect(blocked.html, contains('[remote image blocked]'));
       expect(blocked.blockedRemoteContentCount, 3);
 
       final loaded = sanitizeEmailHtml(
@@ -62,6 +65,7 @@ void main() {
         expect(result.html, contains('srcset='));
         expect(result.html, isNot(contains('https://cdn.example.com/b.png')));
         expect(result.html, isNot(contains('tracking.example.com')));
+        expect(result.html, contains('[remote image blocked]'));
         expect(result.blockedRemoteContentCount, 2);
         expect(result.blockedRemoteDomains, {
           'cdn.example.com',
@@ -101,6 +105,19 @@ void main() {
       expect(result.html, isNot(contains('height=')));
       expect(result.html, isNot(contains('background')));
       expect(result.html, isNot(contains('tracker.example')));
+    });
+
+    test('preserves table structure', () {
+      final result = sanitizeEmailHtml(
+        '<table><tbody><tr><td>Hello</td><td>there</td></tr></tbody></table>',
+      );
+
+      expect(result.html, contains('<table>'));
+      expect(result.html, contains('<tbody>'));
+      expect(result.html, contains('<tr>'));
+      expect(result.html, contains('<td>'));
+      expect(result.html, contains('Hello'));
+      expect(result.html, contains('there'));
     });
   });
 

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
+import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
@@ -753,53 +753,69 @@ class MessageCard extends StatelessWidget {
           builder: (dialogContext, setDialogState) {
             return AlertDialog(
               title: const Text('Remote content domains'),
-              content: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 420,
-                  maxHeight: 360,
+              content: SizedBox(
+                width: 420,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 360),
+                  child: domains.isEmpty
+                      ? const Text('No remote domains found.')
+                      : SingleChildScrollView(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (
+                                var index = 0;
+                                index < domains.length;
+                                index++
+                              ) ...[
+                                Builder(
+                                  builder: (context) {
+                                    final domain = domains[index];
+                                    final allowed = settings
+                                        .isRemoteContentDomainAllowed(
+                                          accountKey: remoteContentAccountKey,
+                                          domain: domain,
+                                        );
+                                    return ListTile(
+                                      dense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      title: Text(
+                                        domain,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      trailing: TextButton.icon(
+                                        onPressed: allowed
+                                            ? null
+                                            : () {
+                                                settings.allowRemoteContentDomain(
+                                                  accountKey:
+                                                      remoteContentAccountKey,
+                                                  domain: domain,
+                                                );
+                                                setDialogState(() {});
+                                              },
+                                        icon: Icon(
+                                          allowed
+                                              ? Icons.check_rounded
+                                              : Icons
+                                                    .check_circle_outline_rounded,
+                                          size: 16,
+                                        ),
+                                        label: Text(
+                                          allowed ? 'Allowed' : 'Allow',
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                                if (index != domains.length - 1)
+                                  const Divider(height: 1),
+                              ],
+                            ],
+                          ),
+                        ),
                 ),
-                child: domains.isEmpty
-                    ? const Text('No remote domains found.')
-                    : ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: domains.length,
-                        separatorBuilder: (context, index) =>
-                            const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final domain = domains[index];
-                          final allowed = settings.isRemoteContentDomainAllowed(
-                            accountKey: remoteContentAccountKey,
-                            domain: domain,
-                          );
-                          return ListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(
-                              domain,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            trailing: TextButton.icon(
-                              onPressed: allowed
-                                  ? null
-                                  : () {
-                                      settings.allowRemoteContentDomain(
-                                        accountKey: remoteContentAccountKey,
-                                        domain: domain,
-                                      );
-                                      setDialogState(() {});
-                                    },
-                              icon: Icon(
-                                allowed
-                                    ? Icons.check_rounded
-                                    : Icons.check_circle_outline_rounded,
-                                size: 16,
-                              ),
-                              label: Text(allowed ? 'Allowed' : 'Allow'),
-                            ),
-                          );
-                        },
-                      ),
               ),
               actions: [
                 TextButton(
@@ -1254,6 +1270,13 @@ class MessageCard extends StatelessWidget {
                         final htmlWidget = HtmlWidget(
                           sanitized.html,
                           textStyle: Theme.of(context).textTheme.bodyLarge,
+                          onLoadingBuilder:
+                              (context, element, loadingProgress) {
+                                if (element.localName?.toLowerCase() == 'img') {
+                                  return const SizedBox.shrink();
+                                }
+                                return null;
+                              },
                           onTapUrl: (url) async {
                             final uri = Uri.tryParse(url);
                             if (uri != null &&
@@ -1273,6 +1296,10 @@ class MessageCard extends StatelessWidget {
                               case 'a':
                                 return {'color': '#1a73e8'};
                               case 'img':
+                                return {
+                                  'display': 'block',
+                                  'max-width': '100%',
+                                };
                               case 'table':
                                 return {'max-width': '100%'};
                               case 'pre':

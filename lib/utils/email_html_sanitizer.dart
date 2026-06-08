@@ -140,6 +140,8 @@ void _sanitizeAttributes(
   String elementName,
   _SanitizerContext context,
 ) {
+  var removedImageSource = false;
+
   for (final attributeKey in element.attributes.keys.toList()) {
     final attributeName = attributeKey.toString();
     final lowerName = attributeName.toLowerCase();
@@ -176,6 +178,9 @@ void _sanitizeAttributes(
     if (lowerName == 'srcset') {
       final sanitized = _sanitizeSrcset(value, context);
       if (sanitized == null) {
+        if (elementName == 'img') {
+          removedImageSource = true;
+        }
         element.attributes.remove(attributeKey);
       } else {
         element.attributes[attributeKey] = sanitized;
@@ -187,11 +192,15 @@ void _sanitizeAttributes(
       if (_isRemoteResourceUrl(value)) {
         _recordBlockedRemoteContent(value, context);
         if (elementName == 'img') {
+          removedImageSource = true;
           element.attributes['alt'] = _fallbackAltText(
             element.attributes['alt'],
           );
         }
       } else {
+        if (elementName == 'img') {
+          removedImageSource = true;
+        }
         context.removedUnsafeContentCount++;
       }
       element.attributes.remove(attributeKey);
@@ -201,6 +210,11 @@ void _sanitizeAttributes(
   if (elementName == 'img') {
     element.attributes.remove('width');
     element.attributes.remove('height');
+    if (removedImageSource && !_hasImageSource(element)) {
+      element.replaceWith(
+        dom.Text(_fallbackAltText(element.attributes['alt'])),
+      );
+    }
   }
 }
 
@@ -263,6 +277,18 @@ bool _isSafeResourceUrl(String value, _SanitizerContext context) {
     return trimmed.toLowerCase().startsWith('data:image/');
   }
   return _safeInlineImageSchemes.contains(scheme);
+}
+
+bool _hasImageSource(dom.Element element) {
+  final src = element.attributes.entries.any(
+    (entry) => entry.key.toString().toLowerCase() == 'src',
+  );
+  if (src) {
+    return true;
+  }
+  return element.attributes.entries.any(
+    (entry) => entry.key.toString().toLowerCase() == 'srcset',
+  );
 }
 
 bool _isRemoteResourceUrl(String value) {
