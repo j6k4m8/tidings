@@ -2,15 +2,17 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 
 class SanitizedEmailHtml {
-  const SanitizedEmailHtml({
+  SanitizedEmailHtml({
     required this.html,
     required this.blockedRemoteContentCount,
     required this.removedUnsafeContentCount,
-  });
+    Set<String> blockedRemoteDomains = const {},
+  }) : blockedRemoteDomains = Set.unmodifiable(blockedRemoteDomains);
 
   final String html;
   final int blockedRemoteContentCount;
   final int removedUnsafeContentCount;
+  final Set<String> blockedRemoteDomains;
 
   bool get hasBlockedRemoteContent => blockedRemoteContentCount > 0;
 }
@@ -18,9 +20,13 @@ class SanitizedEmailHtml {
 SanitizedEmailHtml sanitizeEmailHtml(
   String html, {
   bool loadRemoteContent = false,
+  Set<String> allowedRemoteContentDomains = const {},
 }) {
   final fragment = html_parser.parseFragment(html);
-  final context = _SanitizerContext(loadRemoteContent: loadRemoteContent);
+  final context = _SanitizerContext(
+    loadRemoteContent: loadRemoteContent,
+    allowedRemoteContentDomains: allowedRemoteContentDomains,
+  );
 
   for (final node in fragment.nodes.toList()) {
     _sanitizeNode(node, context);
@@ -30,6 +36,7 @@ SanitizedEmailHtml sanitizeEmailHtml(
     html: fragment.outerHtml.trim(),
     blockedRemoteContentCount: context.blockedRemoteContentCount,
     removedUnsafeContentCount: context.removedUnsafeContentCount,
+    blockedRemoteDomains: context.blockedRemoteDomains,
   );
 }
 
@@ -89,11 +96,19 @@ final _dangerousStylePattern = RegExp(
 );
 
 class _SanitizerContext {
-  _SanitizerContext({required this.loadRemoteContent});
+  _SanitizerContext({
+    required this.loadRemoteContent,
+    Set<String> allowedRemoteContentDomains = const {},
+  }) : allowedRemoteContentDomains = allowedRemoteContentDomains
+           .map(_normalizeRemoteHost)
+           .whereType<String>()
+           .toSet();
 
   final bool loadRemoteContent;
+  final Set<String> allowedRemoteContentDomains;
   int blockedRemoteContentCount = 0;
   int removedUnsafeContentCount = 0;
+  final Set<String> blockedRemoteDomains = {};
 }
 
 void _sanitizeNode(dom.Node node, _SanitizerContext context) {
@@ -125,6 +140,8 @@ void _sanitizeAttributes(
   String elementName,
   _SanitizerContext context,
 ) {
+  var removedImageSource = false;
+
   for (final attributeKey in element.attributes.keys.toList()) {
     final attributeName = attributeKey.toString();
     final lowerName = attributeName.toLowerCase();
@@ -161,6 +178,9 @@ void _sanitizeAttributes(
     if (lowerName == 'srcset') {
       final sanitized = _sanitizeSrcset(value, context);
       if (sanitized == null) {
+        if (elementName == 'img') {
+          removedImageSource = true;
+        }
         element.attributes.remove(attributeKey);
       } else {
         element.attributes[attributeKey] = sanitized;
@@ -168,15 +188,19 @@ void _sanitizeAttributes(
       continue;
     }
 
-    if (!_isSafeResourceUrl(value, context.loadRemoteContent)) {
+    if (!_isSafeResourceUrl(value, context)) {
       if (_isRemoteResourceUrl(value)) {
-        context.blockedRemoteContentCount++;
+        _recordBlockedRemoteContent(value, context);
         if (elementName == 'img') {
+          removedImageSource = true;
           element.attributes['alt'] = _fallbackAltText(
             element.attributes['alt'],
           );
         }
       } else {
+        if (elementName == 'img') {
+          removedImageSource = true;
+        }
         context.removedUnsafeContentCount++;
       }
       element.attributes.remove(attributeKey);
@@ -186,6 +210,11 @@ void _sanitizeAttributes(
   if (elementName == 'img') {
     element.attributes.remove('width');
     element.attributes.remove('height');
+    if (removedImageSource && !_hasImageSource(element)) {
+      element.replaceWith(
+        dom.Text(_fallbackAltText(element.attributes['alt'])),
+      );
+    }
   }
 }
 
@@ -214,10 +243,10 @@ String? _sanitizeSrcset(String value, _SanitizerContext context) {
     if (trimmed.isEmpty) continue;
     final parts = trimmed.split(RegExp(r'\s+'));
     final url = parts.first;
-    if (_isSafeResourceUrl(url, context.loadRemoteContent)) {
+    if (_isSafeResourceUrl(url, context)) {
       safeEntries.add(trimmed);
     } else if (_isRemoteResourceUrl(url)) {
-      context.blockedRemoteContentCount++;
+      _recordBlockedRemoteContent(url, context);
     } else {
       context.removedUnsafeContentCount++;
     }
@@ -232,11 +261,13 @@ bool _isSafeHref(String value) {
   return isSafeEmailLink(trimmed);
 }
 
-bool _isSafeResourceUrl(String value, bool loadRemoteContent) {
+bool _isSafeResourceUrl(String value, _SanitizerContext context) {
   final trimmed = value.trim();
   if (trimmed.isEmpty) return false;
-  if (_isRemoteResourceUrl(trimmed)) {
-    return loadRemoteContent;
+  final remoteHost = _remoteResourceHost(trimmed);
+  if (remoteHost != null) {
+    return context.loadRemoteContent ||
+        context.allowedRemoteContentDomains.contains(remoteHost);
   }
   final uri = Uri.tryParse(trimmed);
   if (uri == null) return false;
@@ -248,13 +279,49 @@ bool _isSafeResourceUrl(String value, bool loadRemoteContent) {
   return _safeInlineImageSchemes.contains(scheme);
 }
 
+bool _hasImageSource(dom.Element element) {
+  final src = element.attributes.entries.any(
+    (entry) => entry.key.toString().toLowerCase() == 'src',
+  );
+  if (src) {
+    return true;
+  }
+  return element.attributes.entries.any(
+    (entry) => entry.key.toString().toLowerCase() == 'srcset',
+  );
+}
+
 bool _isRemoteResourceUrl(String value) {
-  final trimmed = value.trim().toLowerCase();
-  if (trimmed.startsWith('//')) return true;
-  final uri = Uri.tryParse(trimmed);
-  if (uri == null || !uri.hasScheme) return false;
+  return _remoteResourceHost(value) != null;
+}
+
+String? _remoteResourceHost(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return null;
+  final uriText = trimmed.startsWith('//') ? 'https:$trimmed' : trimmed;
+  final uri = Uri.tryParse(uriText);
+  if (uri == null || !uri.hasScheme) return null;
   final scheme = uri.scheme.toLowerCase();
-  return scheme == 'http' || scheme == 'https';
+  if (scheme != 'http' && scheme != 'https') return null;
+  return _normalizeRemoteHost(uri.host);
+}
+
+String? _normalizeRemoteHost(String host) {
+  final trimmed = host.trim();
+  if (trimmed.isEmpty) return null;
+  var normalized = trimmed.toLowerCase();
+  if (normalized.endsWith('.')) {
+    normalized = normalized.substring(0, normalized.length - 1);
+  }
+  return normalized.isEmpty ? null : normalized;
+}
+
+void _recordBlockedRemoteContent(String value, _SanitizerContext context) {
+  context.blockedRemoteContentCount++;
+  final host = _remoteResourceHost(value);
+  if (host != null) {
+    context.blockedRemoteDomains.add(host);
+  }
 }
 
 String _fallbackAltText(String? current) {

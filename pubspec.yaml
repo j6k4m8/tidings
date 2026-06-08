@@ -35,7 +35,7 @@ dependencies:
     enough_mail: ^2.1.6
     flutter_quill: ^11.5.0
     dart_quill_delta: ^10.8.3
-    flutter_widget_from_html: ^0.17.1
+    flutter_widget_from_html_core: ^0.17.0
     html: ^0.15.6
     pointycastle: ^4.0.0
     shared_preferences: ^2.3.2

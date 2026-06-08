@@ -1,0 +1,27 @@
+# Tidings Features
+
+-   Native email client for Gmail and IMAP/SMTP accounts.
+-   Multi-account setup with a unified inbox.
+-   Per-account accent colors and account-aware thread context.
+-   Gmail OAuth setup and IMAP/SMTP credential setup with connection testing.
+-   Mock email account for trying the app without connecting real mail.
+-   Conversation-style threaded message view.
+-   Rich compose, reply, reply-all, and forward flows with CC/BCC support.
+-   Inline replies inside threads.
+-   Undo-send with queued outbox messages.
+-   Outbox send queue with automatic retries and fallback draft saving.
+-   Server-backed search for Gmail and IMAP.
+-   Boolean search syntax with field filters and natural-language dates.
+-   Saved searches.
+-   Keyboard shortcuts, editable shortcut bindings, and a shortcut help sheet.
+-   Command palette for common mail actions.
+-   Fast go-to-folder and move-to-folder dialogs.
+-   Archive and move-to-folder actions for threads and messages.
+-   Folder navigation with unread counts.
+-   Folder pinning for favorite folders.
+-   Optional message folder-source badges in threaded views.
+-   Responsive desktop and mobile layouts.
+-   Appearance settings for theme, palette, density, corner radius, date order, and thread display.
+-   Encrypted QR transfer for moving accounts and selected settings to another device.
+-   HTML email rendering.
+-   Remote image privacy controls: load once, always load from a sender, or allow exact domains/subdomains per account.

@@ -210,8 +210,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (startupId == 'unified') {
         _enableUnifiedInbox();
       } else if (startupId != null) {
-        final idx = widget.appState.accounts
-            .indexWhere((a) => a.id == startupId);
+        final idx = widget.appState.accounts.indexWhere(
+          (a) => a.id == startupId,
+        );
         if (idx != -1) widget.appState.selectAccount(idx);
       }
     }
@@ -405,6 +406,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return _unifiedProvider.accountEmailForThread(thread.id) ?? fallback.email;
   }
 
+  String _remoteContentAccountKeyForThread(
+    EmailThread? thread,
+    EmailAccount fallback,
+  ) {
+    if (!_isUnifiedInbox || thread == null) {
+      return fallback.id;
+    }
+    return _unifiedProvider.accountForThread(thread.id)?.id ?? fallback.id;
+  }
+
   bool _isTextInputFocused() {
     final focus = FocusManager.instance.primaryFocus;
     if (focus == null) return false;
@@ -442,7 +453,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final context = (ctx is Element && ctx.debugIsActive) ? ctx : null;
     try {
       if (context != null &&
-          context.findAncestorWidgetOfExactType<InlineReplyComposer>() != null) {
+          context.findAncestorWidgetOfExactType<InlineReplyComposer>() !=
+              null) {
         return _HomeScope.editor;
       }
     } catch (_) {}
@@ -666,6 +678,10 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     final currentUserEmail = _currentUserEmailForThread(thread, account);
+    final remoteContentAccountKey = _remoteContentAccountKeyForThread(
+      thread,
+      account,
+    );
     if (context.isCompact) {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -674,6 +690,7 @@ class _HomeScreenState extends State<HomeScreen> {
             thread: thread,
             provider: provider,
             currentUserEmail: currentUserEmail,
+            remoteContentAccountKey: remoteContentAccountKey,
           ),
         ),
       );
@@ -948,7 +965,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final accounts = widget.appState.accounts;
     final currentAccountId = widget.appState.selectedAccount?.id;
     // Only treat entries as priority when in single-account view (not unified).
-    final inSingleAccountView = currentAccountId != null &&
+    final inSingleAccountView =
+        currentAccountId != null &&
         widget.appState.selectedAccount != null &&
         widget.appState.currentProvider is! UnifiedEmailProvider;
 
@@ -1086,8 +1104,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _handleMenuAction(ShortcutAction action) {
     final account = widget.appState.selectedAccount;
-    final provider =
-        _isUnifiedInbox ? _unifiedProvider : widget.appState.currentProvider;
+    final provider = _isUnifiedInbox
+        ? _unifiedProvider
+        : widget.appState.currentProvider;
     if (account == null || provider == null) {
       return;
     }
@@ -1143,8 +1162,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 builder: (context, constraints) {
                   final isWide = constraints.maxWidth >= kCompactBreakpoint;
                   final showSettings = _showSettings;
-                  final augmentedSections =
-                      _augmentedFolderSections(listProvider);
+                  final augmentedSections = _augmentedFolderSections(
+                    listProvider,
+                  );
                   final effectiveFolderIndex =
                       _folderIndexForPath(
                         augmentedSections,
@@ -1170,6 +1190,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     selectedThread,
                     account,
                   );
+                  final detailRemoteContentAccountKey =
+                      _remoteContentAccountKeyForThread(
+                        selectedThread,
+                        account,
+                      );
 
                   return Scaffold(
                     extendBody: true,
@@ -1211,8 +1236,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 onSearchTap: () =>
                                     _handleSearchTap(listProvider),
                                 activeSearchQuery: _activeSearch?.rawQuery,
-                                onSearchClear: () =>
-                                    _clearSearch(listProvider),
+                                onSearchClear: () => _clearSearch(listProvider),
                                 folderSectionsOverride: augmentedSections,
                                 selectedThreadIndex: _selectedThreadIndex,
                                 onThreadSelected: (index) =>
@@ -1289,6 +1313,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     _handleInlineReplyFocusChange,
                                 listCurrentUserEmail: listCurrentUserEmail,
                                 detailCurrentUserEmail: detailCurrentUserEmail,
+                                detailRemoteContentAccountKey:
+                                    detailRemoteContentAccountKey,
                                 selectedMessageIndex: selectedMessageIndex,
                                 onMessageSelected: (index) {
                                   if (selectedThread == null) {
@@ -1318,8 +1344,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 onSearchTap: () =>
                                     _handleSearchTap(listProvider),
                                 activeSearchQuery: _activeSearch?.rawQuery,
-                                onSearchClear: () =>
-                                    _clearSearch(listProvider),
+                                onSearchClear: () => _clearSearch(listProvider),
                                 folderSectionsOverride: augmentedSections,
                                 selectedThreadIndex: _selectedThreadIndex,
                                 onThreadSelected: (index) =>
@@ -1382,6 +1407,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 listCurrentUserEmail: listCurrentUserEmail,
                                 currentUserEmailForThread: (thread) =>
                                     _currentUserEmailForThread(thread, account),
+                                remoteContentAccountKeyForThread: (thread) =>
+                                    _remoteContentAccountKeyForThread(
+                                      thread,
+                                      account,
+                                    ),
                                 accountCount: widget.appState.accounts.length,
                                 savedSearches: _savedSearches,
                               ),

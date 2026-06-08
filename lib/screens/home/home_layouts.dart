@@ -32,6 +32,7 @@ class WideLayout extends StatelessWidget {
     required this.provider,
     required this.listCurrentUserEmail,
     required this.detailCurrentUserEmail,
+    required this.detailRemoteContentAccountKey,
     required this.selectedThreadIndex,
     required this.onThreadSelected,
     required this.selectedFolderIndex,
@@ -82,11 +83,13 @@ class WideLayout extends StatelessWidget {
   final VoidCallback? onSearchTap;
   final String? activeSearchQuery;
   final VoidCallback? onSearchClear;
+
   /// When provided, used instead of provider.folderSections in the sidebar.
   final List<FolderSection>? folderSectionsOverride;
   final SavedSearchesStore? savedSearches;
   final String listCurrentUserEmail;
   final String detailCurrentUserEmail;
+  final String detailRemoteContentAccountKey;
   final int selectedThreadIndex;
   final ValueChanged<int> onThreadSelected;
   final int selectedFolderIndex;
@@ -215,8 +218,7 @@ class WideLayout extends StatelessWidget {
                               Expanded(
                                 child: AnimatedOpacity(
                                   opacity: listOpacity,
-                                  duration:
-                                      const Duration(milliseconds: 180),
+                                  duration: const Duration(milliseconds: 180),
                                   child: Listener(
                                     onPointerDown: (_) =>
                                         threadListFocusNode.requestFocus(),
@@ -275,8 +277,8 @@ class WideLayout extends StatelessWidget {
                         final maxDetailWidth = availableWidth - minListWidth;
                         final boundedMaxDetailWidth =
                             maxDetailWidth < minDetailWidth
-                                ? minDetailWidth
-                                : maxDetailWidth;
+                            ? minDetailWidth
+                            : maxDetailWidth;
                         final desiredDetailWidth =
                             availableWidth * threadPanelFraction;
                         final detailWidth = desiredDetailWidth.clamp(
@@ -305,8 +307,7 @@ class WideLayout extends StatelessWidget {
                               width: listWidth,
                               child: AnimatedOpacity(
                                 opacity: listOpacity,
-                                duration:
-                                    const Duration(milliseconds: 180),
+                                duration: const Duration(milliseconds: 180),
                                 child: Listener(
                                   onPointerDown: (_) =>
                                       threadListFocusNode.requestFocus(),
@@ -325,8 +326,7 @@ class WideLayout extends StatelessWidget {
                                         selectedIndex: selectedThreadIndex,
                                         onSelected: onThreadSelected,
                                         isCompact: false,
-                                        currentUserEmail:
-                                            listCurrentUserEmail,
+                                        currentUserEmail: listCurrentUserEmail,
                                         searchFocusNode: searchFocusNode,
                                         showSearch: false,
                                         activeSearchQuery: activeSearchQuery,
@@ -350,19 +350,20 @@ class WideLayout extends StatelessWidget {
                                       onClose: onSettingsClose,
                                     )
                                   : AnimatedSwitcher(
-                                      duration:
-                                          const Duration(milliseconds: 300),
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
                                       switchInCurve: Curves.easeOutCubic,
                                       switchOutCurve: Curves.easeInCubic,
                                       transitionBuilder: (child, animation) =>
                                           SizeTransition(
-                                        sizeFactor: animation,
-                                        axisAlignment: -1,
-                                        child: FadeTransition(
-                                          opacity: animation,
-                                          child: child,
-                                        ),
-                                      ),
+                                            sizeFactor: animation,
+                                            axisAlignment: -1,
+                                            child: FadeTransition(
+                                              opacity: animation,
+                                              child: child,
+                                            ),
+                                          ),
                                       child: selectedThread == null
                                           ? const SizedBox.shrink()
                                           : Listener(
@@ -372,11 +373,10 @@ class WideLayout extends StatelessWidget {
                                               child: Focus(
                                                 focusNode:
                                                     threadDetailFocusNode,
-                                                onKeyEvent:
-                                                    (node, event) =>
-                                                        onThreadDetailKeyEvent(
-                                                  event,
-                                                ),
+                                                onKeyEvent: (node, event) =>
+                                                    onThreadDetailKeyEvent(
+                                                      event,
+                                                    ),
                                                 child: CurrentThreadPanel(
                                                   key: ValueKey(
                                                     selectedThread.id,
@@ -387,6 +387,8 @@ class WideLayout extends StatelessWidget {
                                                   isCompact: false,
                                                   currentUserEmail:
                                                       detailCurrentUserEmail,
+                                                  remoteContentAccountKey:
+                                                      detailRemoteContentAccountKey,
                                                   replyController:
                                                       replyController,
                                                   selectedMessageIndex:
@@ -447,6 +449,7 @@ class CompactLayout extends StatelessWidget {
     required this.threadListFocusNode,
     required this.listCurrentUserEmail,
     required this.currentUserEmailForThread,
+    required this.remoteContentAccountKeyForThread,
     this.isUnified = false,
     this.accountCount = 0,
     this.onSearchTap,
@@ -464,6 +467,7 @@ class CompactLayout extends StatelessWidget {
   final VoidCallback? onSearchTap;
   final String? activeSearchQuery;
   final VoidCallback? onSearchClear;
+
   /// When provided, used instead of provider.folderSections in the sidebar.
   final List<FolderSection>? folderSectionsOverride;
   final SavedSearchesStore? savedSearches;
@@ -488,13 +492,13 @@ class CompactLayout extends StatelessWidget {
   final FocusNode threadListFocusNode;
   final String listCurrentUserEmail;
   final String Function(EmailThread thread) currentUserEmailForThread;
+  final String Function(EmailThread thread) remoteContentAccountKeyForThread;
 
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
     final isMac = defaultTargetPlatform == TargetPlatform.macOS;
-    final topPadding =
-        topInset + context.space(isMac ? 22 : 6);
+    final topPadding = topInset + context.space(isMac ? 22 : 6);
     final effectiveFolderSections =
         folderSectionsOverride ?? provider.folderSections;
     final pinnedFolderItems = pinnedItems(
@@ -591,6 +595,8 @@ class CompactLayout extends StatelessWidget {
                                 final thread = provider.threads[index];
                                 final currentUserEmail =
                                     currentUserEmailForThread(thread);
+                                final remoteContentAccountKey =
+                                    remoteContentAccountKeyForThread(thread);
                                 Navigator.of(context).push(
                                   MaterialPageRoute<void>(
                                     builder: (_) => ThreadScreen(
@@ -598,6 +604,8 @@ class CompactLayout extends StatelessWidget {
                                       thread: thread,
                                       provider: provider,
                                       currentUserEmail: currentUserEmail,
+                                      remoteContentAccountKey:
+                                          remoteContentAccountKey,
                                     ),
                                   ),
                                 );
@@ -631,7 +639,7 @@ class CompactLayout extends StatelessWidget {
                 left: railOpen
                     ? context.space(8)
                     : -(railExpanded ? panelWidth : railWidth) -
-                        context.space(16),
+                          context.space(16),
                 child: SizedBox(
                   width: railExpanded ? panelWidth : railWidth,
                   child: AnimatedSwitcher(
@@ -733,10 +741,9 @@ class _CompactSearchDecoy extends StatelessWidget {
               size: 18,
               color: hasQuery
                   ? accent
-                  : Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.4),
+                  : Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.4),
             ),
             SizedBox(width: context.space(8)),
             Expanded(
@@ -745,10 +752,9 @@ class _CompactSearchDecoy extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: hasQuery
                       ? Theme.of(context).colorScheme.onSurface
-                      : Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.4),
+                      : Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.4),
                 ),
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,

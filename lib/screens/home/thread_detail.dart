@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
+import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 
 import '../../models/email_models.dart';
 import '../../providers/email_provider.dart';
@@ -30,6 +30,7 @@ class CurrentThreadPanel extends StatefulWidget {
     required this.provider,
     required this.isCompact,
     required this.currentUserEmail,
+    required this.remoteContentAccountKey,
     required this.selectedMessageIndex,
     required this.onMessageSelected,
     required this.isFocused,
@@ -44,6 +45,7 @@ class CurrentThreadPanel extends StatefulWidget {
   final EmailProvider provider;
   final bool isCompact;
   final String currentUserEmail;
+  final String remoteContentAccountKey;
   final int selectedMessageIndex;
   final ValueChanged<int> onMessageSelected;
   final bool isFocused;
@@ -502,6 +504,8 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                       settings.showMessageFolderSource,
                                   currentFolderPath:
                                       widget.provider.selectedFolderPath,
+                                  remoteContentAccountKey:
+                                      widget.remoteContentAccountKey,
                                   allowRemoteContent:
                                       _remoteContentAllowedMessageIds.contains(
                                         message.id,
@@ -575,6 +579,7 @@ class MessageCard extends StatelessWidget {
     this.onMoveToFolder,
     this.showFolderSource = false,
     this.currentFolderPath,
+    required this.remoteContentAccountKey,
     this.allowRemoteContent = false,
     this.onLoadRemoteContent,
   });
@@ -591,6 +596,7 @@ class MessageCard extends StatelessWidget {
   final VoidCallback? onMoveToFolder;
   final bool showFolderSource;
   final String? currentFolderPath;
+  final String remoteContentAccountKey;
   final bool allowRemoteContent;
   final VoidCallback? onLoadRemoteContent;
 
@@ -713,13 +719,131 @@ class MessageCard extends StatelessWidget {
     );
   }
 
+  bool _senderAllowsRemoteContent(TidingsSettings settings) {
+    return settings.isRemoteContentSenderAllowed(
+      accountKey: remoteContentAccountKey,
+      senderEmail: message.from.email,
+    );
+  }
+
+  bool _shouldLoadRemoteContent(TidingsSettings settings) {
+    return allowRemoteContent || _senderAllowsRemoteContent(settings);
+  }
+
+  Set<String> _allowedRemoteContentDomains(TidingsSettings settings) {
+    return settings.remoteContentAllowedDomains(remoteContentAccountKey);
+  }
+
+  void _allowRemoteContentFromSender(BuildContext context) {
+    context.tidingsSettings.allowRemoteContentSender(
+      accountKey: remoteContentAccountKey,
+      senderEmail: message.from.email,
+    );
+  }
+
+  void _showRemoteContentDomainsDialog(
+    BuildContext context,
+    List<String> domains,
+  ) {
+    final settings = context.tidingsSettings;
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Remote content domains'),
+              content: SizedBox(
+                width: 420,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 360),
+                  child: domains.isEmpty
+                      ? const Text('No remote domains found.')
+                      : SingleChildScrollView(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (
+                                var index = 0;
+                                index < domains.length;
+                                index++
+                              ) ...[
+                                Builder(
+                                  builder: (context) {
+                                    final domain = domains[index];
+                                    final allowed = settings
+                                        .isRemoteContentDomainAllowed(
+                                          accountKey: remoteContentAccountKey,
+                                          domain: domain,
+                                        );
+                                    return ListTile(
+                                      dense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      title: Text(
+                                        domain,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      trailing: TextButton.icon(
+                                        onPressed: allowed
+                                            ? null
+                                            : () {
+                                                settings.allowRemoteContentDomain(
+                                                  accountKey:
+                                                      remoteContentAccountKey,
+                                                  domain: domain,
+                                                );
+                                                setDialogState(() {});
+                                              },
+                                        icon: Icon(
+                                          allowed
+                                              ? Icons.check_rounded
+                                              : Icons
+                                                    .check_circle_outline_rounded,
+                                          size: 16,
+                                        ),
+                                        label: Text(
+                                          allowed ? 'Allowed' : 'Allow',
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                                if (index != domains.length - 1)
+                                  const Divider(height: 1),
+                              ],
+                            ],
+                          ),
+                        ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showMetadataDialog(BuildContext context) {
     final bodyHtml = message.bodyHtml;
     final bodyText = message.bodyText;
     final bodyPlainText = message.bodyPlainText;
+    final settings = context.tidingsSettings;
     final sanitized = bodyHtml != null
-        ? sanitizeEmailHtml(bodyHtml, loadRemoteContent: allowRemoteContent)
+        ? sanitizeEmailHtml(
+            bodyHtml,
+            loadRemoteContent: _shouldLoadRemoteContent(settings),
+            allowedRemoteContentDomains: _allowedRemoteContentDomains(settings),
+          )
         : null;
+    final blockedRemoteDomains = sanitized?.blockedRemoteDomains.toList()
+      ?..sort();
 
     final metadata = StringBuffer()
       ..writeln('=== MESSAGE METADATA ===')
@@ -766,6 +890,9 @@ class MessageCard extends StatelessWidget {
       ..writeln('Is empty: ${sanitized?.html.isEmpty ?? true}')
       ..writeln(
         'Blocked remote content: ${sanitized?.blockedRemoteContentCount ?? 0}',
+      )
+      ..writeln(
+        'Blocked remote domains: ${blockedRemoteDomains?.join(', ') ?? ''}',
       )
       ..writeln(
         'Removed unsafe content: ${sanitized?.removedUnsafeContentCount ?? 0}',
@@ -815,9 +942,54 @@ class MessageCard extends StatelessWidget {
     );
   }
 
-  Widget _buildRemoteContentNotice(BuildContext context, int blockedCount) {
+  Widget _buildRemoteContentNotice(
+    BuildContext context,
+    SanitizedEmailHtml sanitized,
+  ) {
     final scheme = Theme.of(context).colorScheme;
+    final settings = context.tidingsSettings;
+    final blockedCount = sanitized.blockedRemoteContentCount;
+    final domains = sanitized.blockedRemoteDomains.toList()..sort();
     final canLoad = onLoadRemoteContent != null;
+    final hasAccountKey = remoteContentAccountKey.trim().isNotEmpty;
+    final hasSender = message.from.email.trim().isNotEmpty;
+    final canAllowSender =
+        hasAccountKey &&
+        hasSender &&
+        !settings.isRemoteContentSenderAllowed(
+          accountKey: remoteContentAccountKey,
+          senderEmail: message.from.email,
+        );
+    final canInspectDomains = hasAccountKey && domains.isNotEmpty;
+    final actionStyle = TextButton.styleFrom(
+      padding: EdgeInsets.symmetric(horizontal: context.space(8)),
+      minimumSize: Size(0, context.space(28)),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+    );
+    final actions = <Widget>[
+      if (canLoad)
+        TextButton.icon(
+          onPressed: onLoadRemoteContent,
+          icon: const Icon(Icons.image_outlined, size: 16),
+          label: const Text('Load images'),
+          style: actionStyle,
+        ),
+      if (canAllowSender)
+        TextButton.icon(
+          onPressed: () => _allowRemoteContentFromSender(context),
+          icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+          label: const Text('Always from sender'),
+          style: actionStyle,
+        ),
+      if (canInspectDomains)
+        TextButton.icon(
+          onPressed: () => _showRemoteContentDomainsDialog(context, domains),
+          icon: const Icon(Icons.travel_explore_rounded, size: 16),
+          label: const Text('See domains'),
+          style: actionStyle,
+        ),
+    ];
     return Container(
       margin: EdgeInsets.only(bottom: context.space(8)),
       padding: EdgeInsets.symmetric(
@@ -829,35 +1001,38 @@ class MessageCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(context.radius(8)),
         border: Border.all(color: ColorTokens.border(context, 0.12)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.image_not_supported_outlined,
-            size: 18,
-            color: scheme.onSurfaceVariant,
-          ),
-          SizedBox(width: context.space(8)),
-          Expanded(
-            child: Text(
-              blockedCount == 1
-                  ? 'Remote content blocked'
-                  : '$blockedCount remote items blocked',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          Row(
+            children: [
+              Icon(
+                Icons.image_not_supported_outlined,
+                size: 18,
                 color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w500,
               ),
-            ),
+              SizedBox(width: context.space(8)),
+              Expanded(
+                child: Text(
+                  blockedCount == 1
+                      ? 'Remote content blocked'
+                      : '$blockedCount remote items blocked',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
           ),
-          if (canLoad)
-            TextButton(
-              onPressed: onLoadRemoteContent,
-              style: TextButton.styleFrom(
-                padding: EdgeInsets.symmetric(horizontal: context.space(8)),
-                minimumSize: Size(0, context.space(28)),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Text('Load'),
+          if (actions.isNotEmpty) ...[
+            SizedBox(height: context.space(6)),
+            Wrap(
+              spacing: context.space(6),
+              runSpacing: context.space(4),
+              children: actions,
             ),
+          ],
         ],
       ),
     );
@@ -873,10 +1048,7 @@ class MessageCard extends StatelessWidget {
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildRemoteContentNotice(context, sanitized.blockedRemoteContentCount),
-        child,
-      ],
+      children: [_buildRemoteContentNotice(context, sanitized), child],
     );
   }
 
@@ -1085,14 +1257,26 @@ class MessageCard extends StatelessWidget {
                     Widget contentWidget;
 
                     if (bodyHtml != null && bodyHtml.trim().isNotEmpty) {
+                      final shouldLoadRemoteContent = _shouldLoadRemoteContent(
+                        settings,
+                      );
                       final sanitized = sanitizeEmailHtml(
                         bodyHtml,
-                        loadRemoteContent: allowRemoteContent,
+                        loadRemoteContent: shouldLoadRemoteContent,
+                        allowedRemoteContentDomains:
+                            _allowedRemoteContentDomains(settings),
                       );
                       if (sanitized.html.isNotEmpty) {
                         final htmlWidget = HtmlWidget(
                           sanitized.html,
                           textStyle: Theme.of(context).textTheme.bodyLarge,
+                          onLoadingBuilder:
+                              (context, element, loadingProgress) {
+                                if (element.localName?.toLowerCase() == 'img') {
+                                  return const SizedBox.shrink();
+                                }
+                                return null;
+                              },
                           onTapUrl: (url) async {
                             final uri = Uri.tryParse(url);
                             if (uri != null &&
@@ -1112,6 +1296,10 @@ class MessageCard extends StatelessWidget {
                               case 'a':
                                 return {'color': '#1a73e8'};
                               case 'img':
+                                return {
+                                  'display': 'block',
+                                  'max-width': '100%',
+                                };
                               case 'table':
                                 return {'max-width': '100%'};
                               case 'pre':
@@ -1145,7 +1333,7 @@ class MessageCard extends StatelessWidget {
                       } else if (sanitized.hasBlockedRemoteContent) {
                         contentWidget = _buildRemoteContentNotice(
                           context,
-                          sanitized.blockedRemoteContentCount,
+                          sanitized,
                         );
                       } else {
                         contentWidget = Text(
@@ -1386,12 +1574,14 @@ class ThreadScreen extends StatefulWidget {
     required this.thread,
     required this.provider,
     required this.currentUserEmail,
+    required this.remoteContentAccountKey,
   });
 
   final Color accent;
   final EmailThread thread;
   final EmailProvider provider;
   final String currentUserEmail;
+  final String remoteContentAccountKey;
 
   @override
   State<ThreadScreen> createState() => _ThreadScreenState();
@@ -1573,6 +1763,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
                       provider: widget.provider,
                       isCompact: true,
                       currentUserEmail: widget.currentUserEmail,
+                      remoteContentAccountKey: widget.remoteContentAccountKey,
                       selectedMessageIndex: selectedMessageIndex,
                       onMessageSelected: (_) {},
                       isFocused: true,
