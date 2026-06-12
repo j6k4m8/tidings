@@ -116,7 +116,68 @@ class ThreadsSettings extends StatelessWidget {
             ),
           ),
         ],
+        SizedBox(height: context.space(24)),
+        SettingsSubheader(title: 'SWIPE ACTIONS'),
+        SizedBox(height: context.space(12)),
+        SettingRow(
+          title: 'Swipe actions',
+          subtitle: 'Swipe a thread on touchscreens to act on it.',
+          trailing: AccentSwitch(
+            accent: accent,
+            value: settings.swipeActionsEnabled,
+            onChanged: settings.setSwipeActionsEnabled,
+          ),
+        ),
+        if (settings.swipeActionsEnabled) ...[
+          SizedBox(height: context.space(16)),
+          SettingRow(
+            title: 'Swipe right',
+            subtitle: 'Action when a thread is swiped to the right.',
+            trailing: _SwipeActionSelector(
+              style: segmentedStyle,
+              value: settings.swipeRightAction,
+              onChanged: settings.setSwipeRightAction,
+            ),
+          ),
+          SizedBox(height: context.space(16)),
+          SettingRow(
+            title: 'Swipe left',
+            subtitle: 'Action when a thread is swiped to the left.',
+            trailing: _SwipeActionSelector(
+              style: segmentedStyle,
+              value: settings.swipeLeftAction,
+              onChanged: settings.setSwipeLeftAction,
+            ),
+          ),
+        ],
       ],
+    );
+  }
+}
+
+class _SwipeActionSelector extends StatelessWidget {
+  const _SwipeActionSelector({
+    required this.style,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final ButtonStyle style;
+  final SwipeAction value;
+  final ValueChanged<SwipeAction> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton<SwipeAction>(
+      style: style,
+      showSelectedIcon: false,
+      segments: SwipeAction.values
+          .map(
+            (action) => ButtonSegment(value: action, label: Text(action.label)),
+          )
+          .toList(),
+      selected: {value},
+      onSelectionChanged: (selected) => onChanged(selected.first),
     );
   }
 }

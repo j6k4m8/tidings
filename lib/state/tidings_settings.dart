@@ -32,6 +32,9 @@ class TidingsSettings extends ChangeNotifier {
   bool _showMessageFolderSource = false;
   DateOrder _dateOrder = DateOrder.mdy;
   bool _use24HourTime = false;
+  bool _swipeActionsEnabled = true;
+  SwipeAction _swipeRightAction = SwipeAction.archive;
+  SwipeAction _swipeLeftAction = SwipeAction.toggleRead;
 
   /// null = last used, 'unified' = unified inbox, else account id.
   String? _startupAccountId;
@@ -61,6 +64,9 @@ class TidingsSettings extends ChangeNotifier {
   bool get showMessageFolderSource => _showMessageFolderSource;
   DateOrder get dateOrder => _dateOrder;
   bool get use24HourTime => _use24HourTime;
+  bool get swipeActionsEnabled => _swipeActionsEnabled;
+  SwipeAction get swipeRightAction => _swipeRightAction;
+  SwipeAction get swipeLeftAction => _swipeLeftAction;
   String? get startupAccountId => _startupAccountId;
   Set<String> get pinnedFolderPaths => Set.unmodifiable(_pinnedFolderPaths);
 
@@ -175,6 +181,18 @@ class TidingsSettings extends ChangeNotifier {
     _use24HourTime = _boolFromStorage(
       settings['use24HourTime'],
       _use24HourTime,
+    );
+    _swipeActionsEnabled = _boolFromStorage(
+      settings['swipeActionsEnabled'],
+      _swipeActionsEnabled,
+    );
+    _swipeRightAction = _swipeActionFromStorage(
+      settings['swipeRightAction'],
+      _swipeRightAction,
+    );
+    _swipeLeftAction = _swipeActionFromStorage(
+      settings['swipeLeftAction'],
+      _swipeLeftAction,
     );
     _startupAccountId = settings['startupAccountId'] as String?;
     _pinnedFolderPaths
@@ -300,6 +318,9 @@ class TidingsSettings extends ChangeNotifier {
       'showMessageFolderSource': _showMessageFolderSource,
       'dateOrder': _dateOrder.name,
       'use24HourTime': _use24HourTime,
+      'swipeActionsEnabled': _swipeActionsEnabled,
+      'swipeRightAction': _swipeRightAction.name,
+      'swipeLeftAction': _swipeLeftAction.name,
       'startupAccountId': _startupAccountId,
       'pinnedFolderPaths': pinned,
       'shortcuts': {
@@ -426,6 +447,15 @@ class TidingsSettings extends ChangeNotifier {
       }
     }
     return _dateOrder;
+  }
+
+  SwipeAction _swipeActionFromStorage(Object? raw, SwipeAction fallback) {
+    if (raw is String) {
+      for (final action in SwipeAction.values) {
+        if (action.name == raw) return action;
+      }
+    }
+    return fallback;
   }
 
   void setShortcut(
@@ -620,6 +650,27 @@ class TidingsSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setSwipeActionsEnabled(bool value) {
+    if (_swipeActionsEnabled == value) return;
+    _swipeActionsEnabled = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setSwipeRightAction(SwipeAction value) {
+    if (_swipeRightAction == value) return;
+    _swipeRightAction = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setSwipeLeftAction(SwipeAction value) {
+    if (_swipeLeftAction == value) return;
+    _swipeLeftAction = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
   void setStartupAccountId(String? value) {
     if (_startupAccountId == value) return;
     _startupAccountId = value;
@@ -730,6 +781,9 @@ class TidingsSettings extends ChangeNotifier {
     'showMessageFolderSource': _showMessageFolderSource,
     'dateOrder': _dateOrder.name,
     'use24HourTime': _use24HourTime,
+    'swipeActionsEnabled': _swipeActionsEnabled,
+    'swipeRightAction': _swipeRightAction.name,
+    'swipeLeftAction': _swipeLeftAction.name,
   };
 
   /// Applies a settings map received via QR code.
@@ -787,6 +841,18 @@ class TidingsSettings extends ChangeNotifier {
     );
     _dateOrder = _dateOrderFromStorage(map['dateOrder']);
     _use24HourTime = _boolFromStorage(map['use24HourTime'], _use24HourTime);
+    _swipeActionsEnabled = _boolFromStorage(
+      map['swipeActionsEnabled'],
+      _swipeActionsEnabled,
+    );
+    _swipeRightAction = _swipeActionFromStorage(
+      map['swipeRightAction'],
+      _swipeRightAction,
+    );
+    _swipeLeftAction = _swipeActionFromStorage(
+      map['swipeLeftAction'],
+      _swipeLeftAction,
+    );
     unawaited(_persist());
     notifyListeners();
   }
@@ -981,4 +1047,25 @@ extension MessageCollapseModeMeta on MessageCollapseMode {
         return 'Clip before quoted replies';
     }
   }
+}
+
+/// Action performed when a thread row is swiped on a touch device.
+enum SwipeAction { none, archive, toggleRead }
+
+extension SwipeActionMeta on SwipeAction {
+  String get label {
+    switch (this) {
+      case SwipeAction.none:
+        return 'None';
+      case SwipeAction.archive:
+        return 'Archive';
+      case SwipeAction.toggleRead:
+        return 'Read/unread';
+    }
+  }
+
+  /// Whether performing this action removes the thread from the current list,
+  /// so the swipe should complete with a dismiss animation rather than spring
+  /// back into place.
+  bool get removesThread => this == SwipeAction.archive;
 }

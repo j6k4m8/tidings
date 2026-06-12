@@ -9,6 +9,7 @@ import '../models/account_models.dart';
 import '../state/app_state.dart';
 import '../state/shortcut_definitions.dart';
 import '../state/tidings_settings.dart';
+import '../state/touch_capability.dart';
 import '../theme/account_accent.dart';
 import '../theme/theme_palette.dart';
 import '../theme/tidings_theme.dart';
@@ -24,6 +25,7 @@ class TidingsApp extends StatefulWidget {
 class _TidingsAppState extends State<TidingsApp> {
   late final TidingsSettings _settings = TidingsSettings();
   late final AppState _appState = AppState();
+  late final TouchCapability _touchCapability = TouchCapability();
   late final Future<void> _initFuture = _appState.initialize();
 
   List<PlatformMenuItem> _buildMenuBar() {
@@ -112,6 +114,7 @@ class _TidingsAppState extends State<TidingsApp> {
   void dispose() {
     _settings.dispose();
     _appState.dispose();
+    _touchCapability.dispose();
     super.dispose();
   }
 
@@ -191,6 +194,18 @@ class _TidingsAppState extends State<TidingsApp> {
                     cornerRadiusScale: _settings.cornerRadiusScale,
                     fontScale: 1.0,
                   ),
+                  builder: (context, child) {
+                    // Observe pointers app-wide (passively) so touch capability
+                    // can be detected at runtime, then expose it to the tree.
+                    return TouchCapabilityScope(
+                      capability: _touchCapability,
+                      child: Listener(
+                        onPointerDown: (event) =>
+                            _touchCapability.reportPointerKind(event.kind),
+                        child: child ?? const SizedBox.shrink(),
+                      ),
+                    );
+                  },
                   home: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 220),
                     switchInCurve: Curves.easeOutCubic,

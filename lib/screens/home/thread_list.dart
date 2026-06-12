@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -6,7 +8,9 @@ import '../../providers/email_provider.dart';
 import '../../providers/unified_email_provider.dart';
 import '../../state/saved_searches.dart';
 import '../../state/tidings_settings.dart';
+import '../../state/touch_capability.dart';
 import '../../utils/email_time.dart';
+import '../../utils/subject_utils.dart';
 import '../../theme/account_accent.dart';
 import '../../theme/glass.dart';
 import '../search/token_coloring_controller.dart';
@@ -153,6 +157,45 @@ class ThreadListPanel extends StatelessWidget {
             ? provider as UnifiedEmailProvider
             : null;
 
+        // Swipe-to-act is a touch affordance, so it is gated on whether the
+        // device actually supports touch — not on viewport size, since a wide
+        // tablet is still a touch device. Each direction's action is
+        // user-configurable.
+        final settings = context.tidingsSettings;
+        final swipeEnabled =
+            context.hasTouchInput && settings.swipeActionsEnabled;
+        final swipeRightAction = settings.swipeRightAction;
+        final swipeLeftAction = settings.swipeLeftAction;
+
+        Future<void> handleSwipe(EmailThread thread, SwipeAction action) async {
+          final messenger = ScaffoldMessenger.of(context);
+          String message;
+          switch (action) {
+            case SwipeAction.none:
+              return;
+            case SwipeAction.archive:
+              final error = await provider.archiveThread(thread);
+              message = error ?? 'Archived ${subjectLabel(thread.subject)}';
+              break;
+            case SwipeAction.toggleRead:
+              final latest = provider.latestMessageForThread(thread.id);
+              final wasUnread =
+                  thread.unread || (latest?.isUnread ?? false);
+              final error = await provider.setThreadUnread(thread, !wasUnread);
+              message =
+                  error ?? (wasUnread ? 'Marked as read' : 'Marked as unread');
+              break;
+          }
+          messenger
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              SnackBar(
+                content: Text(message),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+        }
+
         Color? tintForThread(EmailThread thread) {
           if (!tintByAccount) {
             return null;
@@ -250,7 +293,7 @@ class ThreadListPanel extends StatelessWidget {
                       currentUserEmail,
                       context.tidingsSettings.hideSelfInThreadList,
                     );
-                    return Column(
+                    final row = Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         StaggeredFadeIn(
@@ -272,6 +315,20 @@ class ThreadListPanel extends StatelessWidget {
                           color: ColorTokens.border(context, 0.08),
                         ),
                       ],
+                    );
+                    final canSwipe =
+                        swipeEnabled &&
+                        (swipeRightAction != SwipeAction.none ||
+                            swipeLeftAction != SwipeAction.none);
+                    if (!canSwipe) {
+                      return row;
+                    }
+                    return _SwipeableThreadEntry(
+                      threadId: thread.id,
+                      rightAction: swipeRightAction,
+                      leftAction: swipeLeftAction,
+                      onSwipe: (action) => handleSwipe(thread, action),
+                      child: row,
                     );
                   },
                 ),
@@ -583,6 +640,135 @@ class _ThreadTileState extends State<ThreadTile> {
         ),
       ),
     );
+  }
+}
+
+/// Wraps a thread row in a [Dismissible] so it can be swiped left or right to
+/// trigger a configurable [SwipeAction]. Destructive actions (e.g. archive)
+/// let the row animate away and run in [onDismissed]; non-destructive actions
+/// (e.g. mark read/unread) run mid-swipe and spring the row back.
+class _SwipeableThreadEntry extends StatelessWidget {
+  const _SwipeableThreadEntry({
+    required this.threadId,
+    required this.rightAction,
+    required this.leftAction,
+    required this.onSwipe,
+    required this.child,
+  });
+
+  final String threadId;
+
+  /// Action for a left-to-right swipe (`DismissDirection.startToEnd`).
+  final SwipeAction rightAction;
+
+  /// Action for a right-to-left swipe (`DismissDirection.endToStart`).
+  final SwipeAction leftAction;
+  final Future<void> Function(SwipeAction action) onSwipe;
+  final Widget child;
+
+  SwipeAction _actionFor(DismissDirection direction) =>
+      direction == DismissDirection.startToEnd ? rightAction : leftAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final canRight = rightAction != SwipeAction.none;
+    final canLeft = leftAction != SwipeAction.none;
+    final direction = canRight && canLeft
+        ? DismissDirection.horizontal
+        : canRight
+        ? DismissDirection.startToEnd
+        : DismissDirection.endToStart;
+
+    return Dismissible(
+      key: ValueKey('swipe-$threadId'),
+      direction: direction,
+      dismissThresholds: const {
+        DismissDirection.startToEnd: 0.45,
+        DismissDirection.endToStart: 0.45,
+      },
+      background: canRight
+          ? _SwipeBackground(action: rightAction, alignStart: true)
+          : const SizedBox.shrink(),
+      secondaryBackground: canLeft
+          ? _SwipeBackground(action: leftAction, alignStart: false)
+          : const SizedBox.shrink(),
+      confirmDismiss: (dir) async {
+        final action = _actionFor(dir);
+        if (action == SwipeAction.none) {
+          return false;
+        }
+        if (action.removesThread) {
+          // Let the row collapse away; the action runs in onDismissed. All
+          // providers remove the thread optimistically, so the underlying
+          // list shrinks before the next build.
+          return true;
+        }
+        await onSwipe(action);
+        return false;
+      },
+      onDismissed: (dir) {
+        final action = _actionFor(dir);
+        if (action == SwipeAction.none) {
+          return;
+        }
+        unawaited(onSwipe(action));
+      },
+      child: child,
+    );
+  }
+}
+
+class _SwipeBackground extends StatelessWidget {
+  const _SwipeBackground({required this.action, required this.alignStart});
+
+  final SwipeAction action;
+
+  /// True when the row is being dragged to the right (background revealed on
+  /// the leading edge); false for a leftward drag (trailing edge).
+  final bool alignStart;
+
+  @override
+  Widget build(BuildContext context) {
+    final visual = _swipeVisual(action);
+    final children = <Widget>[
+      Icon(visual.icon, color: Colors.white, size: 22),
+      SizedBox(width: context.space(8)),
+      Text(
+        visual.label,
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    ];
+    return Container(
+      color: visual.color,
+      alignment: alignStart ? Alignment.centerLeft : Alignment.centerRight,
+      padding: EdgeInsets.symmetric(horizontal: context.space(24)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: alignStart ? children : children.reversed.toList(),
+      ),
+    );
+  }
+}
+
+({Color color, IconData icon, String label}) _swipeVisual(SwipeAction action) {
+  switch (action) {
+    case SwipeAction.archive:
+      return (
+        color: const Color(0xFF1E9E62),
+        icon: Icons.archive_rounded,
+        label: 'Archive',
+      );
+    case SwipeAction.toggleRead:
+      return (
+        color: const Color(0xFF3D6FD8),
+        icon: Icons.mark_email_unread_rounded,
+        label: 'Read/unread',
+      );
+    case SwipeAction.none:
+      return (color: Colors.transparent, icon: Icons.block, label: '');
   }
 }
 

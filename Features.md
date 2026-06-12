@@ -21,6 +21,7 @@
 -   Folder pinning for favorite folders.
 -   Optional message folder-source badges in threaded views.
 -   Responsive desktop and mobile layouts.
+-   Configurable swipe actions on touch devices (swipe a thread to archive or mark read/unread).
 -   Appearance settings for theme, palette, density, corner radius, date order, and thread display.
 -   Encrypted QR transfer for moving accounts and selected settings to another device.
 -   HTML email rendering.
