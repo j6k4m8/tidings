@@ -52,6 +52,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
   String? _sentMailboxPath;
   String? _draftsMailboxPath;
   String? _archiveMailboxPath;
+  String? _trashMailboxPath;
   final Map<int, String> _archiveYearPaths = {};
   String? _pathSeparator;
   bool _crossFolderThreadingEnabled = false;
@@ -622,10 +623,28 @@ class ImapSmtpEmailProvider extends EmailProvider {
   }
 
   @override
-  Future<String?> archiveThread(EmailThread thread) async {
-    final targetPath = _resolveArchivePath(thread);
+  Future<String?> archiveThread(EmailThread thread) => _moveThreadToMailbox(
+    thread,
+    _resolveArchivePath(thread),
+    missingFolderMessage: 'Archive folder not found.',
+  );
+
+  @override
+  Future<String?> deleteThread(EmailThread thread) => _moveThreadToMailbox(
+    thread,
+    _trashMailboxPath,
+    missingFolderMessage: 'Trash folder not found.',
+  );
+
+  /// Moves every message in [thread] to [targetPath], optimistically removing
+  /// the thread from the cache and rolling back if the server rejects it.
+  Future<String?> _moveThreadToMailbox(
+    EmailThread thread,
+    String? targetPath, {
+    required String missingFolderMessage,
+  }) async {
     if (targetPath == null || targetPath.isEmpty) {
-      return 'Archive folder not found.';
+      return missingFolderMessage;
     }
     final allMessages = messagesForThread(thread.id);
     final ids = allMessages
@@ -633,7 +652,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
         .whereType<int>()
         .toList();
     if (ids.isEmpty) {
-      return 'No messages to archive.';
+      return 'No messages to move.';
     }
     // Snapshot for rollback.
     final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
@@ -967,6 +986,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
     _sentMailboxPath = null;
     _draftsMailboxPath = null;
     _archiveMailboxPath = null;
+    _trashMailboxPath = null;
     _archiveYearPaths.clear();
     _pathSeparator = null;
     final mailboxItems = <FolderItem>[];
@@ -987,6 +1007,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
       if (box.flags.contains(MailboxFlag.archive)) {
         _archiveMailboxPath ??= box.path;
       }
+      if (box.flags.contains(MailboxFlag.trash)) {
+        _trashMailboxPath ??= box.path;
+      }
       final segments = box.pathSeparator.isEmpty
           ? <String>[box.path]
           : box.path.split(box.pathSeparator);
@@ -994,6 +1017,13 @@ class ImapSmtpEmailProvider extends EmailProvider {
         final last = segments.last.toLowerCase();
         if (_archiveMailboxPath == null && last == 'archive') {
           _archiveMailboxPath = box.path;
+        }
+        if (_trashMailboxPath == null &&
+            (last == 'trash' ||
+                last == 'deleted' ||
+                last == 'deleted items' ||
+                last == 'bin')) {
+          _trashMailboxPath = box.path;
         }
         if (segments.length >= 2) {
           final parent = segments[segments.length - 2].toLowerCase();

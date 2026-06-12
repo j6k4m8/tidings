@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -195,13 +196,23 @@ class _TidingsAppState extends State<TidingsApp> {
                     fontScale: 1.0,
                   ),
                   builder: (context, child) {
-                    // Observe pointers app-wide (passively) so touch capability
-                    // can be detected at runtime, then expose it to the tree.
+                    // Observe pointers app-wide (passively) so touch and
+                    // trackpad capability can be detected at runtime, then
+                    // expose it to the tree. A two-finger trackpad scroll
+                    // arrives as a pan-zoom gesture on desktop (and as a scroll
+                    // signal on web), so both are sampled.
                     return TouchCapabilityScope(
                       capability: _touchCapability,
                       child: Listener(
                         onPointerDown: (event) =>
                             _touchCapability.reportPointerKind(event.kind),
+                        onPointerPanZoomStart: (event) =>
+                            _touchCapability.reportPointerKind(event.kind),
+                        onPointerSignal: (event) {
+                          if (event is PointerScrollEvent) {
+                            _touchCapability.reportPointerKind(event.kind);
+                          }
+                        },
                         child: child ?? const SizedBox.shrink(),
                       ),
                     );

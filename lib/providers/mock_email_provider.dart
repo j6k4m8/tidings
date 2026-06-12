@@ -781,6 +781,19 @@ class MockEmailProvider extends EmailProvider {
   }
 
   @override
+  Future<String?> deleteThread(EmailThread thread) async {
+    final index = _threads.indexWhere((item) => item.id == thread.id);
+    if (index == -1) {
+      return 'Thread not found.';
+    }
+    _threads.removeAt(index);
+    _messages.remove(thread.id);
+    _threadFolders.remove(thread.id);
+    notifyListeners();
+    return null;
+  }
+
+  @override
   Future<String?> moveToFolder(
     EmailThread thread,
     String targetPath, {

@@ -59,5 +59,54 @@ void main() {
       expect(capability.hasTouch, isTrue);
       expect(notifications, 0);
     });
+
+    test('static deviceSupportsTouch reflects the latest instance', () {
+      TouchCapability(initialHasTouch: true);
+      expect(TouchCapability.deviceSupportsTouch, isTrue);
+
+      final off = TouchCapability(initialHasTouch: false);
+      expect(TouchCapability.deviceSupportsTouch, isFalse);
+
+      // A runtime touch upgrade is visible through the static accessor too.
+      off.reportPointerKind(PointerDeviceKind.touch);
+      expect(TouchCapability.deviceSupportsTouch, isTrue);
+    });
+
+    test('static falls back to the platform seed after dispose', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final cap = TouchCapability(initialHasTouch: false);
+      expect(TouchCapability.deviceSupportsTouch, isFalse);
+
+      cap.dispose();
+      // No live instance -> platform seed (android is touch-first).
+      expect(TouchCapability.deviceSupportsTouch, isTrue);
+    });
+
+    test('trackpad starts off and flips on a trackpad gesture', () {
+      final capability = TouchCapability(initialHasTouch: false);
+      var notifications = 0;
+      capability.addListener(() => notifications++);
+      expect(capability.hasTrackpad, isFalse);
+
+      // A mouse is neither touch nor trackpad.
+      capability.reportPointerKind(PointerDeviceKind.mouse);
+      expect(capability.hasTrackpad, isFalse);
+      expect(notifications, 0);
+
+      capability.reportPointerKind(PointerDeviceKind.trackpad);
+      expect(capability.hasTrackpad, isTrue);
+      expect(capability.hasTouch, isFalse); // trackpad is not touch
+      expect(notifications, 1);
+    });
+
+    test('static deviceSupportsTrackpad reflects the latest instance', () {
+      TouchCapability(initialHasTouch: false);
+      expect(TouchCapability.deviceSupportsTrackpad, isFalse);
+
+      final cap = TouchCapability(initialHasTouch: false)
+        ..reportPointerKind(PointerDeviceKind.trackpad);
+      expect(cap.hasTrackpad, isTrue);
+      expect(TouchCapability.deviceSupportsTrackpad, isTrue);
+    });
   });
 }

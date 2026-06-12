@@ -77,6 +77,16 @@ class ThreadsSettings extends StatelessWidget {
             onChanged: settings.setShowThreadAccountPill,
           ),
         ),
+        SizedBox(height: context.space(16)),
+        SettingRow(
+          title: 'Confirm before deleting',
+          subtitle: 'Ask before moving a thread to Trash (Shift+3).',
+          trailing: AccentSwitch(
+            accent: accent,
+            value: settings.promptBeforeDeleting,
+            onChanged: settings.setPromptBeforeDeleting,
+          ),
+        ),
         SizedBox(height: context.space(24)),
         SettingsSubheader(title: 'MESSAGE PREVIEW'),
         SizedBox(height: context.space(12)),
@@ -134,7 +144,6 @@ class ThreadsSettings extends StatelessWidget {
             title: 'Swipe right',
             subtitle: 'Action when a thread is swiped to the right.',
             trailing: _SwipeActionSelector(
-              style: segmentedStyle,
               value: settings.swipeRightAction,
               onChanged: settings.setSwipeRightAction,
             ),
@@ -144,7 +153,6 @@ class ThreadsSettings extends StatelessWidget {
             title: 'Swipe left',
             subtitle: 'Action when a thread is swiped to the left.',
             trailing: _SwipeActionSelector(
-              style: segmentedStyle,
               value: settings.swipeLeftAction,
               onChanged: settings.setSwipeLeftAction,
             ),
@@ -156,28 +164,30 @@ class ThreadsSettings extends StatelessWidget {
 }
 
 class _SwipeActionSelector extends StatelessWidget {
-  const _SwipeActionSelector({
-    required this.style,
-    required this.value,
-    required this.onChanged,
-  });
+  const _SwipeActionSelector({required this.value, required this.onChanged});
 
-  final ButtonStyle style;
   final SwipeAction value;
   final ValueChanged<SwipeAction> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return SegmentedButton<SwipeAction>(
-      style: style,
-      showSelectedIcon: false,
-      segments: SwipeAction.values
-          .map(
-            (action) => ButtonSegment(value: action, label: Text(action.label)),
-          )
-          .toList(),
-      selected: {value},
-      onSelectionChanged: (selected) => onChanged(selected.first),
+    // A dropdown (rather than a segmented button) keeps all four actions
+    // readable without overflowing narrow phone widths.
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<SwipeAction>(
+        value: value,
+        onChanged: (selected) {
+          if (selected != null) onChanged(selected);
+        },
+        items: SwipeAction.values
+            .map(
+              (action) => DropdownMenuItem(
+                value: action,
+                child: Text(action.label),
+              ),
+            )
+            .toList(),
+      ),
     );
   }
 }

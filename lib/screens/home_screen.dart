@@ -16,6 +16,7 @@ import '../state/shortcut_definitions.dart';
 import '../state/keyboard_shortcut.dart';
 import '../theme/glass.dart';
 import '../utils/saved_search_section.dart';
+import '../widgets/confirm_dialog.dart';
 import '../widgets/settings/shortcut_recorder.dart';
 import '../widgets/tidings_background.dart';
 import 'compose/compose_sheet.dart';
@@ -799,6 +800,36 @@ class _HomeScreenState extends State<HomeScreen> {
     _toast('Archived ${subjectLabel(thread.subject)}');
   }
 
+  Future<void> _deleteSelectedThread(EmailProvider provider) async {
+    final thread = _currentThread(provider);
+    if (thread == null) {
+      _toast('No thread selected.');
+      return;
+    }
+    if (context.tidingsSettings.promptBeforeDeleting) {
+      final confirmed = await showConfirmDialog(
+        context,
+        title: 'Delete thread?',
+        message:
+            'Move “${subjectLabel(thread.subject)}” to Trash? '
+            'You can change this prompt in Settings.',
+        confirmLabel: 'Delete',
+        confirmIcon: Icons.delete_outline_rounded,
+        destructive: true,
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+    final error = await provider.deleteThread(thread);
+    if (error != null) {
+      _toast(error);
+      return;
+    }
+    _advanceAfterRemoval(provider);
+    _toast('Deleted ${subjectLabel(thread.subject)}');
+  }
+
   Future<void> _moveSelectedThreadToFolder(
     EmailProvider provider,
     EmailAccount account,
@@ -1050,6 +1081,9 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case ShortcutAction.archive:
         await _archiveSelectedThread(provider);
+        break;
+      case ShortcutAction.delete:
+        await _deleteSelectedThread(provider);
         break;
       case ShortcutAction.moveToFolder:
         await _moveSelectedThreadToFolder(provider, account);

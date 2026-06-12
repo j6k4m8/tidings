@@ -347,6 +347,15 @@ class UnifiedEmailProvider extends EmailProvider {
   }
 
   @override
+  Future<String?> deleteThread(EmailThread thread) async {
+    final ref = _threadRefs[thread.id] ?? _rebuildThreadRef(thread.id);
+    if (ref == null) {
+      return 'Thread not found.';
+    }
+    return ref.provider.deleteThread(ref.thread);
+  }
+
+  @override
   Future<String?> moveToFolder(
     EmailThread thread,
     String targetPath, {

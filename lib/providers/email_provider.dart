@@ -67,6 +67,9 @@ abstract class EmailProvider extends ChangeNotifier {
 
   Future<String?> archiveThread(EmailThread thread);
 
+  /// Moves the thread to Trash. Returns null on success or an error message.
+  Future<String?> deleteThread(EmailThread thread);
+
   Future<String?> moveToFolder(
     EmailThread thread,
     String targetPath, {

@@ -30,10 +30,21 @@ void main() {
       expect(notifications, 3);
     });
 
-    test('only archive removes the thread from the list', () {
+    test('archive and delete remove the thread from the list', () {
       expect(SwipeAction.archive.removesThread, isTrue);
+      expect(SwipeAction.delete.removesThread, isTrue);
       expect(SwipeAction.toggleRead.removesThread, isFalse);
       expect(SwipeAction.none.removesThread, isFalse);
+    });
+
+    test('delete is a selectable swipe action that round-trips', () {
+      final source = TidingsSettings(persistEnabled: false)
+        ..setSwipeLeftAction(SwipeAction.delete);
+      final map = source.transferableSettingsMap();
+      expect(map['swipeLeftAction'], 'delete');
+
+      final target = TidingsSettings(persistEnabled: false)..applyFromQr(map);
+      expect(target.swipeLeftAction, SwipeAction.delete);
     });
 
     test('round-trip through the QR transfer map', () {

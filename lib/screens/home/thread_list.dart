@@ -13,6 +13,7 @@ import '../../utils/email_time.dart';
 import '../../utils/subject_utils.dart';
 import '../../theme/account_accent.dart';
 import '../../theme/glass.dart';
+import '../../widgets/confirm_dialog.dart';
 import '../search/token_coloring_controller.dart';
 import 'home_utils.dart';
 import '../../theme/color_tokens.dart';
@@ -157,15 +158,34 @@ class ThreadListPanel extends StatelessWidget {
             ? provider as UnifiedEmailProvider
             : null;
 
-        // Swipe-to-act is a touch affordance, so it is gated on whether the
-        // device actually supports touch — not on viewport size, since a wide
+        // Swipe-to-act is gated on whether the device can actually perform the
+        // gesture — touch, or a trackpad (a two-finger horizontal pan drives
+        // the same Dismissible). It is not gated on viewport size, since a wide
         // tablet is still a touch device. Each direction's action is
         // user-configurable.
         final settings = context.tidingsSettings;
         final swipeEnabled =
-            context.hasTouchInput && settings.swipeActionsEnabled;
+            (context.deviceSupportsTouch || context.deviceSupportsTrackpad) &&
+            settings.swipeActionsEnabled;
         final swipeRightAction = settings.swipeRightAction;
         final swipeLeftAction = settings.swipeLeftAction;
+
+        // Asks the user to confirm a destructive swipe when required. Returns
+        // true to proceed. Runs before the row is dismissed so a cancel snaps
+        // the row back into place.
+        Future<bool> confirmSwipe(EmailThread thread, SwipeAction action) async {
+          if (action == SwipeAction.delete && settings.promptBeforeDeleting) {
+            return showConfirmDialog(
+              context,
+              title: 'Delete thread?',
+              message: 'Move “${subjectLabel(thread.subject)}” to Trash?',
+              confirmLabel: 'Delete',
+              confirmIcon: Icons.delete_outline_rounded,
+              destructive: true,
+            );
+          }
+          return true;
+        }
 
         Future<void> handleSwipe(EmailThread thread, SwipeAction action) async {
           final messenger = ScaffoldMessenger.of(context);
@@ -176,6 +196,10 @@ class ThreadListPanel extends StatelessWidget {
             case SwipeAction.archive:
               final error = await provider.archiveThread(thread);
               message = error ?? 'Archived ${subjectLabel(thread.subject)}';
+              break;
+            case SwipeAction.delete:
+              final error = await provider.deleteThread(thread);
+              message = error ?? 'Deleted ${subjectLabel(thread.subject)}';
               break;
             case SwipeAction.toggleRead:
               final latest = provider.latestMessageForThread(thread.id);
@@ -327,6 +351,7 @@ class ThreadListPanel extends StatelessWidget {
                       threadId: thread.id,
                       rightAction: swipeRightAction,
                       leftAction: swipeLeftAction,
+                      confirmSwipe: (action) => confirmSwipe(thread, action),
                       onSwipe: (action) => handleSwipe(thread, action),
                       child: row,
                     );
@@ -644,14 +669,16 @@ class _ThreadTileState extends State<ThreadTile> {
 }
 
 /// Wraps a thread row in a [Dismissible] so it can be swiped left or right to
-/// trigger a configurable [SwipeAction]. Destructive actions (e.g. archive)
-/// let the row animate away and run in [onDismissed]; non-destructive actions
-/// (e.g. mark read/unread) run mid-swipe and spring the row back.
+/// trigger a configurable [SwipeAction]. Row-removing actions (archive/delete)
+/// let the row animate away and run in [onDismissed] — but only after
+/// [confirmSwipe] approves (e.g. a delete confirmation). Non-destructive
+/// actions (mark read/unread) run mid-swipe and spring the row back.
 class _SwipeableThreadEntry extends StatelessWidget {
   const _SwipeableThreadEntry({
     required this.threadId,
     required this.rightAction,
     required this.leftAction,
+    required this.confirmSwipe,
     required this.onSwipe,
     required this.child,
   });
@@ -663,6 +690,10 @@ class _SwipeableThreadEntry extends StatelessWidget {
 
   /// Action for a right-to-left swipe (`DismissDirection.endToStart`).
   final SwipeAction leftAction;
+
+  /// Returns whether a row-removing action may proceed, optionally prompting
+  /// the user first. A `false` result snaps the row back.
+  final Future<bool> Function(SwipeAction action) confirmSwipe;
   final Future<void> Function(SwipeAction action) onSwipe;
   final Widget child;
 
@@ -698,10 +729,11 @@ class _SwipeableThreadEntry extends StatelessWidget {
           return false;
         }
         if (action.removesThread) {
-          // Let the row collapse away; the action runs in onDismissed. All
-          // providers remove the thread optimistically, so the underlying
-          // list shrinks before the next build.
-          return true;
+          // Ask first (e.g. delete confirmation). If approved, let the row
+          // collapse away and run the action in onDismissed — all providers
+          // remove the thread optimistically, so the list shrinks before the
+          // next build.
+          return confirmSwipe(action);
         }
         await onSwipe(action);
         return false;
@@ -766,6 +798,12 @@ class _SwipeBackground extends StatelessWidget {
         color: const Color(0xFF3D6FD8),
         icon: Icons.mark_email_unread_rounded,
         label: 'Read/unread',
+      );
+    case SwipeAction.delete:
+      return (
+        color: const Color(0xFFD23B3B),
+        icon: Icons.delete_outline_rounded,
+        label: 'Delete',
       );
     case SwipeAction.none:
       return (color: Colors.transparent, icon: Icons.block, label: '');

@@ -471,7 +471,23 @@ class GmailEmailProvider extends EmailProvider {
   }
 
   @override
-  Future<String?> archiveThread(EmailThread thread) async {
+  Future<String?> archiveThread(EmailThread thread) =>
+      _applyThreadLabelMutation(thread, removeLabelIds: [_kInbox]);
+
+  @override
+  Future<String?> deleteThread(EmailThread thread) => _applyThreadLabelMutation(
+    thread,
+    addLabelIds: [_kTrash],
+    removeLabelIds: [_kInbox],
+  );
+
+  /// Optimistically removes [thread] from the cache, then applies a Gmail
+  /// label mutation server-side, rolling back if the request fails.
+  Future<String?> _applyThreadLabelMutation(
+    EmailThread thread, {
+    List<String> addLabelIds = const [],
+    List<String> removeLabelIds = const [],
+  }) async {
     final api = _gmailApi;
     if (api == null) return 'Not connected.';
     // Snapshot for rollback.
@@ -481,7 +497,9 @@ class GmailEmailProvider extends EmailProvider {
     _removeThreadFromCache(thread.id);
     notifyListeners();
     try {
-      final req = gmail.ModifyThreadRequest()..removeLabelIds = [_kInbox];
+      final req = gmail.ModifyThreadRequest()
+        ..addLabelIds = addLabelIds
+        ..removeLabelIds = removeLabelIds;
       await api.users.threads.modify(req, 'me', thread.id);
       return null;
     } catch (e) {

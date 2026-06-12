@@ -29,6 +29,7 @@ class TidingsSettings extends ChangeNotifier {
   bool _sidebarCollapsed = false;
   double _threadPanelFraction = 0.58;
   bool _moveEntireThreadByDefault = true;
+  bool _promptBeforeDeleting = true;
   bool _showMessageFolderSource = false;
   DateOrder _dateOrder = DateOrder.mdy;
   bool _use24HourTime = false;
@@ -61,6 +62,7 @@ class TidingsSettings extends ChangeNotifier {
   bool get sidebarCollapsed => _sidebarCollapsed;
   double get threadPanelFraction => _threadPanelFraction;
   bool get moveEntireThreadByDefault => _moveEntireThreadByDefault;
+  bool get promptBeforeDeleting => _promptBeforeDeleting;
   bool get showMessageFolderSource => _showMessageFolderSource;
   DateOrder get dateOrder => _dateOrder;
   bool get use24HourTime => _use24HourTime;
@@ -172,6 +174,10 @@ class TidingsSettings extends ChangeNotifier {
     _moveEntireThreadByDefault = _boolFromStorage(
       settings['moveEntireThreadByDefault'],
       _moveEntireThreadByDefault,
+    );
+    _promptBeforeDeleting = _boolFromStorage(
+      settings['promptBeforeDeleting'],
+      _promptBeforeDeleting,
     );
     _showMessageFolderSource = _boolFromStorage(
       settings['showMessageFolderSource'],
@@ -315,6 +321,7 @@ class TidingsSettings extends ChangeNotifier {
       'sidebarCollapsed': _sidebarCollapsed,
       'threadPanelFraction': _threadPanelFraction,
       'moveEntireThreadByDefault': _moveEntireThreadByDefault,
+      'promptBeforeDeleting': _promptBeforeDeleting,
       'showMessageFolderSource': _showMessageFolderSource,
       'dateOrder': _dateOrder.name,
       'use24HourTime': _use24HourTime,
@@ -627,6 +634,15 @@ class TidingsSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setPromptBeforeDeleting(bool value) {
+    if (_promptBeforeDeleting == value) {
+      return;
+    }
+    _promptBeforeDeleting = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
   void setShowMessageFolderSource(bool value) {
     if (_showMessageFolderSource == value) {
       return;
@@ -778,6 +794,7 @@ class TidingsSettings extends ChangeNotifier {
     'tintThreadListByAccountAccent': _tintThreadListByAccountAccent,
     'showThreadAccountPill': _showThreadAccountPill,
     'moveEntireThreadByDefault': _moveEntireThreadByDefault,
+    'promptBeforeDeleting': _promptBeforeDeleting,
     'showMessageFolderSource': _showMessageFolderSource,
     'dateOrder': _dateOrder.name,
     'use24HourTime': _use24HourTime,
@@ -834,6 +851,10 @@ class TidingsSettings extends ChangeNotifier {
     _moveEntireThreadByDefault = _boolFromStorage(
       map['moveEntireThreadByDefault'],
       _moveEntireThreadByDefault,
+    );
+    _promptBeforeDeleting = _boolFromStorage(
+      map['promptBeforeDeleting'],
+      _promptBeforeDeleting,
     );
     _showMessageFolderSource = _boolFromStorage(
       map['showMessageFolderSource'],
@@ -1050,7 +1071,7 @@ extension MessageCollapseModeMeta on MessageCollapseMode {
 }
 
 /// Action performed when a thread row is swiped on a touch device.
-enum SwipeAction { none, archive, toggleRead }
+enum SwipeAction { none, archive, toggleRead, delete }
 
 extension SwipeActionMeta on SwipeAction {
   String get label {
@@ -1061,11 +1082,14 @@ extension SwipeActionMeta on SwipeAction {
         return 'Archive';
       case SwipeAction.toggleRead:
         return 'Read/unread';
+      case SwipeAction.delete:
+        return 'Delete';
     }
   }
 
   /// Whether performing this action removes the thread from the current list,
   /// so the swipe should complete with a dismiss animation rather than spring
   /// back into place.
-  bool get removesThread => this == SwipeAction.archive;
+  bool get removesThread =>
+      this == SwipeAction.archive || this == SwipeAction.delete;
 }
