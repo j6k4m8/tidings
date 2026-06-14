@@ -61,6 +61,7 @@ class WideLayout extends StatelessWidget {
     required this.onThreadPanelResizeEnd,
     required this.onThreadPanelOpen,
     required this.onThreadPanelClose,
+    required this.onThreadDismissed,
     required this.onCompose,
     required this.searchFocusNode,
     required this.replyController,
@@ -118,6 +119,12 @@ class WideLayout extends StatelessWidget {
   final VoidCallback onThreadPanelResizeEnd;
   final VoidCallback onThreadPanelOpen;
   final VoidCallback onThreadPanelClose;
+
+  /// Called after the open thread is archived/deleted; the host advances to the
+  /// next thread or closes the panel per the user's setting. [next] is the
+  /// thread that took its place (unused by the wide panel, which advances by
+  /// selection index).
+  final void Function(EmailThread? next) onThreadDismissed;
   final VoidCallback onCompose;
   final FocusNode searchFocusNode;
   final InlineReplyController replyController;
@@ -402,6 +409,8 @@ class WideLayout extends StatelessWidget {
                                                       threadDetailScrollController,
                                                   onReplyFocusChange:
                                                       onReplyFocusChange,
+                                                  onThreadDismissed:
+                                                      onThreadDismissed,
                                                 ),
                                               ),
                                             ),

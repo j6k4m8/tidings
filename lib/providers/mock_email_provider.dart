@@ -768,7 +768,44 @@ class MockEmailProvider extends EmailProvider {
   }
 
   @override
-  Future<String?> archiveThread(EmailThread thread) async {
+  Future<String?> archiveThread(EmailThread thread) =>
+      beginArchive(thread).commit();
+
+  @override
+  PendingThreadMutation beginArchive(EmailThread thread) {
+    final index = _threads.indexWhere((item) => item.id == thread.id);
+    if (index == -1) {
+      return PendingThreadMutation(
+        onCommit: () async => 'Thread not found.',
+        onUndo: () {},
+      );
+    }
+    final removed = _threads[index];
+    final savedMessages = _messages[thread.id];
+    final savedFolder = _threadFolders[thread.id];
+    _threads.removeAt(index);
+    _messages.remove(thread.id);
+    _threadFolders.remove(thread.id);
+    notifyListeners();
+    // Mock has no server, so the optimistic removal is the whole operation;
+    // commit does nothing and undo simply restores the snapshot.
+    return PendingThreadMutation(
+      onCommit: () async => null,
+      onUndo: () {
+        _threads.insert(index.clamp(0, _threads.length), removed);
+        if (savedMessages != null) {
+          _messages[thread.id] = savedMessages;
+        }
+        if (savedFolder != null) {
+          _threadFolders[thread.id] = savedFolder;
+        }
+        notifyListeners();
+      },
+    );
+  }
+
+  @override
+  Future<String?> deleteThread(EmailThread thread) async {
     final index = _threads.indexWhere((item) => item.id == thread.id);
     if (index == -1) {
       return 'Thread not found.';
@@ -781,38 +818,69 @@ class MockEmailProvider extends EmailProvider {
   }
 
   @override
+  PendingThreadMutation beginMoveToFolder(
+    EmailThread thread,
+    String targetPath,
+  ) {
+    final index = _threads.indexWhere((item) => item.id == thread.id);
+    if (index == -1) {
+      return PendingThreadMutation(
+        onCommit: () async => 'Thread not found.',
+        onUndo: () {},
+      );
+    }
+    final savedFolder = _threadFolders[thread.id];
+    final savedMessageFolders = <String, String>{};
+    _messageFolders.removeWhere((key, value) {
+      if (key.startsWith('${thread.id}:')) {
+        savedMessageFolders[key] = value;
+        return true;
+      }
+      return false;
+    });
+    _threadFolders[thread.id] = targetPath;
+    notifyListeners();
+    return PendingThreadMutation(
+      onCommit: () async => null,
+      onUndo: () {
+        if (savedFolder == null) {
+          _threadFolders.remove(thread.id);
+        } else {
+          _threadFolders[thread.id] = savedFolder;
+        }
+        _messageFolders.addAll(savedMessageFolders);
+        notifyListeners();
+      },
+    );
+  }
+
+  @override
   Future<String?> moveToFolder(
     EmailThread thread,
     String targetPath, {
     EmailMessage? singleMessage,
   }) async {
+    if (singleMessage == null) {
+      return beginMoveToFolder(thread, targetPath).commit();
+    }
     final index = _threads.indexWhere((item) => item.id == thread.id);
     if (index == -1) {
       return 'Thread not found.';
     }
-    if (singleMessage == null) {
-      // Move the whole thread.
-      _threadFolders[thread.id] = targetPath;
-      // Remove any per-message overrides for this thread.
-      _messageFolders.removeWhere(
-        (key, _) => key.startsWith('${thread.id}:'),
-      );
-    } else {
-      // Move only one message — record a per-message override.
-      _messageFolders['${thread.id}:${singleMessage.id}'] = targetPath;
-      // Check if all messages in the thread have been individually moved away
-      // from the current folder; if so, remove the thread from this view too.
-      final messages = _messages[thread.id] ?? [];
-      final currentFolder = _threadFolders[thread.id];
-      final allMoved = messages.every((m) {
-        final override = _messageFolders['${thread.id}:${m.id}'];
-        return override != null && override != currentFolder;
-      });
-      if (allMoved) {
-        _threads.removeAt(index);
-        _messages.remove(thread.id);
-        _threadFolders.remove(thread.id);
-      }
+    // Move only one message — record a per-message override.
+    _messageFolders['${thread.id}:${singleMessage.id}'] = targetPath;
+    // Check if all messages in the thread have been individually moved away
+    // from the current folder; if so, remove the thread from this view too.
+    final messages = _messages[thread.id] ?? [];
+    final currentFolder = _threadFolders[thread.id];
+    final allMoved = messages.every((m) {
+      final override = _messageFolders['${thread.id}:${m.id}'];
+      return override != null && override != currentFolder;
+    });
+    if (allMoved) {
+      _threads.removeAt(index);
+      _messages.remove(thread.id);
+      _threadFolders.remove(thread.id);
     }
     notifyListeners();
     return null;

@@ -11,6 +11,7 @@ import 'compose_form.dart';
 import '../../theme/color_tokens.dart';
 import '../../widgets/tidings_background.dart';
 import '../../widgets/paper_panel.dart';
+import '../../widgets/undo_snackbar.dart';
 import 'compose_utils.dart';
 
 Future<void> showComposeSheet(
@@ -299,34 +300,27 @@ class _ComposeSheetState extends State<ComposeSheet> {
       );
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
-        messenger.showSnackBar(
-          SnackBar(
-            content: const Text('Sent'),
-            duration: kUndoSendDelay,
-            action: queued == null
-                ? null
-                : SnackBarAction(
-                    label: 'Undo',
-                    onPressed: () async {
-                      final item = queued;
-                      final messenger = ScaffoldMessenger.of(context);
-                      final hostContext =
-                          widget.hostContext ?? messenger.context;
-                      final undone =
-                          await widget.provider.cancelSend(item.id);
-                      if (!context.mounted || !hostContext.mounted) {
-                        return;
-                      }
-                      if (!undone) {
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text('Unable to undo')),
-                        );
-                        return;
-                      }
-                      await _reopenFromUndo(hostContext, item);
-                    },
-                  ),
-          ),
+        showUndoSnackBar(
+          messenger,
+          message: 'Sent',
+          window: kUndoSendDelay,
+          onUndo: queued == null
+              ? null
+              : () async {
+                  final item = queued;
+                  final hostContext = widget.hostContext ?? messenger.context;
+                  final undone = await widget.provider.cancelSend(item.id);
+                  if (!context.mounted || !hostContext.mounted) {
+                    return;
+                  }
+                  if (!undone) {
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Unable to undo')),
+                    );
+                    return;
+                  }
+                  await _reopenFromUndo(hostContext, item);
+                },
         );
       }
       if (mounted) {

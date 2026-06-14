@@ -52,6 +52,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
   String? _sentMailboxPath;
   String? _draftsMailboxPath;
   String? _archiveMailboxPath;
+  String? _trashMailboxPath;
   final Map<int, String> _archiveYearPaths = {};
   String? _pathSeparator;
   bool _crossFolderThreadingEnabled = false;
@@ -622,79 +623,122 @@ class ImapSmtpEmailProvider extends EmailProvider {
   }
 
   @override
-  Future<String?> archiveThread(EmailThread thread) async {
-    final targetPath = _resolveArchivePath(thread);
-    if (targetPath == null || targetPath.isEmpty) {
-      return 'Archive folder not found.';
-    }
-    final allMessages = messagesForThread(thread.id);
-    final ids = allMessages
-        .map((message) => int.tryParse(message.id))
-        .whereType<int>()
-        .toList();
-    if (ids.isEmpty) {
-      return 'No messages to archive.';
-    }
-    // Snapshot for rollback.
-    final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
-    final savedMessages = List<EmailMessage>.from(allMessages);
-    // Optimistic remove — UI updates immediately.
-    _removeThreadFromCache(thread.id);
-    notifyListeners();
-    try {
-      await _ensureConnected();
-      final client = _client;
-      if (client == null) {
-        _restoreThreadToCache(thread, savedMessages, threadIndex);
-        notifyListeners();
-        return 'IMAP client not connected.';
-      }
-      await client.selectMailboxByPath(_currentMailboxPath);
-      final sequence = MessageSequence.fromIds(ids, isUid: true);
-      if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
-        await client.uidMove(sequence, targetMailboxPath: targetPath);
-      } else {
-        await client.uidCopy(sequence, targetMailboxPath: targetPath);
-        await client.uidStore(
-          sequence,
-          [MessageFlags.deleted],
-          action: StoreAction.add,
-        );
-        await client.expunge();
-      }
-      return null;
-    } catch (e) {
-      // Server failed — roll back so the thread reappears.
-      _restoreThreadToCache(thread, savedMessages, threadIndex);
-      notifyListeners();
-      return e.toString();
-    }
-  }
+  Future<String?> archiveThread(EmailThread thread) =>
+      beginArchive(thread).commit();
+
+  @override
+  Future<String?> deleteThread(EmailThread thread) => _beginMoveToMailbox(
+    thread,
+    _trashMailboxPath,
+    missingFolderMessage: 'Trash folder not found.',
+  ).commit();
+
+  @override
+  PendingThreadMutation beginArchive(EmailThread thread) => _beginMoveToMailbox(
+    thread,
+    _resolveArchivePath(thread),
+    missingFolderMessage: 'Archive folder not found.',
+  );
+
+  @override
+  PendingThreadMutation beginMoveToFolder(
+    EmailThread thread,
+    String targetPath,
+  ) => _beginMoveToMailbox(
+    thread,
+    targetPath,
+    missingFolderMessage: 'Folder not found.',
+  );
 
   @override
   Future<String?> moveToFolder(
     EmailThread thread,
     String targetPath, {
     EmailMessage? singleMessage,
-  }) async {
+  }) {
+    if (singleMessage != null) {
+      return _moveSingleMessage(thread, targetPath, singleMessage);
+    }
+    return beginMoveToFolder(thread, targetPath).commit();
+  }
+
+  /// Optimistically removes [thread] and returns a deferred mutation that moves
+  /// all of its messages to [targetPath] on commit, or restores the thread on
+  /// undo / failure.
+  PendingThreadMutation _beginMoveToMailbox(
+    EmailThread thread,
+    String? targetPath, {
+    required String missingFolderMessage,
+  }) {
     final allMessages = messagesForThread(thread.id);
-    final toMove = singleMessage != null ? [singleMessage] : allMessages;
-    final ids = toMove
-        .map((m) => int.tryParse(m.id))
+    final ids = allMessages
+        .map((message) => int.tryParse(message.id))
         .whereType<int>()
         .toList();
-    if (ids.isEmpty) {
+    // Snapshot for restore.
+    final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
+    final savedMessages = List<EmailMessage>.from(allMessages);
+    // Optimistic remove — UI updates immediately.
+    _removeThreadFromCache(thread.id);
+    notifyListeners();
+    void restore() {
+      _restoreThreadToCache(thread, savedMessages, threadIndex);
+      notifyListeners();
+    }
+
+    return PendingThreadMutation(
+      onCommit: () async {
+        if (targetPath == null || targetPath.isEmpty) {
+          restore();
+          return missingFolderMessage;
+        }
+        if (ids.isEmpty) {
+          restore();
+          return 'No messages to move.';
+        }
+        try {
+          await _ensureConnected();
+          final client = _client;
+          if (client == null) {
+            restore();
+            return 'IMAP client not connected.';
+          }
+          await client.selectMailboxByPath(_currentMailboxPath);
+          final sequence = MessageSequence.fromIds(ids, isUid: true);
+          if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
+            await client.uidMove(sequence, targetMailboxPath: targetPath);
+          } else {
+            await client.uidCopy(sequence, targetMailboxPath: targetPath);
+            await client.uidStore(
+              sequence,
+              [MessageFlags.deleted],
+              action: StoreAction.add,
+            );
+            await client.expunge();
+          }
+          return null;
+        } catch (e) {
+          restore();
+          return e.toString();
+        }
+      },
+      onUndo: restore,
+    );
+  }
+
+  Future<String?> _moveSingleMessage(
+    EmailThread thread,
+    String targetPath,
+    EmailMessage singleMessage,
+  ) async {
+    final id = int.tryParse(singleMessage.id);
+    if (id == null) {
       return 'No messages to move.';
     }
     // Snapshot for rollback.
+    final savedMessages = List<EmailMessage>.from(messagesForThread(thread.id));
     final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
-    final savedMessages = List<EmailMessage>.from(allMessages);
-    // Optimistic remove.
-    if (singleMessage == null) {
-      _removeThreadFromCache(thread.id);
-    } else {
-      _removeSingleMessageFromCache(thread.id, singleMessage.id);
-    }
+    _removeSingleMessageFromCache(thread.id, singleMessage.id);
     notifyListeners();
     try {
       await _ensureConnected();
@@ -705,7 +749,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
         return 'IMAP client not connected.';
       }
       await client.selectMailboxByPath(_currentMailboxPath);
-      final sequence = MessageSequence.fromIds(ids, isUid: true);
+      final sequence = MessageSequence.fromIds([id], isUid: true);
       if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
         await client.uidMove(sequence, targetMailboxPath: targetPath);
       } else {
@@ -719,7 +763,6 @@ class ImapSmtpEmailProvider extends EmailProvider {
       }
       return null;
     } catch (e) {
-      // Server failed — roll back.
       _restoreThreadToCache(thread, savedMessages, threadIndex);
       notifyListeners();
       return e.toString();
@@ -967,6 +1010,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
     _sentMailboxPath = null;
     _draftsMailboxPath = null;
     _archiveMailboxPath = null;
+    _trashMailboxPath = null;
     _archiveYearPaths.clear();
     _pathSeparator = null;
     final mailboxItems = <FolderItem>[];
@@ -987,6 +1031,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
       if (box.flags.contains(MailboxFlag.archive)) {
         _archiveMailboxPath ??= box.path;
       }
+      if (box.flags.contains(MailboxFlag.trash)) {
+        _trashMailboxPath ??= box.path;
+      }
       final segments = box.pathSeparator.isEmpty
           ? <String>[box.path]
           : box.path.split(box.pathSeparator);
@@ -994,6 +1041,13 @@ class ImapSmtpEmailProvider extends EmailProvider {
         final last = segments.last.toLowerCase();
         if (_archiveMailboxPath == null && last == 'archive') {
           _archiveMailboxPath = box.path;
+        }
+        if (_trashMailboxPath == null &&
+            (last == 'trash' ||
+                last == 'deleted' ||
+                last == 'deleted items' ||
+                last == 'bin')) {
+          _trashMailboxPath = box.path;
         }
         if (segments.length >= 2) {
           final parent = segments[segments.length - 2].toLowerCase();

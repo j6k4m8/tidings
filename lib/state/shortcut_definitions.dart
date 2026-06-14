@@ -9,6 +9,7 @@ enum ShortcutAction {
   replyAll,
   forward,
   archive,
+  delete,
   moveToFolder,
   toggleRead,
   commandPalette,
@@ -85,6 +86,15 @@ final List<ShortcutDefinition> shortcutDefinitions = [
     label: 'Archive',
     description: 'Move the selected thread to Archive.',
     primaryDefault: const KeyboardShortcut(key: LogicalKeyboardKey.keyE),
+  ),
+  ShortcutDefinition(
+    action: ShortcutAction.delete,
+    label: 'Delete',
+    description: 'Move the selected thread to Trash.',
+    primaryDefault: const KeyboardShortcut(
+      key: LogicalKeyboardKey.digit3,
+      shift: true,
+    ),
   ),
   ShortcutDefinition(
     action: ShortcutAction.moveToFolder,

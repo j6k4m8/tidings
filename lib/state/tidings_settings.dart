@@ -29,9 +29,15 @@ class TidingsSettings extends ChangeNotifier {
   bool _sidebarCollapsed = false;
   double _threadPanelFraction = 0.58;
   bool _moveEntireThreadByDefault = true;
+  bool _promptBeforeDeleting = true;
+  int _undoWindowSeconds = 5;
+  ThreadActionFollowUp _threadActionFollowUp = ThreadActionFollowUp.advanceToNext;
   bool _showMessageFolderSource = false;
   DateOrder _dateOrder = DateOrder.mdy;
   bool _use24HourTime = false;
+  bool _swipeActionsEnabled = true;
+  SwipeAction _swipeRightAction = SwipeAction.archive;
+  SwipeAction _swipeLeftAction = SwipeAction.toggleRead;
 
   /// null = last used, 'unified' = unified inbox, else account id.
   String? _startupAccountId;
@@ -58,9 +64,20 @@ class TidingsSettings extends ChangeNotifier {
   bool get sidebarCollapsed => _sidebarCollapsed;
   double get threadPanelFraction => _threadPanelFraction;
   bool get moveEntireThreadByDefault => _moveEntireThreadByDefault;
+  bool get promptBeforeDeleting => _promptBeforeDeleting;
+
+  /// Seconds an archive/move stays undoable (via toast) before it is committed
+  /// to the server.
+  int get undoWindowSeconds => _undoWindowSeconds;
+
+  /// What the reading view does after you archive/delete the open thread.
+  ThreadActionFollowUp get threadActionFollowUp => _threadActionFollowUp;
   bool get showMessageFolderSource => _showMessageFolderSource;
   DateOrder get dateOrder => _dateOrder;
   bool get use24HourTime => _use24HourTime;
+  bool get swipeActionsEnabled => _swipeActionsEnabled;
+  SwipeAction get swipeRightAction => _swipeRightAction;
+  SwipeAction get swipeLeftAction => _swipeLeftAction;
   String? get startupAccountId => _startupAccountId;
   Set<String> get pinnedFolderPaths => Set.unmodifiable(_pinnedFolderPaths);
 
@@ -167,6 +184,17 @@ class TidingsSettings extends ChangeNotifier {
       settings['moveEntireThreadByDefault'],
       _moveEntireThreadByDefault,
     );
+    _promptBeforeDeleting = _boolFromStorage(
+      settings['promptBeforeDeleting'],
+      _promptBeforeDeleting,
+    );
+    _undoWindowSeconds = _intFromStorage(
+      settings['undoWindowSeconds'],
+      _undoWindowSeconds,
+    ).clamp(1, 30);
+    _threadActionFollowUp = _threadActionFollowUpFromStorage(
+      settings['threadActionFollowUp'],
+    );
     _showMessageFolderSource = _boolFromStorage(
       settings['showMessageFolderSource'],
       _showMessageFolderSource,
@@ -175,6 +203,18 @@ class TidingsSettings extends ChangeNotifier {
     _use24HourTime = _boolFromStorage(
       settings['use24HourTime'],
       _use24HourTime,
+    );
+    _swipeActionsEnabled = _boolFromStorage(
+      settings['swipeActionsEnabled'],
+      _swipeActionsEnabled,
+    );
+    _swipeRightAction = _swipeActionFromStorage(
+      settings['swipeRightAction'],
+      _swipeRightAction,
+    );
+    _swipeLeftAction = _swipeActionFromStorage(
+      settings['swipeLeftAction'],
+      _swipeLeftAction,
     );
     _startupAccountId = settings['startupAccountId'] as String?;
     _pinnedFolderPaths
@@ -297,9 +337,15 @@ class TidingsSettings extends ChangeNotifier {
       'sidebarCollapsed': _sidebarCollapsed,
       'threadPanelFraction': _threadPanelFraction,
       'moveEntireThreadByDefault': _moveEntireThreadByDefault,
+      'promptBeforeDeleting': _promptBeforeDeleting,
+      'undoWindowSeconds': _undoWindowSeconds,
+      'threadActionFollowUp': _threadActionFollowUp.name,
       'showMessageFolderSource': _showMessageFolderSource,
       'dateOrder': _dateOrder.name,
       'use24HourTime': _use24HourTime,
+      'swipeActionsEnabled': _swipeActionsEnabled,
+      'swipeRightAction': _swipeRightAction.name,
+      'swipeLeftAction': _swipeLeftAction.name,
       'startupAccountId': _startupAccountId,
       'pinnedFolderPaths': pinned,
       'shortcuts': {
@@ -426,6 +472,24 @@ class TidingsSettings extends ChangeNotifier {
       }
     }
     return _dateOrder;
+  }
+
+  SwipeAction _swipeActionFromStorage(Object? raw, SwipeAction fallback) {
+    if (raw is String) {
+      for (final action in SwipeAction.values) {
+        if (action.name == raw) return action;
+      }
+    }
+    return fallback;
+  }
+
+  ThreadActionFollowUp _threadActionFollowUpFromStorage(Object? raw) {
+    if (raw is String) {
+      for (final value in ThreadActionFollowUp.values) {
+        if (value.name == raw) return value;
+      }
+    }
+    return _threadActionFollowUp;
   }
 
   void setShortcut(
@@ -597,6 +661,34 @@ class TidingsSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setPromptBeforeDeleting(bool value) {
+    if (_promptBeforeDeleting == value) {
+      return;
+    }
+    _promptBeforeDeleting = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setUndoWindowSeconds(int value) {
+    final clamped = value.clamp(1, 30);
+    if (_undoWindowSeconds == clamped) {
+      return;
+    }
+    _undoWindowSeconds = clamped;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setThreadActionFollowUp(ThreadActionFollowUp value) {
+    if (_threadActionFollowUp == value) {
+      return;
+    }
+    _threadActionFollowUp = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
   void setShowMessageFolderSource(bool value) {
     if (_showMessageFolderSource == value) {
       return;
@@ -616,6 +708,27 @@ class TidingsSettings extends ChangeNotifier {
   void setUse24HourTime(bool value) {
     if (_use24HourTime == value) return;
     _use24HourTime = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setSwipeActionsEnabled(bool value) {
+    if (_swipeActionsEnabled == value) return;
+    _swipeActionsEnabled = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setSwipeRightAction(SwipeAction value) {
+    if (_swipeRightAction == value) return;
+    _swipeRightAction = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setSwipeLeftAction(SwipeAction value) {
+    if (_swipeLeftAction == value) return;
+    _swipeLeftAction = value;
     unawaited(_persist());
     notifyListeners();
   }
@@ -727,9 +840,15 @@ class TidingsSettings extends ChangeNotifier {
     'tintThreadListByAccountAccent': _tintThreadListByAccountAccent,
     'showThreadAccountPill': _showThreadAccountPill,
     'moveEntireThreadByDefault': _moveEntireThreadByDefault,
+    'promptBeforeDeleting': _promptBeforeDeleting,
+    'undoWindowSeconds': _undoWindowSeconds,
+    'threadActionFollowUp': _threadActionFollowUp.name,
     'showMessageFolderSource': _showMessageFolderSource,
     'dateOrder': _dateOrder.name,
     'use24HourTime': _use24HourTime,
+    'swipeActionsEnabled': _swipeActionsEnabled,
+    'swipeRightAction': _swipeRightAction.name,
+    'swipeLeftAction': _swipeLeftAction.name,
   };
 
   /// Applies a settings map received via QR code.
@@ -781,12 +900,35 @@ class TidingsSettings extends ChangeNotifier {
       map['moveEntireThreadByDefault'],
       _moveEntireThreadByDefault,
     );
+    _promptBeforeDeleting = _boolFromStorage(
+      map['promptBeforeDeleting'],
+      _promptBeforeDeleting,
+    );
+    _undoWindowSeconds = _intFromStorage(
+      map['undoWindowSeconds'],
+      _undoWindowSeconds,
+    ).clamp(1, 30);
+    _threadActionFollowUp = _threadActionFollowUpFromStorage(
+      map['threadActionFollowUp'],
+    );
     _showMessageFolderSource = _boolFromStorage(
       map['showMessageFolderSource'],
       _showMessageFolderSource,
     );
     _dateOrder = _dateOrderFromStorage(map['dateOrder']);
     _use24HourTime = _boolFromStorage(map['use24HourTime'], _use24HourTime);
+    _swipeActionsEnabled = _boolFromStorage(
+      map['swipeActionsEnabled'],
+      _swipeActionsEnabled,
+    );
+    _swipeRightAction = _swipeActionFromStorage(
+      map['swipeRightAction'],
+      _swipeRightAction,
+    );
+    _swipeLeftAction = _swipeActionFromStorage(
+      map['swipeLeftAction'],
+      _swipeLeftAction,
+    );
     unawaited(_persist());
     notifyListeners();
   }
@@ -979,6 +1121,44 @@ extension MessageCollapseModeMeta on MessageCollapseMode {
         return 'Clip at a fixed number of lines';
       case MessageCollapseMode.beforeQuotes:
         return 'Clip before quoted replies';
+    }
+  }
+}
+
+/// Action performed when a thread row is swiped on a touch device.
+enum SwipeAction { none, archive, toggleRead, delete }
+
+extension SwipeActionMeta on SwipeAction {
+  String get label {
+    switch (this) {
+      case SwipeAction.none:
+        return 'None';
+      case SwipeAction.archive:
+        return 'Archive';
+      case SwipeAction.toggleRead:
+        return 'Read/unread';
+      case SwipeAction.delete:
+        return 'Delete';
+    }
+  }
+
+  /// Whether performing this action removes the thread from the current list,
+  /// so the swipe should complete with a dismiss animation rather than spring
+  /// back into place.
+  bool get removesThread =>
+      this == SwipeAction.archive || this == SwipeAction.delete;
+}
+
+/// What the reading view does after the open thread is archived or deleted.
+enum ThreadActionFollowUp { advanceToNext, closePanel }
+
+extension ThreadActionFollowUpMeta on ThreadActionFollowUp {
+  String get label {
+    switch (this) {
+      case ThreadActionFollowUp.advanceToNext:
+        return 'Next thread';
+      case ThreadActionFollowUp.closePanel:
+        return 'Close';
     }
   }
 }

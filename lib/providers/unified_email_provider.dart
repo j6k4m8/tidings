@@ -347,6 +347,15 @@ class UnifiedEmailProvider extends EmailProvider {
   }
 
   @override
+  Future<String?> deleteThread(EmailThread thread) async {
+    final ref = _threadRefs[thread.id] ?? _rebuildThreadRef(thread.id);
+    if (ref == null) {
+      return 'Thread not found.';
+    }
+    return ref.provider.deleteThread(ref.thread);
+  }
+
+  @override
   Future<String?> moveToFolder(
     EmailThread thread,
     String targetPath, {
@@ -361,6 +370,33 @@ class UnifiedEmailProvider extends EmailProvider {
       targetPath,
       singleMessage: singleMessage,
     );
+  }
+
+  @override
+  PendingThreadMutation beginArchive(EmailThread thread) {
+    final ref = _threadRefs[thread.id] ?? _rebuildThreadRef(thread.id);
+    if (ref == null) {
+      return PendingThreadMutation(
+        onCommit: () async => 'Thread not found.',
+        onUndo: () {},
+      );
+    }
+    return ref.provider.beginArchive(ref.thread);
+  }
+
+  @override
+  PendingThreadMutation beginMoveToFolder(
+    EmailThread thread,
+    String targetPath,
+  ) {
+    final ref = _threadRefs[thread.id] ?? _rebuildThreadRef(thread.id);
+    if (ref == null) {
+      return PendingThreadMutation(
+        onCommit: () async => 'Thread not found.',
+        onUndo: () {},
+      );
+    }
+    return ref.provider.beginMoveToFolder(ref.thread, targetPath);
   }
 
   @override
