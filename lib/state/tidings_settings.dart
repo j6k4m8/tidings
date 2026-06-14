@@ -30,6 +30,8 @@ class TidingsSettings extends ChangeNotifier {
   double _threadPanelFraction = 0.58;
   bool _moveEntireThreadByDefault = true;
   bool _promptBeforeDeleting = true;
+  int _undoWindowSeconds = 5;
+  ThreadActionFollowUp _threadActionFollowUp = ThreadActionFollowUp.advanceToNext;
   bool _showMessageFolderSource = false;
   DateOrder _dateOrder = DateOrder.mdy;
   bool _use24HourTime = false;
@@ -63,6 +65,13 @@ class TidingsSettings extends ChangeNotifier {
   double get threadPanelFraction => _threadPanelFraction;
   bool get moveEntireThreadByDefault => _moveEntireThreadByDefault;
   bool get promptBeforeDeleting => _promptBeforeDeleting;
+
+  /// Seconds an archive/move stays undoable (via toast) before it is committed
+  /// to the server.
+  int get undoWindowSeconds => _undoWindowSeconds;
+
+  /// What the reading view does after you archive/delete the open thread.
+  ThreadActionFollowUp get threadActionFollowUp => _threadActionFollowUp;
   bool get showMessageFolderSource => _showMessageFolderSource;
   DateOrder get dateOrder => _dateOrder;
   bool get use24HourTime => _use24HourTime;
@@ -178,6 +187,13 @@ class TidingsSettings extends ChangeNotifier {
     _promptBeforeDeleting = _boolFromStorage(
       settings['promptBeforeDeleting'],
       _promptBeforeDeleting,
+    );
+    _undoWindowSeconds = _intFromStorage(
+      settings['undoWindowSeconds'],
+      _undoWindowSeconds,
+    ).clamp(1, 30);
+    _threadActionFollowUp = _threadActionFollowUpFromStorage(
+      settings['threadActionFollowUp'],
     );
     _showMessageFolderSource = _boolFromStorage(
       settings['showMessageFolderSource'],
@@ -322,6 +338,8 @@ class TidingsSettings extends ChangeNotifier {
       'threadPanelFraction': _threadPanelFraction,
       'moveEntireThreadByDefault': _moveEntireThreadByDefault,
       'promptBeforeDeleting': _promptBeforeDeleting,
+      'undoWindowSeconds': _undoWindowSeconds,
+      'threadActionFollowUp': _threadActionFollowUp.name,
       'showMessageFolderSource': _showMessageFolderSource,
       'dateOrder': _dateOrder.name,
       'use24HourTime': _use24HourTime,
@@ -463,6 +481,15 @@ class TidingsSettings extends ChangeNotifier {
       }
     }
     return fallback;
+  }
+
+  ThreadActionFollowUp _threadActionFollowUpFromStorage(Object? raw) {
+    if (raw is String) {
+      for (final value in ThreadActionFollowUp.values) {
+        if (value.name == raw) return value;
+      }
+    }
+    return _threadActionFollowUp;
   }
 
   void setShortcut(
@@ -643,6 +670,25 @@ class TidingsSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setUndoWindowSeconds(int value) {
+    final clamped = value.clamp(1, 30);
+    if (_undoWindowSeconds == clamped) {
+      return;
+    }
+    _undoWindowSeconds = clamped;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void setThreadActionFollowUp(ThreadActionFollowUp value) {
+    if (_threadActionFollowUp == value) {
+      return;
+    }
+    _threadActionFollowUp = value;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
   void setShowMessageFolderSource(bool value) {
     if (_showMessageFolderSource == value) {
       return;
@@ -795,6 +841,8 @@ class TidingsSettings extends ChangeNotifier {
     'showThreadAccountPill': _showThreadAccountPill,
     'moveEntireThreadByDefault': _moveEntireThreadByDefault,
     'promptBeforeDeleting': _promptBeforeDeleting,
+    'undoWindowSeconds': _undoWindowSeconds,
+    'threadActionFollowUp': _threadActionFollowUp.name,
     'showMessageFolderSource': _showMessageFolderSource,
     'dateOrder': _dateOrder.name,
     'use24HourTime': _use24HourTime,
@@ -855,6 +903,13 @@ class TidingsSettings extends ChangeNotifier {
     _promptBeforeDeleting = _boolFromStorage(
       map['promptBeforeDeleting'],
       _promptBeforeDeleting,
+    );
+    _undoWindowSeconds = _intFromStorage(
+      map['undoWindowSeconds'],
+      _undoWindowSeconds,
+    ).clamp(1, 30);
+    _threadActionFollowUp = _threadActionFollowUpFromStorage(
+      map['threadActionFollowUp'],
     );
     _showMessageFolderSource = _boolFromStorage(
       map['showMessageFolderSource'],
@@ -1092,4 +1147,18 @@ extension SwipeActionMeta on SwipeAction {
   /// back into place.
   bool get removesThread =>
       this == SwipeAction.archive || this == SwipeAction.delete;
+}
+
+/// What the reading view does after the open thread is archived or deleted.
+enum ThreadActionFollowUp { advanceToNext, closePanel }
+
+extension ThreadActionFollowUpMeta on ThreadActionFollowUp {
+  String get label {
+    switch (this) {
+      case ThreadActionFollowUp.advanceToNext:
+        return 'Next thread';
+      case ThreadActionFollowUp.closePanel:
+        return 'Close';
+    }
+  }
 }

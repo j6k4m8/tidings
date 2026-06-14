@@ -87,6 +87,43 @@ class ThreadsSettings extends StatelessWidget {
             onChanged: settings.setPromptBeforeDeleting,
           ),
         ),
+        SizedBox(height: context.space(16)),
+        SettingRow(
+          title: 'Undo window',
+          subtitle: 'Time to undo an archive or move before it is applied.',
+          trailing: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: settings.undoWindowSeconds,
+              onChanged: (value) {
+                if (value != null) settings.setUndoWindowSeconds(value);
+              },
+              items:
+                  ({3, 5, 10, 15, 30, settings.undoWindowSeconds}.toList()
+                        ..sort())
+                      .map(
+                        (n) => DropdownMenuItem(value: n, child: Text('${n}s')),
+                      )
+                      .toList(),
+            ),
+          ),
+        ),
+        SizedBox(height: context.space(16)),
+        SettingRow(
+          title: 'After archive or delete',
+          subtitle: 'What the reading panel does once the thread is gone.',
+          trailing: SegmentedButton<ThreadActionFollowUp>(
+            style: segmentedStyle,
+            segments: ThreadActionFollowUp.values
+                .map(
+                  (value) =>
+                      ButtonSegment(value: value, label: Text(value.label)),
+                )
+                .toList(),
+            selected: {settings.threadActionFollowUp},
+            onSelectionChanged: (selected) =>
+                settings.setThreadActionFollowUp(selected.first),
+          ),
+        ),
         SizedBox(height: context.space(24)),
         SettingsSubheader(title: 'MESSAGE PREVIEW'),
         SizedBox(height: context.space(12)),

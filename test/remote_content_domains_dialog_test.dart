@@ -44,7 +44,8 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('See domains'));
+    // "See domains" is now a compact icon button in the notice row.
+    await tester.tap(find.byTooltip('See blocked domains'));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);

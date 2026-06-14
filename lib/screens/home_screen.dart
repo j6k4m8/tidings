@@ -18,6 +18,7 @@ import '../theme/glass.dart';
 import '../utils/saved_search_section.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/settings/shortcut_recorder.dart';
+import '../widgets/undo_snackbar.dart';
 import '../widgets/tidings_background.dart';
 import 'compose/compose_sheet.dart';
 import 'compose/compose_utils.dart';
@@ -469,9 +470,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    showAutoDismissSnackBar(ScaffoldMessenger.of(context), message: message);
   }
 
   Future<void> _runRefresh(EmailProvider provider) async {
@@ -791,13 +790,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _toast('No thread selected.');
       return;
     }
-    final error = await provider.archiveThread(thread);
-    if (error != null) {
-      _toast(error);
-      return;
-    }
+    final mutation = provider.beginArchive(thread);
     _advanceAfterRemoval(provider);
-    _toast('Archived ${subjectLabel(thread.subject)}');
+    _showUndoMutation('Archived ${subjectLabel(thread.subject)}', mutation);
   }
 
   Future<void> _deleteSelectedThread(EmailProvider provider) async {
@@ -864,16 +859,20 @@ class _HomeScreenState extends State<HomeScreen> {
     if (result == null || !mounted) {
       return;
     }
-    final error = await provider.moveToFolder(thread, result.folderPath);
-    if (!mounted) {
-      return;
-    }
-    if (error != null) {
-      _toast('Move failed: $error');
-      return;
-    }
+    final mutation = provider.beginMoveToFolder(thread, result.folderPath);
     _advanceAfterRemoval(provider);
-    _toast('Moved ${subjectLabel(thread.subject)}');
+    _showUndoMutation('Moved ${subjectLabel(thread.subject)}', mutation);
+  }
+
+  /// Shows an undo toast for a deferred archive/move, using the configured
+  /// undo window.
+  void _showUndoMutation(String message, PendingThreadMutation mutation) {
+    showUndoableMutationSnackBar(
+      ScaffoldMessenger.of(context),
+      message: message,
+      mutation: mutation,
+      window: Duration(seconds: context.tidingsSettings.undoWindowSeconds),
+    );
   }
 
   Future<void> _showCommandPalette(
@@ -1335,6 +1334,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                     setState(() => _threadPanelOpen = true),
                                 onThreadPanelClose: () =>
                                     setState(() => _threadPanelOpen = false),
+                                onThreadDismissed: (next) {
+                                  if (settings.threadActionFollowUp ==
+                                      ThreadActionFollowUp.advanceToNext) {
+                                    _advanceAfterRemoval(listProvider);
+                                  } else {
+                                    setState(() => _threadPanelOpen = false);
+                                  }
+                                },
                                 onCompose: () => showComposeSheet(
                                   context,
                                   provider: provider,

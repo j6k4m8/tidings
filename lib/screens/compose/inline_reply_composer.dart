@@ -10,6 +10,7 @@ import '../../theme/glass.dart';
 import '../../state/tidings_settings.dart';
 import 'compose_editor.dart';
 import '../../utils/reply_utils.dart';
+import '../../widgets/undo_snackbar.dart';
 import 'compose_form.dart';
 import 'compose_sheet.dart';
 import 'compose_utils.dart';
@@ -276,31 +277,26 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
       );
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
-        messenger.showSnackBar(
-          SnackBar(
-            content: const Text('Sent'),
-            duration: kUndoSendDelay,
-            action: queued == null
-                ? null
-                : SnackBarAction(
-                    label: 'Undo',
-                    onPressed: () async {
-                      final item = queued;
-                      final undone =
-                          await widget.provider.cancelSend(item.id);
-                      if (!messenger.mounted) {
-                        return;
-                      }
-                      if (!undone) {
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text('Unable to undo')),
-                        );
-                        return;
-                      }
-                      _restoreDraft(item);
-                    },
-                  ),
-          ),
+        showUndoSnackBar(
+          messenger,
+          message: 'Sent',
+          window: kUndoSendDelay,
+          onUndo: queued == null
+              ? null
+              : () async {
+                  final item = queued;
+                  final undone = await widget.provider.cancelSend(item.id);
+                  if (!messenger.mounted) {
+                    return;
+                  }
+                  if (!undone) {
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Unable to undo')),
+                    );
+                    return;
+                  }
+                  _restoreDraft(item);
+                },
         );
       }
       _controller.clear();

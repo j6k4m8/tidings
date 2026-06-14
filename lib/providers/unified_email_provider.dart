@@ -373,6 +373,33 @@ class UnifiedEmailProvider extends EmailProvider {
   }
 
   @override
+  PendingThreadMutation beginArchive(EmailThread thread) {
+    final ref = _threadRefs[thread.id] ?? _rebuildThreadRef(thread.id);
+    if (ref == null) {
+      return PendingThreadMutation(
+        onCommit: () async => 'Thread not found.',
+        onUndo: () {},
+      );
+    }
+    return ref.provider.beginArchive(ref.thread);
+  }
+
+  @override
+  PendingThreadMutation beginMoveToFolder(
+    EmailThread thread,
+    String targetPath,
+  ) {
+    final ref = _threadRefs[thread.id] ?? _rebuildThreadRef(thread.id);
+    if (ref == null) {
+      return PendingThreadMutation(
+        onCommit: () async => 'Thread not found.',
+        onUndo: () {},
+      );
+    }
+    return ref.provider.beginMoveToFolder(ref.thread, targetPath);
+  }
+
+  @override
   void dispose() {
     _disposed = true;
     for (final provider in _providers.values) {

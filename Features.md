@@ -17,6 +17,7 @@
 -   Command palette for common mail actions.
 -   Fast go-to-folder and move-to-folder dialogs.
 -   Archive and move-to-folder actions for threads and messages.
+-   Undo for archive and move-to-folder — applied optimistically and committed after a configurable delay, undoable via toast.
 -   "confirm before deleting" prompts
 -   Folder navigation with unread counts.
 -   Folder pinning for favorite folders.

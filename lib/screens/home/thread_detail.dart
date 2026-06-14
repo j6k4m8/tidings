@@ -13,6 +13,8 @@ import '../../state/tidings_settings.dart';
 import '../../utils/email_html_sanitizer.dart';
 import '../../utils/email_time.dart';
 import '../../utils/subject_utils.dart';
+import '../../widgets/confirm_dialog.dart';
+import '../../widgets/undo_snackbar.dart';
 import '../../theme/color_tokens.dart';
 import '../../widgets/key_hint.dart';
 import '../../widgets/tidings_background.dart';
@@ -21,6 +23,24 @@ import '../compose/compose_utils.dart';
 import '../compose/inline_reply_composer.dart';
 import '../keyboard/move_to_folder_dialog.dart';
 import 'provider_body.dart';
+
+/// The thread to advance to after [current] leaves the list: the next thread
+/// down, or the previous one if [current] was last, or null if it was the only
+/// thread. Call BEFORE the removal so [current] is still present.
+EmailThread? _nextThreadAfter(EmailProvider provider, EmailThread current) {
+  final threads = provider.threads;
+  final index = threads.indexWhere((t) => t.id == current.id);
+  if (index < 0) {
+    return null;
+  }
+  if (index + 1 < threads.length) {
+    return threads[index + 1];
+  }
+  if (index > 0) {
+    return threads[index - 1];
+  }
+  return null;
+}
 
 class CurrentThreadPanel extends StatefulWidget {
   const CurrentThreadPanel({
@@ -38,6 +58,7 @@ class CurrentThreadPanel extends StatefulWidget {
     this.parentFocusNode,
     this.replyController,
     this.onReplyFocusChange,
+    this.onThreadDismissed,
   });
 
   final Color accent;
@@ -53,6 +74,11 @@ class CurrentThreadPanel extends StatefulWidget {
   final FocusNode? parentFocusNode;
   final InlineReplyController? replyController;
   final ValueChanged<bool>? onReplyFocusChange;
+
+  /// Called after the thread leaves the list (archive / delete) so the host can
+  /// close the detail view or advance to [next] (the thread that took its
+  /// place, or null if there is none).
+  final void Function(EmailThread? next)? onThreadDismissed;
 
   @override
   State<CurrentThreadPanel> createState() => _CurrentThreadPanelState();
@@ -146,16 +172,17 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
   }
 
   String _buildHeaderSnippet(EmailThread thread, EmailMessage? latest) {
+    // The subject is already the panel title above this line, so the secondary
+    // line just shows who is involved plus a short preview — no subject repeat.
     final headline = _participantHeadline(thread);
-    final subject = thread.subject.isEmpty ? 'No subject' : thread.subject;
     final snippet = _cleanSnippet(
       latest?.bodyPlainText ?? '',
       _headerSnippetMaxLength,
     );
     if (snippet.isEmpty) {
-      return '$headline: $subject';
+      return headline;
     }
-    return '$headline: $subject - $snippet';
+    return '$headline · $snippet';
   }
 
   bool _isExpanded(String messageId, bool defaultExpanded) {
@@ -198,9 +225,7 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    showAutoDismissSnackBar(ScaffoldMessenger.of(context), message: message);
   }
 
   Future<void> _toggleThreadRead() async {
@@ -291,6 +316,50 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
     });
   }
 
+  void _archiveThread() {
+    final messenger = ScaffoldMessenger.of(context);
+    final window = Duration(seconds: context.tidingsSettings.undoWindowSeconds);
+    final next = _nextThreadAfter(widget.provider, widget.thread);
+    final mutation = widget.provider.beginArchive(widget.thread);
+    widget.onThreadDismissed?.call(next);
+    showUndoableMutationSnackBar(
+      messenger,
+      message: 'Archived ${subjectLabel(widget.thread.subject)}',
+      mutation: mutation,
+      window: window,
+    );
+  }
+
+  Future<void> _deleteThread() async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (context.tidingsSettings.promptBeforeDeleting) {
+      final confirmed = await showConfirmDialog(
+        context,
+        title: 'Delete thread?',
+        message: 'Move “${subjectLabel(widget.thread.subject)}” to Trash?',
+        confirmLabel: 'Delete',
+        confirmIcon: Icons.delete_outline_rounded,
+        destructive: true,
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+    final next = _nextThreadAfter(widget.provider, widget.thread);
+    final error = await widget.provider.deleteThread(widget.thread);
+    if (error != null) {
+      showAutoDismissSnackBar(messenger, message: error);
+      return;
+    }
+    if (mounted) {
+      widget.onThreadDismissed?.call(next);
+    }
+    showAutoDismissSnackBar(
+      messenger,
+      message: 'Deleted ${subjectLabel(widget.thread.subject)}',
+    );
+  }
+
   Future<void> _handleMoveToFolder({EmailMessage? singleMessage}) async {
     final settings = context.tidingsSettings;
     // Resolve the real provider (not unified wrapper) so we get same-account
@@ -325,6 +394,16 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
     final effectiveSingleMessage = result.moveEntireThread
         ? null
         : singleMessage;
+    if (effectiveSingleMessage == null) {
+      // Whole-thread move is undoable: defer the commit behind a toast.
+      showUndoableMutationSnackBar(
+        ScaffoldMessenger.of(context),
+        message: 'Moved ${subjectLabel(widget.thread.subject)}',
+        mutation: provider.beginMoveToFolder(widget.thread, result.folderPath),
+        window: Duration(seconds: settings.undoWindowSeconds),
+      );
+      return;
+    }
     final error = await provider.moveToFolder(
       widget.thread,
       result.folderPath,
@@ -400,8 +479,14 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                               ),
                             ),
                             IconButton(
-                              onPressed: () {},
-                              icon: const Icon(Icons.star_border_rounded),
+                              tooltip: 'Archive',
+                              onPressed: _archiveThread,
+                              icon: const Icon(Icons.archive_outlined),
+                            ),
+                            IconButton(
+                              tooltip: 'Delete',
+                              onPressed: _deleteThread,
+                              icon: const Icon(Icons.delete_outline_rounded),
                             ),
                             PopupMenuButton<String>(
                               icon: const Icon(Icons.more_horiz_rounded),
@@ -481,6 +566,7 @@ class _CurrentThreadPanelState extends State<CurrentThreadPanel> {
                                   message: message,
                                   accent: widget.accent,
                                   threadIsUnread: threadIsUnread,
+                                  threadSubject: widget.thread.subject,
                                   expanded: _isExpanded(
                                     message.id,
                                     defaultExpanded,
@@ -573,6 +659,7 @@ class MessageCard extends StatelessWidget {
     required this.expanded,
     required this.onToggleExpanded,
     required this.isSelected,
+    this.threadSubject,
     this.onSelected,
     this.onToggleRead,
     this.onUndoSend,
@@ -590,6 +677,10 @@ class MessageCard extends StatelessWidget {
   final bool expanded;
   final VoidCallback onToggleExpanded;
   final bool isSelected;
+
+  /// The thread's subject; when the message subject matches it, the per-message
+  /// subject line is hidden as redundant.
+  final String? threadSubject;
   final VoidCallback? onSelected;
   final VoidCallback? onToggleRead;
   final VoidCallback? onUndoSend;
@@ -961,78 +1052,81 @@ class MessageCard extends StatelessWidget {
           senderEmail: message.from.email,
         );
     final canInspectDomains = hasAccountKey && domains.isNotEmpty;
-    final actionStyle = TextButton.styleFrom(
-      padding: EdgeInsets.symmetric(horizontal: context.space(8)),
-      minimumSize: Size(0, context.space(28)),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-    );
-    final actions = <Widget>[
-      if (canLoad)
-        TextButton.icon(
-          onPressed: onLoadRemoteContent,
-          icon: const Icon(Icons.image_outlined, size: 16),
-          label: const Text('Load images'),
-          style: actionStyle,
+    // One compact row: the count, a primary "Load images" button, and the
+    // secondary actions as small icon buttons — no boxed, two-row block.
+    Widget compactIconButton({
+      required IconData icon,
+      required String tooltip,
+      required VoidCallback onPressed,
+    }) {
+      return IconButton(
+        tooltip: tooltip,
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
+        color: scheme.onSurfaceVariant,
+        visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
+        constraints: BoxConstraints.tightFor(
+          width: context.space(36),
+          height: context.space(36),
         ),
-      if (canAllowSender)
-        TextButton.icon(
-          onPressed: () => _allowRemoteContentFromSender(context),
-          icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
-          label: const Text('Always from sender'),
-          style: actionStyle,
-        ),
-      if (canInspectDomains)
-        TextButton.icon(
-          onPressed: () => _showRemoteContentDomainsDialog(context, domains),
-          icon: const Icon(Icons.travel_explore_rounded, size: 16),
-          label: const Text('See domains'),
-          style: actionStyle,
-        ),
-    ];
+      );
+    }
+
     return Container(
       margin: EdgeInsets.only(bottom: context.space(8)),
-      padding: EdgeInsets.symmetric(
-        horizontal: context.space(10),
-        vertical: context.space(8),
+      padding: EdgeInsets.only(
+        left: context.space(10),
+        right: context.space(4),
+        top: context.space(2),
+        bottom: context.space(2),
       ),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(context.radius(8)),
-        border: Border.all(color: ColorTokens.border(context, 0.12)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.image_not_supported_outlined,
-                size: 18,
+          Icon(
+            Icons.image_not_supported_outlined,
+            size: 16,
+            color: scheme.onSurfaceVariant,
+          ),
+          SizedBox(width: context.space(8)),
+          Expanded(
+            child: Text(
+              blockedCount == 1
+                  ? 'Remote content blocked'
+                  : '$blockedCount remote items blocked',
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
-              SizedBox(width: context.space(8)),
-              Expanded(
-                child: Text(
-                  blockedCount == 1
-                      ? 'Remote content blocked'
-                      : '$blockedCount remote items blocked',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (actions.isNotEmpty) ...[
-            SizedBox(height: context.space(6)),
-            Wrap(
-              spacing: context.space(6),
-              runSpacing: context.space(4),
-              children: actions,
             ),
-          ],
+          ),
+          if (canLoad)
+            TextButton(
+              onPressed: onLoadRemoteContent,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.symmetric(horizontal: context.space(8)),
+                minimumSize: Size(0, context.space(32)),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
+              child: const Text('Load images'),
+            ),
+          if (canAllowSender)
+            compactIconButton(
+              icon: Icons.person_add_alt_1_rounded,
+              tooltip: 'Always load from sender',
+              onPressed: () => _allowRemoteContentFromSender(context),
+            ),
+          if (canInspectDomains)
+            compactIconButton(
+              icon: Icons.travel_explore_rounded,
+              tooltip: 'See blocked domains',
+              onPressed: () => _showRemoteContentDomainsDialog(context, domains),
+            ),
         ],
       ),
     );
@@ -1056,7 +1150,11 @@ class MessageCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final settings = context.tidingsSettings;
-    final showSubject = !settings.hideThreadSubjects;
+    // Hide the per-message subject when the user has turned subjects off, or
+    // when it just repeats the thread subject already shown in the header.
+    final matchesThreadSubject =
+        threadSubject != null && subjectsMatch(message.subject, threadSubject!);
+    final showSubject = !settings.hideThreadSubjects && !matchesThreadSubject;
     final collapseMode = settings.messageCollapseMode;
     final maxLines = settings.collapsedMaxLines;
     final toggleReadLabel = threadIsUnread ? 'Mark as Read' : 'Mark as Unread';
@@ -1144,6 +1242,7 @@ class MessageCard extends StatelessWidget {
                                     color: scheme.onSurface.withValues(
                                       alpha: 0.6,
                                     ),
+                                    letterSpacing: -0.2,
                                   ),
                             ),
                             if (message.sendStatus != null)
@@ -1594,6 +1693,44 @@ class _ThreadScreenState extends State<ThreadScreen> {
     debugLabel: 'ThreadScreenShortcuts',
   );
 
+  /// The thread currently shown. Starts at [ThreadScreen.thread] but can advance
+  /// in place when the user archives/deletes and prefers "next thread".
+  late EmailThread _thread = widget.thread;
+
+  /// Per-thread context, re-resolved as [_thread] changes. For a single-account
+  /// provider these are constant; for the unified inbox they follow the thread's
+  /// owning account.
+  String get _currentUserEmail {
+    final provider = widget.provider;
+    if (provider is UnifiedEmailProvider) {
+      return provider.accountEmailForThread(_thread.id) ??
+          widget.currentUserEmail;
+    }
+    return widget.currentUserEmail;
+  }
+
+  String get _remoteContentAccountKey {
+    final provider = widget.provider;
+    if (provider is UnifiedEmailProvider) {
+      return provider.accountForThread(_thread.id)?.id ??
+          widget.remoteContentAccountKey;
+    }
+    return widget.remoteContentAccountKey;
+  }
+
+  /// After archiving/deleting [_thread], either advance to [next] in place or
+  /// pop back to the list, per the user's setting.
+  void _handleDismissed(EmailThread? next) {
+    final advance =
+        context.tidingsSettings.threadActionFollowUp ==
+        ThreadActionFollowUp.advanceToNext;
+    if (advance && next != null) {
+      setState(() => _thread = next);
+    } else {
+      Navigator.of(context).maybePop();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1651,12 +1788,32 @@ class _ThreadScreenState extends State<ThreadScreen> {
     );
     addShortcut(ShortcutAction.forward, const _ReplyIntent(ReplyMode.forward));
     addShortcut(ShortcutAction.toggleRead, const _ToggleReadIntent());
+    addShortcut(ShortcutAction.archive, const _ArchiveIntent());
     shortcuts[LogicalKeySet(LogicalKeyboardKey.escape)] = const _PopIntent();
     return shortcuts;
   }
 
+  /// Archives the whole open thread, then advances or closes per the setting.
+  /// The archive is undoable via the toast for the configured window.
+  void _archiveThread() {
+    final messenger = ScaffoldMessenger.of(context);
+    final window = Duration(
+      seconds: context.tidingsSettings.undoWindowSeconds,
+    );
+    final label = 'Archived ${subjectLabel(_thread.subject)}';
+    final next = _nextThreadAfter(widget.provider, _thread);
+    final mutation = widget.provider.beginArchive(_thread);
+    _handleDismissed(next);
+    showUndoableMutationSnackBar(
+      messenger,
+      message: label,
+      mutation: mutation,
+      window: window,
+    );
+  }
+
   void _triggerReply(ReplyMode mode) {
-    final threadId = widget.thread.id;
+    final threadId = _thread.id;
     _replyController.setModeForThread(threadId, mode);
     _replyController.focusEditorForThread(threadId);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1669,21 +1826,14 @@ class _ThreadScreenState extends State<ThreadScreen> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    showAutoDismissSnackBar(ScaffoldMessenger.of(context), message: message);
   }
 
   Future<void> _toggleThreadRead() async {
-    final messages = widget.provider.messagesForThread(widget.thread.id);
+    final messages = widget.provider.messagesForThread(_thread.id);
     final hasUnreadMessage = messages.any((message) => message.isUnread);
-    final isUnread = messages.isNotEmpty
-        ? hasUnreadMessage
-        : widget.thread.unread;
-    final error = await widget.provider.setThreadUnread(
-      widget.thread,
-      !isUnread,
-    );
+    final isUnread = messages.isNotEmpty ? hasUnreadMessage : _thread.unread;
+    final error = await widget.provider.setThreadUnread(_thread, !isUnread);
     if (error != null) {
       _toast(error);
       return;
@@ -1703,7 +1853,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final messages = widget.provider.messagesForThread(widget.thread.id);
+    final messages = widget.provider.messagesForThread(_thread.id);
     final selectedMessageIndex = messages.isEmpty ? 0 : messages.length - 1;
     final settings = context.tidingsSettings;
     final allowGlobal = !_isTextInputFocused() && !_inlineReplyFocused;
@@ -1728,6 +1878,12 @@ class _ThreadScreenState extends State<ThreadScreen> {
           _ToggleReadIntent: CallbackAction<_ToggleReadIntent>(
             onInvoke: (intent) {
               _toggleThreadRead();
+              return null;
+            },
+          ),
+          _ArchiveIntent: CallbackAction<_ArchiveIntent>(
+            onInvoke: (intent) {
+              _archiveThread();
               return null;
             },
           ),
@@ -1758,17 +1914,21 @@ class _ThreadScreenState extends State<ThreadScreen> {
                       context.gutter(16),
                     ),
                     child: CurrentThreadPanel(
+                      // Keyed by thread so advancing in place gives a fresh
+                      // panel (expanded/scroll state) for the next thread.
+                      key: ValueKey(_thread.id),
                       accent: widget.accent,
-                      thread: widget.thread,
+                      thread: _thread,
                       provider: widget.provider,
                       isCompact: true,
-                      currentUserEmail: widget.currentUserEmail,
-                      remoteContentAccountKey: widget.remoteContentAccountKey,
+                      currentUserEmail: _currentUserEmail,
+                      remoteContentAccountKey: _remoteContentAccountKey,
                       selectedMessageIndex: selectedMessageIndex,
                       onMessageSelected: (_) {},
                       isFocused: true,
                       replyController: _replyController,
                       onReplyFocusChange: _handleInlineReplyFocusChange,
+                      onThreadDismissed: _handleDismissed,
                     ),
                   ),
                 ),
@@ -1783,6 +1943,10 @@ class _ThreadScreenState extends State<ThreadScreen> {
 
 class _PopIntent extends Intent {
   const _PopIntent();
+}
+
+class _ArchiveIntent extends Intent {
+  const _ArchiveIntent();
 }
 
 class _ReplyIntent extends Intent {

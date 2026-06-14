@@ -14,6 +14,7 @@ import '../../utils/subject_utils.dart';
 import '../../theme/account_accent.dart';
 import '../../theme/glass.dart';
 import '../../widgets/confirm_dialog.dart';
+import '../../widgets/undo_snackbar.dart';
 import '../search/token_coloring_controller.dart';
 import 'home_utils.dart';
 import '../../theme/color_tokens.dart';
@@ -194,9 +195,14 @@ class ThreadListPanel extends StatelessWidget {
             case SwipeAction.none:
               return;
             case SwipeAction.archive:
-              final error = await provider.archiveThread(thread);
-              message = error ?? 'Archived ${subjectLabel(thread.subject)}';
-              break;
+              // Archive is undoable: optimistically remove now, commit later.
+              showUndoableMutationSnackBar(
+                messenger,
+                message: 'Archived ${subjectLabel(thread.subject)}',
+                mutation: provider.beginArchive(thread),
+                window: Duration(seconds: settings.undoWindowSeconds),
+              );
+              return;
             case SwipeAction.delete:
               final error = await provider.deleteThread(thread);
               message = error ?? 'Deleted ${subjectLabel(thread.subject)}';
