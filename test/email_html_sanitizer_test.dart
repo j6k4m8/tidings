@@ -30,6 +30,32 @@ void main() {
       expect(result.html, contains('[remote image blocked]'));
     });
 
+    test('keeps author colors by default', () {
+      final result = sanitizeEmailHtml(
+        '<p style="color:#000000;font-weight:bold">Hi</p>'
+        '<font color="#111111">there</font>',
+      );
+      expect(result.html, contains('color:#000000'));
+      expect(result.html, contains('font-weight:bold'));
+      expect(result.html, contains('color="#111111"'));
+    });
+
+    test('neutralizeColors strips author colors but keeps other styles', () {
+      final result = sanitizeEmailHtml(
+        '<p style="color:#000000;background-color:#ffffff;font-weight:bold">Hi</p>'
+        '<td bgcolor="#eeeeee"><font color="#111111">cell</font></td>',
+        neutralizeColors: true,
+      );
+      expect(result.html, isNot(contains('color:#000000')));
+      expect(result.html, isNot(contains('background-color')));
+      expect(result.html, isNot(contains('bgcolor')));
+      expect(result.html, isNot(contains('color="#111111"')));
+      // Non-color styling is preserved.
+      expect(result.html, contains('font-weight:bold'));
+      expect(result.html, contains('Hi'));
+      expect(result.html, contains('cell'));
+    });
+
     test('allows remote media only when explicitly requested', () {
       final blocked = sanitizeEmailHtml(
         '<img src="https://example.com/a.png" '

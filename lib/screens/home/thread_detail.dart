@@ -1099,9 +1099,9 @@ class MessageCard extends StatelessWidget {
                   ? 'Remote content blocked'
                   : '$blockedCount remote items blocked',
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
           if (canLoad)
@@ -1125,7 +1125,8 @@ class MessageCard extends StatelessWidget {
             compactIconButton(
               icon: Icons.travel_explore_rounded,
               tooltip: 'See blocked domains',
-              onPressed: () => _showRemoteContentDomainsDialog(context, domains),
+              onPressed: () =>
+                  _showRemoteContentDomainsDialog(context, domains),
             ),
         ],
       ),
@@ -1364,6 +1365,10 @@ class MessageCard extends StatelessWidget {
                         loadRemoteContent: shouldLoadRemoteContent,
                         allowedRemoteContentDomains:
                             _allowedRemoteContentDomains(settings),
+                        // Strip author colors in dark mode so emails designed
+                        // for white backgrounds aren't dark-on-dark.
+                        neutralizeColors:
+                            Theme.of(context).brightness == Brightness.dark,
                       );
                       if (sanitized.html.isNotEmpty) {
                         final htmlWidget = HtmlWidget(
@@ -1797,9 +1802,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
   /// The archive is undoable via the toast for the configured window.
   void _archiveThread() {
     final messenger = ScaffoldMessenger.of(context);
-    final window = Duration(
-      seconds: context.tidingsSettings.undoWindowSeconds,
-    );
+    final window = Duration(seconds: context.tidingsSettings.undoWindowSeconds);
     final label = 'Archived ${subjectLabel(_thread.subject)}';
     final next = _nextThreadAfter(widget.provider, _thread);
     final mutation = widget.provider.beginArchive(_thread);
