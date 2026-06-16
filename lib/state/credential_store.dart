@@ -10,23 +10,23 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 //
 // Windows is intentionally omitted from the current target list.
 
-const _iosOpts = IOSOptions(
-  accessibility: KeychainAccessibility.first_unlock,
-);
-// MacOsOptions with no groupId/accountName — uses the default keychain item
-// without requiring the keychain-access-groups entitlement (which needs signing).
-const _macOpts = MacOsOptions();
-const _androidOpts = AndroidOptions(
-  encryptedSharedPreferences: true,
-);
+const _iosOpts = IOSOptions(accessibility: KeychainAccessibility.first_unlock);
+// useDataProtectionKeyChain: false — use the file-based keychain instead of the
+// data-protection keychain. The data-protection keychain (the plugin default)
+// requires a keychain-access-groups entitlement bound to a real signing team,
+// which local/ad-hoc-signed debug builds can't satisfy, so it fails with
+// errSecMissingEntitlement (-34018). The file-based keychain works for the
+// sandboxed app's own items without that entitlement.
+const _macOpts = MacOsOptions(useDataProtectionKeyChain: false);
+const _androidOpts = AndroidOptions(encryptedSharedPreferences: true);
 const _linuxOpts = LinuxOptions();
 
 FlutterSecureStorage _makeStorage() => const FlutterSecureStorage(
-      iOptions: _iosOpts,
-      mOptions: _macOpts,
-      aOptions: _androidOpts,
-      lOptions: _linuxOpts,
-    );
+  iOptions: _iosOpts,
+  mOptions: _macOpts,
+  aOptions: _androidOpts,
+  lOptions: _linuxOpts,
+);
 
 // Keys stored per account:
 //   tidings.imap.{accountId}.password
@@ -49,7 +49,8 @@ class CredentialStore {
   Future<void> saveImapCredentials({
     required String accountId,
     required String password,
-    String? smtpPassword, // null → same as IMAP password (smtpUseImapCredentials)
+    String?
+    smtpPassword, // null → same as IMAP password (smtpUseImapCredentials)
   }) async {
     try {
       await _storage.write(key: _imapKey(accountId), value: password);

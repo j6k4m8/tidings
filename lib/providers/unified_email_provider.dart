@@ -169,8 +169,7 @@ class UnifiedEmailProvider extends EmailProvider {
       _providers.values.map((p) => p.activeSearch).nonNulls.firstOrNull;
 
   @override
-  bool get isSearchLoading =>
-      _providers.values.any((p) => p.isSearchLoading);
+  bool get isSearchLoading => _providers.values.any((p) => p.isSearchLoading);
 
   @override
   Future<void> initialize() async {
@@ -197,9 +196,7 @@ class UnifiedEmailProvider extends EmailProvider {
   @override
   Future<void> search(SearchQuery? query) async {
     // Fan out to all sub-providers; each manages its own search state.
-    await Future.wait(
-      _providers.values.map((p) => p.search(query)),
-    );
+    await Future.wait(_providers.values.map((p) => p.search(query)));
     notifyListeners();
   }
 
@@ -347,6 +344,15 @@ class UnifiedEmailProvider extends EmailProvider {
   }
 
   @override
+  Future<String?> deleteThread(EmailThread thread) async {
+    final ref = _threadRefs[thread.id] ?? _rebuildThreadRef(thread.id);
+    if (ref == null) {
+      return 'Thread not found.';
+    }
+    return ref.provider.deleteThread(ref.thread);
+  }
+
+  @override
   Future<String?> moveToFolder(
     EmailThread thread,
     String targetPath, {
@@ -361,6 +367,33 @@ class UnifiedEmailProvider extends EmailProvider {
       targetPath,
       singleMessage: singleMessage,
     );
+  }
+
+  @override
+  PendingThreadMutation beginArchive(EmailThread thread) {
+    final ref = _threadRefs[thread.id] ?? _rebuildThreadRef(thread.id);
+    if (ref == null) {
+      return PendingThreadMutation(
+        onCommit: () async => 'Thread not found.',
+        onUndo: () {},
+      );
+    }
+    return ref.provider.beginArchive(ref.thread);
+  }
+
+  @override
+  PendingThreadMutation beginMoveToFolder(
+    EmailThread thread,
+    String targetPath,
+  ) {
+    final ref = _threadRefs[thread.id] ?? _rebuildThreadRef(thread.id);
+    if (ref == null) {
+      return PendingThreadMutation(
+        onCommit: () async => 'Thread not found.',
+        onUndo: () {},
+      );
+    }
+    return ref.provider.beginMoveToFolder(ref.thread, targetPath);
   }
 
   @override
@@ -456,10 +489,7 @@ class UnifiedEmailProvider extends EmailProvider {
       final items = _outboxStore.itemsForAccount(account.id);
       for (final item in items) {
         final threadId = _outboxThreadId(account.id, item.id);
-        _outboxRefs[threadId] = _OutboxRef(
-          account: account,
-          item: item,
-        );
+        _outboxRefs[threadId] = _OutboxRef(account: account, item: item);
         final recipients = <EmailAddress>[
           ...splitEmailAddresses(item.toLine),
           ...splitEmailAddresses(item.ccLine ?? ''),
@@ -527,7 +557,6 @@ class UnifiedEmailProvider extends EmailProvider {
     return 'outbox-$accountId::$itemId';
   }
 
-
   MessageSendStatus _statusForOutbox(OutboxStatus status) {
     switch (status) {
       case OutboxStatus.queued:
@@ -562,10 +591,7 @@ class _ThreadRef {
 }
 
 class _OutboxRef {
-  _OutboxRef({
-    required this.account,
-    required this.item,
-  });
+  _OutboxRef({required this.account, required this.item});
 
   final EmailAccount account;
   final OutboxItem item;

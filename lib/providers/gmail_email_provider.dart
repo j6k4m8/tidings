@@ -471,64 +471,99 @@ class GmailEmailProvider extends EmailProvider {
   }
 
   @override
-  Future<String?> archiveThread(EmailThread thread) async {
-    final api = _gmailApi;
-    if (api == null) return 'Not connected.';
-    // Snapshot for rollback.
-    final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
-    final savedMessages = List<EmailMessage>.from(_messages[thread.id] ?? []);
-    // Optimistic remove — UI updates immediately.
-    _removeThreadFromCache(thread.id);
-    notifyListeners();
-    try {
-      final req = gmail.ModifyThreadRequest()..removeLabelIds = [_kInbox];
-      await api.users.threads.modify(req, 'me', thread.id);
-      return null;
-    } catch (e) {
-      // Server failed — roll back so the thread reappears.
-      _restoreThreadToCache(thread, savedMessages, threadIndex);
-      notifyListeners();
-      return e.toString();
-    }
-  }
+  Future<String?> archiveThread(EmailThread thread) =>
+      beginArchive(thread).commit();
+
+  @override
+  Future<String?> deleteThread(EmailThread thread) => _beginLabelMutation(
+    thread,
+    addLabelIds: [_kTrash],
+    removeLabelIds: [_kInbox],
+  ).commit();
+
+  @override
+  PendingThreadMutation beginArchive(EmailThread thread) =>
+      _beginLabelMutation(thread, removeLabelIds: [_kInbox]);
+
+  @override
+  PendingThreadMutation beginMoveToFolder(
+    EmailThread thread,
+    String targetPath,
+  ) => _beginLabelMutation(
+    thread,
+    addLabelIds: [targetPath],
+    removeLabelIds: [_selectedLabelId],
+  );
 
   @override
   Future<String?> moveToFolder(
     EmailThread thread,
     String targetPath, {
     EmailMessage? singleMessage,
-  }) async {
-    final api = _gmailApi;
-    if (api == null) return 'Not connected.';
+  }) {
     if (singleMessage != null) {
-      try {
-        final req = gmail.ModifyMessageRequest()
-          ..addLabelIds = [targetPath]
-          ..removeLabelIds = [_selectedLabelId];
-        await api.users.messages.modify(req, 'me', singleMessage.id);
-        _removeSingleMessageFromCache(thread.id, singleMessage.id);
-        notifyListeners();
-        return null;
-      } catch (e) {
-        return e.toString();
-      }
+      return _moveSingleMessage(thread, targetPath, singleMessage);
     }
-    // Snapshot for rollback.
+    return beginMoveToFolder(thread, targetPath).commit();
+  }
+
+  /// Optimistically removes [thread] from the cache and returns a deferred
+  /// mutation that applies the Gmail label change server-side on commit, or
+  /// restores the thread on undo / failure.
+  PendingThreadMutation _beginLabelMutation(
+    EmailThread thread, {
+    List<String> addLabelIds = const [],
+    List<String> removeLabelIds = const [],
+  }) {
+    // Snapshot for restore.
     final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
     final savedMessages = List<EmailMessage>.from(_messages[thread.id] ?? []);
-    // Optimistic remove.
+    // Optimistic remove — UI updates immediately.
     _removeThreadFromCache(thread.id);
     notifyListeners();
-    try {
-      final req = gmail.ModifyThreadRequest()
-        ..addLabelIds = [targetPath]
-        ..removeLabelIds = [_selectedLabelId];
-      await api.users.threads.modify(req, 'me', thread.id);
-      return null;
-    } catch (e) {
-      // Server failed — roll back.
+    void restore() {
       _restoreThreadToCache(thread, savedMessages, threadIndex);
       notifyListeners();
+    }
+
+    return PendingThreadMutation(
+      onCommit: () async {
+        final api = _gmailApi;
+        if (api == null) {
+          restore();
+          return 'Not connected.';
+        }
+        try {
+          final req = gmail.ModifyThreadRequest()
+            ..addLabelIds = addLabelIds
+            ..removeLabelIds = removeLabelIds;
+          await api.users.threads.modify(req, 'me', thread.id);
+          return null;
+        } catch (e) {
+          restore();
+          return e.toString();
+        }
+      },
+      onUndo: restore,
+    );
+  }
+
+  Future<String?> _moveSingleMessage(
+    EmailThread thread,
+    String targetPath,
+    EmailMessage singleMessage,
+  ) async {
+    final api = _gmailApi;
+    if (api == null) return 'Not connected.';
+    try {
+      final req = gmail.ModifyMessageRequest()
+        ..addLabelIds = [targetPath]
+        ..removeLabelIds = [_selectedLabelId];
+      await api.users.messages.modify(req, 'me', singleMessage.id);
+      _removeSingleMessageFromCache(thread.id, singleMessage.id);
+      notifyListeners();
+      return null;
+    } catch (e) {
       return e.toString();
     }
   }

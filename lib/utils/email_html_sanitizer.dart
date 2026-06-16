@@ -21,11 +21,13 @@ SanitizedEmailHtml sanitizeEmailHtml(
   String html, {
   bool loadRemoteContent = false,
   Set<String> allowedRemoteContentDomains = const {},
+  bool neutralizeColors = false,
 }) {
   final fragment = html_parser.parseFragment(html);
   final context = _SanitizerContext(
     loadRemoteContent: loadRemoteContent,
     allowedRemoteContentDomains: allowedRemoteContentDomains,
+    neutralizeColors: neutralizeColors,
   );
 
   for (final node in fragment.nodes.toList()) {
@@ -99,6 +101,7 @@ class _SanitizerContext {
   _SanitizerContext({
     required this.loadRemoteContent,
     Set<String> allowedRemoteContentDomains = const {},
+    this.neutralizeColors = false,
   }) : allowedRemoteContentDomains = allowedRemoteContentDomains
            .map(_normalizeRemoteHost)
            .whereType<String>()
@@ -106,6 +109,10 @@ class _SanitizerContext {
 
   final bool loadRemoteContent;
   final Set<String> allowedRemoteContentDomains;
+
+  /// When true, strip author `color`/`background` so text falls back to the
+  /// app's foreground — avoids dark-on-dark emails in dark mode.
+  final bool neutralizeColors;
   int blockedRemoteContentCount = 0;
   int removedUnsafeContentCount = 0;
   final Set<String> blockedRemoteDomains = {};
@@ -153,8 +160,18 @@ void _sanitizeAttributes(
       continue;
     }
 
+    if (context.neutralizeColors &&
+        (lowerName == 'color' || lowerName == 'bgcolor')) {
+      element.attributes.remove(attributeKey);
+      continue;
+    }
+
     if (lowerName == 'style') {
-      final sanitized = _sanitizeStyle(value, elementName: elementName);
+      final sanitized = _sanitizeStyle(
+        value,
+        elementName: elementName,
+        neutralizeColors: context.neutralizeColors,
+      );
       if (sanitized == null) {
         element.attributes.remove(attributeKey);
       } else {
@@ -218,13 +235,25 @@ void _sanitizeAttributes(
   }
 }
 
-String? _sanitizeStyle(String value, {required String elementName}) {
+String? _sanitizeStyle(
+  String value, {
+  required String elementName,
+  bool neutralizeColors = false,
+}) {
   final safeParts = <String>[];
   for (final declaration in value.split(';')) {
     final trimmed = declaration.trim();
     if (trimmed.isEmpty) continue;
     final property = trimmed.split(':').first.trim().toLowerCase();
     if (elementName == 'img' && (property == 'width' || property == 'height')) {
+      continue;
+    }
+    // In dark mode, drop author colors/backgrounds so text uses the app's
+    // (light) foreground instead of rendering dark-on-dark.
+    if (neutralizeColors &&
+        (property == 'color' ||
+            property == 'background' ||
+            property == 'background-color')) {
       continue;
     }
     if (_dangerousStylePattern.hasMatch(trimmed)) {

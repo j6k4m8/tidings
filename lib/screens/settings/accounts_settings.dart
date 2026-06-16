@@ -51,23 +51,25 @@ class AccountsSettings extends StatelessWidget {
 
     // Two-line dropdown items: name on top, email smaller below.
     Widget accountDropdownChild(String name, String email) => Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(name, style: Theme.of(context).textTheme.bodyMedium),
-            Text(
-              email,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: ColorTokens.textSecondary(context),
-                  ),
-            ),
-          ],
-        );
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(name, style: Theme.of(context).textTheme.bodyMedium),
+        Text(
+          email,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: ColorTokens.textSecondary(context),
+          ),
+        ),
+      ],
+    );
 
     final dropdownItems = <DropdownMenuItem<String>>[
       const DropdownMenuItem(value: '', child: Text('Last used')),
       const DropdownMenuItem(
-          value: _kStartupUnified, child: Text('Unified Inbox')),
+        value: _kStartupUnified,
+        child: Text('Unified Inbox'),
+      ),
       for (final a in appState.accounts)
         DropdownMenuItem(
           value: a.id,
@@ -112,11 +114,8 @@ class AccountsSettings extends StatelessWidget {
 
         SizedBox(height: context.space(10)),
         OutlinedButton.icon(
-          onPressed: () => showQrTransferDialog(
-            context,
-            appState: appState,
-            accent: accent,
-          ),
+          onPressed: () =>
+              showQrTransferDialog(context, appState: appState, accent: accent),
           icon: const Icon(Icons.qr_code_rounded, size: 16),
           label: const Text('Transfer to mobile'),
         ),
@@ -147,10 +146,7 @@ class AccountsSettings extends StatelessWidget {
 // ── Add-account row ────────────────────────────────────────────────────────────
 
 class _AddAccountSection extends StatelessWidget {
-  const _AddAccountSection({
-    required this.appState,
-    required this.accent,
-  });
+  const _AddAccountSection({required this.appState, required this.accent});
 
   final AppState appState;
   final Color accent;
@@ -183,9 +179,9 @@ class _AddAccountSection extends StatelessWidget {
               ),
               child: Text(
                 'Add account',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
               ),
             ),
             Divider(color: ColorTokens.border(context, 0.1), height: 1),
@@ -219,16 +215,12 @@ class _AddAccountSection extends StatelessWidget {
                         children: [
                           Text(
                             'Add Gmail account',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
+                            style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(fontWeight: FontWeight.w500),
                           ),
                           Text(
                             'Sign in with Google OAuth',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
+                            style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
                                   color: ColorTokens.textSecondary(context),
                                 ),
@@ -280,16 +272,12 @@ class _AddAccountSection extends StatelessWidget {
                         children: [
                           Text(
                             'Add IMAP/SMTP account',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
+                            style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(fontWeight: FontWeight.w500),
                           ),
                           Text(
                             'Connect any mailbox manually',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
+                            style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
                                   color: ColorTokens.textSecondary(context),
                                 ),
@@ -340,20 +328,28 @@ class _AccountSectionState extends State<AccountSection> {
   late TextEditingController _nameController;
   late FocusNode _nameFocus;
   bool _nameFocused = false;
+  // Set just before a programmatic unfocus from Save so the blur listener
+  // doesn't discard the value we just committed.
+  bool _committingName = false;
 
   @override
   void initState() {
     super.initState();
     _expanded = widget.defaultExpanded;
-    _nameController =
-        TextEditingController(text: widget.account.displayName);
+    _nameController = TextEditingController(text: widget.account.displayName);
     _nameFocus = FocusNode()
       ..addListener(() {
         final focused = _nameFocus.hasFocus;
         if (focused != _nameFocused) setState(() => _nameFocused = focused);
-        // On blur without explicit save: revert to saved value.
+        // On blur without explicit save: revert to saved value. A Save sets
+        // _committingName so its own unfocus doesn't clobber the new value
+        // (widget.account is still the pre-save object until the rebuild).
         if (!focused) {
-          _nameController.text = widget.account.displayName;
+          if (_committingName) {
+            _committingName = false;
+          } else {
+            _nameController.text = widget.account.displayName;
+          }
         }
       });
   }
@@ -377,7 +373,10 @@ class _AccountSectionState extends State<AccountSection> {
   void _saveName() {
     final value = _nameController.text.trim();
     if (value.isNotEmpty) {
+      _committingName = true;
       widget.appState.setAccountDisplayName(widget.account.id, value);
+      // Reflect the saved value immediately, independent of rebuild timing.
+      _nameController.text = value;
     } else {
       _nameController.text = widget.account.displayName;
     }
@@ -406,15 +405,17 @@ class _AccountSectionState extends State<AccountSection> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Delete account?',
-                    style: Theme.of(context).textTheme.titleMedium),
+                Text(
+                  'Delete account?',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
                 SizedBox(height: context.space(8)),
                 Text(
                   'This removes ${account.displayName} from Tidings. '
                   'Cached mail and settings for this account are deleted.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: ColorTokens.textSecondary(context),
-                      ),
+                    color: ColorTokens.textSecondary(context),
+                  ),
                 ),
                 SizedBox(height: context.space(20)),
                 Row(
@@ -430,7 +431,8 @@ class _AccountSectionState extends State<AccountSection> {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.redAccent,
                         side: BorderSide(
-                            color: Colors.redAccent.withValues(alpha: 0.5)),
+                          color: Colors.redAccent.withValues(alpha: 0.5),
+                        ),
                       ),
                       label: const Text('Delete account'),
                     ),
@@ -525,10 +527,10 @@ class _AccountSectionState extends State<AccountSection> {
                           ),
                           Text(
                             account.email,
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: ColorTokens.textSecondary(context),
-                                    ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: ColorTokens.textSecondary(context),
+                                ),
                           ),
                         ],
                       ),
@@ -554,8 +556,7 @@ class _AccountSectionState extends State<AccountSection> {
               firstChild: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Divider(
-                      color: ColorTokens.border(context, 0.1), height: 1),
+                  Divider(color: ColorTokens.border(context, 0.1), height: 1),
                   Padding(
                     padding: EdgeInsets.fromLTRB(
                       context.space(16),
@@ -570,9 +571,10 @@ class _AccountSectionState extends State<AccountSection> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Name',
-                                style:
-                                    Theme.of(context).textTheme.bodyLarge),
+                            Text(
+                              'Name',
+                              style: Theme.of(context).textTheme.bodyLarge,
+                            ),
                             SizedBox(height: context.space(6)),
                             TextField(
                               controller: _nameController,
@@ -581,15 +583,17 @@ class _AccountSectionState extends State<AccountSection> {
                               decoration: InputDecoration(
                                 isDense: true,
                                 contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 10),
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
                                 hintText: 'Account name',
                                 // focused border matches accent, rest uses theme
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(
-                                      context.radius(18)),
+                                    context.radius(18),
+                                  ),
                                   borderSide: BorderSide(
-                                    color:
-                                        baseAccent.withValues(alpha: 0.55),
+                                    color: baseAccent.withValues(alpha: 0.55),
                                     width: 1.2,
                                   ),
                                 ),
@@ -603,30 +607,38 @@ class _AccountSectionState extends State<AccountSection> {
                               child: _nameFocused
                                   ? Padding(
                                       padding: EdgeInsets.only(
-                                          top: context.space(8)),
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.end,
-                                        children: [
-                                          TextButton(
-                                            onPressed: _cancelName,
-                                            style: TextButton.styleFrom(
-                                              visualDensity:
-                                                  VisualDensity.compact,
+                                        top: context.space(8),
+                                      ),
+                                      // TextFieldTapRegion: tapping these
+                                      // buttons must NOT unfocus the field —
+                                      // otherwise the blur listener hides them
+                                      // mid-tap and reverts the edit before Save
+                                      // can read it.
+                                      child: TextFieldTapRegion(
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.end,
+                                          children: [
+                                            TextButton(
+                                              onPressed: _cancelName,
+                                              style: TextButton.styleFrom(
+                                                visualDensity:
+                                                    VisualDensity.compact,
+                                              ),
+                                              child: const Text('Cancel'),
                                             ),
-                                            child: const Text('Cancel'),
-                                          ),
-                                          SizedBox(width: context.space(8)),
-                                          FilledButton(
-                                            onPressed: _saveName,
-                                            style: FilledButton.styleFrom(
-                                              backgroundColor: baseAccent,
-                                              visualDensity:
-                                                  VisualDensity.compact,
+                                            SizedBox(width: context.space(8)),
+                                            FilledButton(
+                                              onPressed: _saveName,
+                                              style: FilledButton.styleFrom(
+                                                backgroundColor: baseAccent,
+                                                visualDensity:
+                                                    VisualDensity.compact,
+                                              ),
+                                              child: const Text('Save'),
                                             ),
-                                            child: const Text('Save'),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
                                     )
                                   : const SizedBox.shrink(),
@@ -642,9 +654,8 @@ class _AccountSectionState extends State<AccountSection> {
                               'Color used for this account across the app.',
                           trailing: _AccentSwatchRow(
                             currentColor: baseAccent,
-                            onColorChosen: (color) =>
-                                appState.setAccountAccentColor(
-                                    account.id, color),
+                            onColorChosen: (color) => appState
+                                .setAccountAccentColor(account.id, color),
                             onShuffle: () => appState
                                 .randomizeAccountAccentColor(account.id),
                           ),
@@ -667,17 +678,29 @@ class _AccountSectionState extends State<AccountSection> {
                               },
                               items: const [
                                 DropdownMenuItem(
-                                    value: 1, child: Text('1 min')),
+                                  value: 1,
+                                  child: Text('1 min'),
+                                ),
                                 DropdownMenuItem(
-                                    value: 5, child: Text('5 min')),
+                                  value: 5,
+                                  child: Text('5 min'),
+                                ),
                                 DropdownMenuItem(
-                                    value: 10, child: Text('10 min')),
+                                  value: 10,
+                                  child: Text('10 min'),
+                                ),
                                 DropdownMenuItem(
-                                    value: 15, child: Text('15 min')),
+                                  value: 15,
+                                  child: Text('15 min'),
+                                ),
                                 DropdownMenuItem(
-                                    value: 30, child: Text('30 min')),
+                                  value: 30,
+                                  child: Text('30 min'),
+                                ),
                                 DropdownMenuItem(
-                                    value: 60, child: Text('60 min')),
+                                  value: 60,
+                                  child: Text('60 min'),
+                                ),
                               ],
                             ),
                           ),
@@ -694,9 +717,9 @@ class _AccountSectionState extends State<AccountSection> {
                             value: crossFolder,
                             onChanged: (value) =>
                                 appState.setAccountCrossFolderThreading(
-                              accountId: account.id,
-                              enabled: value,
-                            ),
+                                  accountId: account.id,
+                                  enabled: value,
+                                ),
                           ),
                         ),
 
@@ -728,12 +751,13 @@ class _AccountSectionState extends State<AccountSection> {
                                         width: 16,
                                         height: 16,
                                         child: CircularProgressIndicator(
-                                            strokeWidth: 2),
+                                          strokeWidth: 2,
+                                        ),
                                       )
-                                    : const Icon(
-                                        Icons.wifi_tethering_rounded),
+                                    : const Icon(Icons.wifi_tethering_rounded),
                                 label: Text(
-                                    _isTesting ? 'Testing…' : 'Test Connection'),
+                                  _isTesting ? 'Testing…' : 'Test Connection',
+                                ),
                               ),
                               OutlinedButton.icon(
                                 onPressed: () => showAccountEditSheet(
@@ -756,9 +780,11 @@ class _AccountSectionState extends State<AccountSection> {
                               decoration: BoxDecoration(
                                 color: ColorTokens.cardFill(context, 0.06),
                                 borderRadius: BorderRadius.circular(
-                                    context.radius(10)),
+                                  context.radius(10),
+                                ),
                                 border: Border.all(
-                                    color: ColorTokens.border(context, 0.12)),
+                                  color: ColorTokens.border(context, 0.12),
+                                ),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -777,15 +803,21 @@ class _AccountSectionState extends State<AccountSection> {
                                       const Spacer(),
                                       IconButton(
                                         onPressed: () {
-                                          Clipboard.setData(ClipboardData(
-                                              text: report.log));
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(const SnackBar(
-                                                  content:
-                                                      Text('Log copied.')));
+                                          Clipboard.setData(
+                                            ClipboardData(text: report.log),
+                                          );
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Log copied.'),
+                                            ),
+                                          );
                                         },
-                                        icon: const Icon(Icons.copy_rounded,
-                                            size: 16),
+                                        icon: const Icon(
+                                          Icons.copy_rounded,
+                                          size: 16,
+                                        ),
                                         tooltip: 'Copy log',
                                       ),
                                     ],
@@ -793,13 +825,11 @@ class _AccountSectionState extends State<AccountSection> {
                                   SizedBox(height: context.space(4)),
                                   SelectableText(
                                     report.log.trim(),
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
+                                    style: Theme.of(context).textTheme.bodySmall
                                         ?.copyWith(
                                           color: reportColor,
                                           fontFeatures: const [
-                                            FontFeature.tabularFigures()
+                                            FontFeature.tabularFigures(),
                                           ],
                                         ),
                                   ),
@@ -812,8 +842,9 @@ class _AccountSectionState extends State<AccountSection> {
                         // ── Delete ──────────────────────────────────────
                         SizedBox(height: context.space(20)),
                         Divider(
-                            color: ColorTokens.border(context, 0.1),
-                            height: 1),
+                          color: ColorTokens.border(context, 0.1),
+                          height: 1,
+                        ),
                         SizedBox(height: context.space(14)),
                         OutlinedButton.icon(
                           onPressed: () async {
@@ -826,8 +857,8 @@ class _AccountSectionState extends State<AccountSection> {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.redAccent,
                             side: BorderSide(
-                                color:
-                                    Colors.redAccent.withValues(alpha: 0.5)),
+                              color: Colors.redAccent.withValues(alpha: 0.5),
+                            ),
                           ),
                         ),
                       ],
@@ -899,7 +930,8 @@ class _AccentSwatchRow extends StatelessWidget {
                                   shape: BoxShape.circle,
                                   color: preset.color,
                                   border: Border.all(
-                                    color: working.toARGB32() ==
+                                    color:
+                                        working.toARGB32() ==
                                             preset.color.toARGB32()
                                         ? Theme.of(ctx).colorScheme.primary
                                         : Colors.transparent,
@@ -936,18 +968,23 @@ class _AccentSwatchRow extends StatelessWidget {
                             hintText: 'RRGGBB',
                             isDense: true,
                             contentPadding: EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 8),
+                              horizontal: 8,
+                              vertical: 8,
+                            ),
                             border: OutlineInputBorder(),
                           ),
                           style: const TextStyle(
-                              fontFamily: 'monospace', fontSize: 13),
+                            fontFamily: 'monospace',
+                            fontSize: 13,
+                          ),
                           maxLength: 6,
-                          buildCounter: (_, {
-                            required currentLength,
-                            required isFocused,
-                            maxLength,
-                          }) =>
-                              null,
+                          buildCounter:
+                              (
+                                _, {
+                                required currentLength,
+                                required isFocused,
+                                maxLength,
+                              }) => null,
                           onSubmitted: applyHex,
                           onChanged: applyHex,
                         ),
@@ -960,10 +997,9 @@ class _AccentSwatchRow extends StatelessWidget {
                           color: working,
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: Theme.of(ctx)
-                                .colorScheme
-                                .outline
-                                .withValues(alpha: 0.4),
+                            color: Theme.of(
+                              ctx,
+                            ).colorScheme.outline.withValues(alpha: 0.4),
                           ),
                         ),
                       ),
@@ -1015,10 +1051,11 @@ class _AccentSwatchRow extends StatelessWidget {
                       shape: BoxShape.circle,
                       color: preset.color,
                       border: Border.all(
-                        color: currentColor.toARGB32() ==
-                                preset.color.toARGB32()
-                            ? ColorTokens.textPrimary(context)
-                                .withValues(alpha: 0.85)
+                        color:
+                            currentColor.toARGB32() == preset.color.toARGB32()
+                            ? ColorTokens.textPrimary(
+                                context,
+                              ).withValues(alpha: 0.85)
                             : Colors.transparent,
                         width: 2.5,
                       ),
@@ -1041,9 +1078,7 @@ class _AccentSwatchRow extends StatelessWidget {
                 height: 20,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: ColorTokens.border(context, 0.35),
-                  ),
+                  border: Border.all(color: ColorTokens.border(context, 0.35)),
                 ),
                 child: Icon(
                   Icons.add_rounded,

@@ -10,6 +10,7 @@ import '../../theme/glass.dart';
 import '../../state/tidings_settings.dart';
 import 'compose_editor.dart';
 import '../../utils/reply_utils.dart';
+import '../../widgets/undo_snackbar.dart';
 import 'compose_form.dart';
 import 'compose_sheet.dart';
 import 'compose_utils.dart';
@@ -121,12 +122,10 @@ class InlineReplyComposer extends StatefulWidget {
 }
 
 class _InlineReplyComposerState extends State<InlineReplyComposer> {
-  static final _escapeKey =
-      LogicalKeySet(LogicalKeyboardKey.escape);
+  static final _escapeKey = LogicalKeySet(LogicalKeyboardKey.escape);
   late final QuillController _controller;
   final FocusNode _editorFocusNode = FocusNode();
-  final FocusNode _focusScopeNode =
-      FocusNode(debugLabel: 'InlineReplyFocus');
+  final FocusNode _focusScopeNode = FocusNode(debugLabel: 'InlineReplyFocus');
   final TextEditingController _toController = TextEditingController();
   final TextEditingController _ccController = TextEditingController();
   final TextEditingController _bccController = TextEditingController();
@@ -187,8 +186,11 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
 
   void _applyMode(ReplyMode mode, {TidingsSettings? settings}) {
     final latest = widget.provider.latestMessageForThread(widget.thread.id);
-    _quotedContent =
-        buildQuotedContent(latest, isForward: mode == ReplyMode.forward, settings: settings);
+    _quotedContent = buildQuotedContent(
+      latest,
+      isForward: mode == ReplyMode.forward,
+      settings: settings,
+    );
     if (mode == ReplyMode.forward) {
       _subjectController.text = forwardSubject(widget.thread.subject);
       _toController.text = '';
@@ -276,39 +278,34 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
       );
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
-        messenger.showSnackBar(
-          SnackBar(
-            content: const Text('Sent'),
-            duration: kUndoSendDelay,
-            action: queued == null
-                ? null
-                : SnackBarAction(
-                    label: 'Undo',
-                    onPressed: () async {
-                      final item = queued;
-                      final undone =
-                          await widget.provider.cancelSend(item.id);
-                      if (!messenger.mounted) {
-                        return;
-                      }
-                      if (!undone) {
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text('Unable to undo')),
-                        );
-                        return;
-                      }
-                      _restoreDraft(item);
-                    },
-                  ),
-          ),
+        showUndoSnackBar(
+          messenger,
+          message: 'Sent',
+          window: kUndoSendDelay,
+          onUndo: queued == null
+              ? null
+              : () async {
+                  final item = queued;
+                  final undone = await widget.provider.cancelSend(item.id);
+                  if (!messenger.mounted) {
+                    return;
+                  }
+                  if (!undone) {
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Unable to undo')),
+                    );
+                    return;
+                  }
+                  _restoreDraft(item);
+                },
         );
       }
       _controller.clear();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Send failed: $error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Send failed: $error')));
         setState(() {
           _sendError = error.toString();
         });
@@ -448,193 +445,209 @@ class _InlineReplyComposerState extends State<InlineReplyComposer> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-              // ── Shared header: reply mode label + actions ───────────────
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.reply_rounded,
-                    color: widget.accent.withValues(alpha: 0.8),
-                    size: 15,
-                  ),
-                  SizedBox(width: context.space(6)),
-                  PopupMenuButton<ReplyMode>(
-                    tooltip: 'Change reply mode',
-                    onSelected: _setReplyMode,
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(value: ReplyMode.reply, child: Text('Reply')),
-                      PopupMenuItem(value: ReplyMode.replyAll, child: Text('Reply all')),
-                      PopupMenuItem(value: ReplyMode.forward, child: Text('Forward')),
-                    ],
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ConstrainedBox(
-                          constraints: BoxConstraints(maxWidth: context.space(220)),
-                          child: Text(
-                            replyLabel,
-                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                  color: ColorTokens.textSecondary(context, 0.7),
-                                ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
+                // ── Shared header: reply mode label + actions ───────────────
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.reply_rounded,
+                      color: widget.accent.withValues(alpha: 0.8),
+                      size: 15,
+                    ),
+                    SizedBox(width: context.space(6)),
+                    PopupMenuButton<ReplyMode>(
+                      tooltip: 'Change reply mode',
+                      onSelected: _setReplyMode,
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: ReplyMode.reply,
+                          child: Text('Reply'),
                         ),
-                        Icon(
-                          Icons.arrow_drop_down_rounded,
-                          size: 16,
-                          color: ColorTokens.textSecondary(context, 0.5),
+                        PopupMenuItem(
+                          value: ReplyMode.replyAll,
+                          child: Text('Reply all'),
+                        ),
+                        PopupMenuItem(
+                          value: ReplyMode.forward,
+                          child: Text('Forward'),
                         ),
                       ],
-                    ),
-                  ),
-                  const Spacer(),
-                  // Pop-out button (always available)
-                  IconButton(
-                    tooltip: 'Pop out',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () {
-                      showComposeSheet(
-                        context,
-                        provider: widget.provider,
-                        accent: widget.accent,
-                        thread: widget.thread,
-                        currentUserEmail: widget.currentUserEmail,
-                        initialTo: _toController.text,
-                        initialCc: _ccController.text,
-                        initialBcc: _bccController.text,
-                        initialSubject: _subjectController.text,
-                        initialDelta: _controller.document.toDelta(),
-                        quotedContent: _quotedContent,
-                      );
-                    },
-                    icon: const Icon(Icons.open_in_new_rounded, size: 15),
-                  ),
-                  // Expand/collapse toggle
-                  IconButton(
-                    tooltip: _showDetails ? 'Collapse' : 'Expand',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => setState(() => _showDetails = !_showDetails),
-                    icon: Icon(
-                      _showDetails
-                          ? Icons.unfold_less_rounded
-                          : Icons.unfold_more_rounded,
-                      size: 17,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: context.space(8)),
-              if (!_showDetails) ...[
-                Row(
-                  children: [
-                    Expanded(
-                      child: ComposeEditor(
-                        controller: _controller,
-                        toController: _toController,
-                        ccController: _ccController,
-                        bccController: _bccController,
-                        subjectController: _subjectController,
-                        showFields: false,
-                        showFormattingToggle: false,
-                        placeholder: placeholder,
-                        minEditorHeight: collapsedHeight,
-                        maxEditorHeight: collapsedHeight,
-                        editorFocusNode: _editorFocusNode,
-                        // No quoted toggle in collapsed chat-style view — it's just noise.
-                        onEscape: () {
-                          widget.parentFocusNode?.requestFocus();
-                        },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: context.space(220),
+                            ),
+                            child: Text(
+                              replyLabel,
+                              style: Theme.of(context).textTheme.labelMedium
+                                  ?.copyWith(
+                                    color: ColorTokens.textSecondary(
+                                      context,
+                                      0.7,
+                                    ),
+                                  ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_drop_down_rounded,
+                            size: 16,
+                            color: ColorTokens.textSecondary(context, 0.5),
+                          ),
+                        ],
                       ),
                     ),
-                    SizedBox(width: context.space(8)),
-                    GlassPanel(
-                      borderRadius: BorderRadius.circular(context.radius(16)),
-                      padding: EdgeInsets.all(context.space(4)),
-                      variant: GlassVariant.pill,
-                      accent: widget.accent,
-                      selected: true,
-                      child: IconButton(
-                        onPressed: _isSending ? null : _send,
-                        icon: const Icon(Icons.send_rounded, size: 16),
-                        tooltip: _isSending
-                            ? 'Sending...'
-                            : (_sendError == null ? 'Send' : 'Retry'),
+                    const Spacer(),
+                    // Pop-out button (always available)
+                    IconButton(
+                      tooltip: 'Pop out',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        showComposeSheet(
+                          context,
+                          provider: widget.provider,
+                          accent: widget.accent,
+                          thread: widget.thread,
+                          currentUserEmail: widget.currentUserEmail,
+                          initialTo: _toController.text,
+                          initialCc: _ccController.text,
+                          initialBcc: _bccController.text,
+                          initialSubject: _subjectController.text,
+                          initialDelta: _controller.document.toDelta(),
+                          quotedContent: _quotedContent,
+                        );
+                      },
+                      icon: const Icon(Icons.open_in_new_rounded, size: 15),
+                    ),
+                    // Expand/collapse toggle
+                    IconButton(
+                      tooltip: _showDetails ? 'Collapse' : 'Expand',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () =>
+                          setState(() => _showDetails = !_showDetails),
+                      icon: Icon(
+                        _showDetails
+                            ? Icons.unfold_less_rounded
+                            : Icons.unfold_more_rounded,
+                        size: 17,
                       ),
                     ),
                   ],
                 ),
-              ] else ...[
-                ComposeForm(
-                  controller: _controller,
-                  toController: _toController,
-                  ccController: _ccController,
-                  bccController: _bccController,
-                  subjectController: _subjectController,
-                  showFields: _showDetails,
-                  showFormattingToggle: _showDetails,
-                  placeholder: placeholder,
-                  minEditorHeight: expandedMinHeight,
-                  maxEditorHeight: context.space(260),
-                  editorFocusNode: _editorFocusNode,
-                  showEditorBorder: true,
-                  quotedText: _quotedContent?.plainText,
-                  quotedTooltip: 'Show quoted',
-                  onEscape: () {
-                    widget.parentFocusNode?.requestFocus();
-                  },
-                  footer: Row(
+                SizedBox(height: context.space(8)),
+                if (!_showDetails) ...[
+                  Row(
                     children: [
-                      const Spacer(),
-                      FilledButton.icon(
-                        onPressed: _isSending ? null : _send,
-                        icon: const Icon(Icons.send_rounded),
-                        label: Text(
-                          _isSending
+                      Expanded(
+                        child: ComposeEditor(
+                          controller: _controller,
+                          toController: _toController,
+                          ccController: _ccController,
+                          bccController: _bccController,
+                          subjectController: _subjectController,
+                          showFields: false,
+                          showFormattingToggle: false,
+                          placeholder: placeholder,
+                          minEditorHeight: collapsedHeight,
+                          maxEditorHeight: collapsedHeight,
+                          editorFocusNode: _editorFocusNode,
+                          // No quoted toggle in collapsed chat-style view — it's just noise.
+                          onEscape: () {
+                            widget.parentFocusNode?.requestFocus();
+                          },
+                        ),
+                      ),
+                      SizedBox(width: context.space(8)),
+                      GlassPanel(
+                        borderRadius: BorderRadius.circular(context.radius(16)),
+                        padding: EdgeInsets.all(context.space(4)),
+                        variant: GlassVariant.pill,
+                        accent: widget.accent,
+                        selected: true,
+                        child: IconButton(
+                          onPressed: _isSending ? null : _send,
+                          icon: const Icon(Icons.send_rounded, size: 16),
+                          tooltip: _isSending
                               ? 'Sending...'
                               : (_sendError == null ? 'Send' : 'Retry'),
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
-              if (errorText != null) ...[
-                SizedBox(height: context.space(8)),
-                Row(
-                  children: [
-                    Text(
-                      'Send error',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: Colors.redAccent,
+                ] else ...[
+                  ComposeForm(
+                    controller: _controller,
+                    toController: _toController,
+                    ccController: _ccController,
+                    bccController: _bccController,
+                    subjectController: _subjectController,
+                    showFields: _showDetails,
+                    showFormattingToggle: _showDetails,
+                    placeholder: placeholder,
+                    minEditorHeight: expandedMinHeight,
+                    maxEditorHeight: context.space(260),
+                    editorFocusNode: _editorFocusNode,
+                    showEditorBorder: true,
+                    quotedText: _quotedContent?.plainText,
+                    quotedTooltip: 'Show quoted',
+                    onEscape: () {
+                      widget.parentFocusNode?.requestFocus();
+                    },
+                    footer: Row(
+                      children: [
+                        const Spacer(),
+                        FilledButton.icon(
+                          onPressed: _isSending ? null : _send,
+                          icon: const Icon(Icons.send_rounded),
+                          label: Text(
+                            _isSending
+                                ? 'Sending...'
+                                : (_sendError == null ? 'Send' : 'Retry'),
                           ),
+                        ),
+                      ],
                     ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: errorText));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Error copied.')),
-                        );
-                      },
-                      icon: const Icon(Icons.copy_rounded, size: 18),
-                      tooltip: 'Copy error',
-                    ),
-                  ],
-                ),
-                SelectableText(
-                  errorText,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.redAccent,
+                  ),
+                ],
+                if (errorText != null) ...[
+                  SizedBox(height: context.space(8)),
+                  Row(
+                    children: [
+                      Text(
+                        'Send error',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: Colors.redAccent,
+                        ),
                       ),
-                ),
+                      const Spacer(),
+                      IconButton(
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: errorText));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Error copied.')),
+                          );
+                        },
+                        icon: const Icon(Icons.copy_rounded, size: 18),
+                        tooltip: 'Copy error',
+                      ),
+                    ],
+                  ),
+                  SelectableText(
+                    errorText,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.redAccent),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
   }
 }
 
@@ -642,8 +655,4 @@ class _EscapeIntent extends Intent {
   const _EscapeIntent();
 }
 
-enum ReplyMode {
-  reply,
-  replyAll,
-  forward,
-}
+enum ReplyMode { reply, replyAll, forward }

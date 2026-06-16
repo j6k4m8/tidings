@@ -13,6 +13,7 @@ import '../state/send_queue.dart';
 import '../utils/email_address_utils.dart';
 import '../utils/outbox_section.dart';
 import 'email_provider.dart';
+import 'thread_resolver.dart';
 
 class ImapSmtpEmailProvider extends EmailProvider {
   ImapSmtpEmailProvider({
@@ -38,8 +39,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
   ProviderStatus _status = ProviderStatus.idle;
   String? _errorMessage;
   ImapClient? _client;
-  final Map<String, String> _messageIdToThreadId = {};
-  final Map<String, String> _subjectThreadId = {};
+  final ThreadResolver _threadResolver = ThreadResolver();
   final Map<String, _FolderCacheEntry> _folderCache = {};
   final Map<String, int> _loadTokens = {};
   final Set<String> _loadingFolders = {};
@@ -52,6 +52,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
   String? _sentMailboxPath;
   String? _draftsMailboxPath;
   String? _archiveMailboxPath;
+  String? _trashMailboxPath;
   final Map<int, String> _archiveYearPaths = {};
   String? _pathSeparator;
   bool _crossFolderThreadingEnabled = false;
@@ -118,8 +119,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
         isSecure: config.useTls,
       );
       await _client!.login(config.username, config.password);
-      _inboxRefreshInterval =
-          Duration(minutes: config.checkMailIntervalMinutes);
+      _inboxRefreshInterval = Duration(
+        minutes: config.checkMailIntervalMinutes,
+      );
       _crossFolderThreadingEnabled = config.crossFolderThreadingEnabled;
       _scheduleInboxRefresh();
       await _loadFolders();
@@ -178,6 +180,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
         merged[message.id] = message;
       }
     }
+
     addAll(_messages[threadId]);
     final includedPaths = _threadingFolderPaths(
       includeOtherFolders: _crossFolderThreadingEnabled,
@@ -315,8 +318,11 @@ class ImapSmtpEmailProvider extends EmailProvider {
     // Search across INBOX (and cross-folder paths if enabled).
     final paths = [_currentMailboxPath];
     if (_crossFolderThreadingEnabled) {
-      paths.addAll(_threadingFolderPaths(includeOtherFolders: true)
-          .where((p) => !paths.contains(p)));
+      paths.addAll(
+        _threadingFolderPaths(
+          includeOtherFolders: true,
+        ).where((p) => !paths.contains(p)),
+      );
     }
 
     final imapCriteria = query.toImapSearch();
@@ -344,7 +350,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
         for (final message in fetchResult.messages) {
           if (message.envelope == null) continue;
           final uid = message.uid;
-          final threadId = _resolveThreadId(
+          final threadId = _threadResolver.resolve(
             subject: message.envelope!.subject ?? '(No subject)',
             messageId: message.envelope!.messageId,
             inReplyTo: message.envelope!.inReplyTo,
@@ -464,7 +470,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
 
     final from = MailAddress(null, email);
     final builder =
-      MessageBuilder.prepareMultipartAlternativeMessage(
+        MessageBuilder.prepareMultipartAlternativeMessage(
             plainText: bodyText,
             htmlText: bodyHtml,
           )
@@ -622,79 +628,120 @@ class ImapSmtpEmailProvider extends EmailProvider {
   }
 
   @override
-  Future<String?> archiveThread(EmailThread thread) async {
-    final targetPath = _resolveArchivePath(thread);
-    if (targetPath == null || targetPath.isEmpty) {
-      return 'Archive folder not found.';
-    }
-    final allMessages = messagesForThread(thread.id);
-    final ids = allMessages
-        .map((message) => int.tryParse(message.id))
-        .whereType<int>()
-        .toList();
-    if (ids.isEmpty) {
-      return 'No messages to archive.';
-    }
-    // Snapshot for rollback.
-    final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
-    final savedMessages = List<EmailMessage>.from(allMessages);
-    // Optimistic remove — UI updates immediately.
-    _removeThreadFromCache(thread.id);
-    notifyListeners();
-    try {
-      await _ensureConnected();
-      final client = _client;
-      if (client == null) {
-        _restoreThreadToCache(thread, savedMessages, threadIndex);
-        notifyListeners();
-        return 'IMAP client not connected.';
-      }
-      await client.selectMailboxByPath(_currentMailboxPath);
-      final sequence = MessageSequence.fromIds(ids, isUid: true);
-      if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
-        await client.uidMove(sequence, targetMailboxPath: targetPath);
-      } else {
-        await client.uidCopy(sequence, targetMailboxPath: targetPath);
-        await client.uidStore(
-          sequence,
-          [MessageFlags.deleted],
-          action: StoreAction.add,
-        );
-        await client.expunge();
-      }
-      return null;
-    } catch (e) {
-      // Server failed — roll back so the thread reappears.
-      _restoreThreadToCache(thread, savedMessages, threadIndex);
-      notifyListeners();
-      return e.toString();
-    }
-  }
+  Future<String?> archiveThread(EmailThread thread) =>
+      beginArchive(thread).commit();
+
+  @override
+  Future<String?> deleteThread(EmailThread thread) => _beginMoveToMailbox(
+    thread,
+    _trashMailboxPath,
+    missingFolderMessage: 'Trash folder not found.',
+  ).commit();
+
+  @override
+  PendingThreadMutation beginArchive(EmailThread thread) => _beginMoveToMailbox(
+    thread,
+    _resolveArchivePath(thread),
+    missingFolderMessage: 'Archive folder not found.',
+  );
+
+  @override
+  PendingThreadMutation beginMoveToFolder(
+    EmailThread thread,
+    String targetPath,
+  ) => _beginMoveToMailbox(
+    thread,
+    targetPath,
+    missingFolderMessage: 'Folder not found.',
+  );
 
   @override
   Future<String?> moveToFolder(
     EmailThread thread,
     String targetPath, {
     EmailMessage? singleMessage,
-  }) async {
+  }) {
+    if (singleMessage != null) {
+      return _moveSingleMessage(thread, targetPath, singleMessage);
+    }
+    return beginMoveToFolder(thread, targetPath).commit();
+  }
+
+  /// Optimistically removes [thread] and returns a deferred mutation that moves
+  /// all of its messages to [targetPath] on commit, or restores the thread on
+  /// undo / failure.
+  PendingThreadMutation _beginMoveToMailbox(
+    EmailThread thread,
+    String? targetPath, {
+    required String missingFolderMessage,
+  }) {
     final allMessages = messagesForThread(thread.id);
-    final toMove = singleMessage != null ? [singleMessage] : allMessages;
-    final ids = toMove
-        .map((m) => int.tryParse(m.id))
+    final ids = allMessages
+        .map((message) => int.tryParse(message.id))
         .whereType<int>()
         .toList();
-    if (ids.isEmpty) {
+    // Snapshot for restore.
+    final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
+    final savedMessages = List<EmailMessage>.from(allMessages);
+    // Optimistic remove — UI updates immediately.
+    _removeThreadFromCache(thread.id);
+    notifyListeners();
+    void restore() {
+      _restoreThreadToCache(thread, savedMessages, threadIndex);
+      notifyListeners();
+    }
+
+    return PendingThreadMutation(
+      onCommit: () async {
+        if (targetPath == null || targetPath.isEmpty) {
+          restore();
+          return missingFolderMessage;
+        }
+        if (ids.isEmpty) {
+          restore();
+          return 'No messages to move.';
+        }
+        try {
+          await _ensureConnected();
+          final client = _client;
+          if (client == null) {
+            restore();
+            return 'IMAP client not connected.';
+          }
+          await client.selectMailboxByPath(_currentMailboxPath);
+          final sequence = MessageSequence.fromIds(ids, isUid: true);
+          if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
+            await client.uidMove(sequence, targetMailboxPath: targetPath);
+          } else {
+            await client.uidCopy(sequence, targetMailboxPath: targetPath);
+            await client.uidStore(sequence, [
+              MessageFlags.deleted,
+            ], action: StoreAction.add);
+            await client.expunge();
+          }
+          return null;
+        } catch (e) {
+          restore();
+          return e.toString();
+        }
+      },
+      onUndo: restore,
+    );
+  }
+
+  Future<String?> _moveSingleMessage(
+    EmailThread thread,
+    String targetPath,
+    EmailMessage singleMessage,
+  ) async {
+    final id = int.tryParse(singleMessage.id);
+    if (id == null) {
       return 'No messages to move.';
     }
     // Snapshot for rollback.
+    final savedMessages = List<EmailMessage>.from(messagesForThread(thread.id));
     final threadIndex = _threads.indexWhere((t) => t.id == thread.id);
-    final savedMessages = List<EmailMessage>.from(allMessages);
-    // Optimistic remove.
-    if (singleMessage == null) {
-      _removeThreadFromCache(thread.id);
-    } else {
-      _removeSingleMessageFromCache(thread.id, singleMessage.id);
-    }
+    _removeSingleMessageFromCache(thread.id, singleMessage.id);
     notifyListeners();
     try {
       await _ensureConnected();
@@ -705,21 +752,18 @@ class ImapSmtpEmailProvider extends EmailProvider {
         return 'IMAP client not connected.';
       }
       await client.selectMailboxByPath(_currentMailboxPath);
-      final sequence = MessageSequence.fromIds(ids, isUid: true);
+      final sequence = MessageSequence.fromIds([id], isUid: true);
       if (client.serverInfo.supports(ImapServerInfo.capabilityMove)) {
         await client.uidMove(sequence, targetMailboxPath: targetPath);
       } else {
         await client.uidCopy(sequence, targetMailboxPath: targetPath);
-        await client.uidStore(
-          sequence,
-          [MessageFlags.deleted],
-          action: StoreAction.add,
-        );
+        await client.uidStore(sequence, [
+          MessageFlags.deleted,
+        ], action: StoreAction.add);
         await client.expunge();
       }
       return null;
     } catch (e) {
-      // Server failed — roll back.
       _restoreThreadToCache(thread, savedMessages, threadIndex);
       notifyListeners();
       return e.toString();
@@ -731,8 +775,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
     if (messages == null) {
       return;
     }
-    final remaining =
-        messages.where((m) => m.id != messageId).toList();
+    final remaining = messages.where((m) => m.id != messageId).toList();
     if (remaining.isEmpty) {
       _removeThreadFromCache(threadId); // also sets _lastMutationAt
       return;
@@ -757,10 +800,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
     if (_selectedFolderPath == kOutboxFolderPath) {
       return 'Cannot mark outbox messages.';
     }
-    final ids = messagesForThread(thread.id)
-        .map((message) => int.tryParse(message.id))
-        .whereType<int>()
-        .toList();
+    final ids = messagesForThread(
+      thread.id,
+    ).map((message) => int.tryParse(message.id)).whereType<int>().toList();
     if (ids.isEmpty) {
       return 'No messages to update.';
     }
@@ -771,11 +813,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
     }
     await client.selectMailboxByPath(_currentMailboxPath);
     final sequence = MessageSequence.fromIds(ids, isUid: true);
-    await client.uidStore(
-      sequence,
-      [MessageFlags.seen],
-      action: isUnread ? StoreAction.remove : StoreAction.add,
-    );
+    await client.uidStore(sequence, [
+      MessageFlags.seen,
+    ], action: isUnread ? StoreAction.remove : StoreAction.add);
     _updateThreadReadState(thread.id, isUnread);
     notifyListeners();
     return null;
@@ -814,8 +854,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
     if (entry == null) {
       return;
     }
-    final nextThreads =
-        entry.data.threads.where((thread) => thread.id != threadId).toList();
+    final nextThreads = entry.data.threads
+        .where((thread) => thread.id != threadId)
+        .toList();
     final nextMessages = Map<String, List<EmailMessage>>.from(
       entry.data.messages,
     )..remove(threadId);
@@ -849,7 +890,10 @@ class ImapSmtpEmailProvider extends EmailProvider {
       );
       if (messages.isNotEmpty) restoredMessages[thread.id] = messages;
       _folderCache[_currentMailboxPath] = _FolderCacheEntry(
-        data: _MailboxData(threads: restoredThreads, messages: restoredMessages),
+        data: _MailboxData(
+          threads: restoredThreads,
+          messages: restoredMessages,
+        ),
         fetchedAt: entry.fetchedAt,
       );
     }
@@ -967,6 +1011,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
     _sentMailboxPath = null;
     _draftsMailboxPath = null;
     _archiveMailboxPath = null;
+    _trashMailboxPath = null;
     _archiveYearPaths.clear();
     _pathSeparator = null;
     final mailboxItems = <FolderItem>[];
@@ -987,6 +1032,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
       if (box.flags.contains(MailboxFlag.archive)) {
         _archiveMailboxPath ??= box.path;
       }
+      if (box.flags.contains(MailboxFlag.trash)) {
+        _trashMailboxPath ??= box.path;
+      }
       final segments = box.pathSeparator.isEmpty
           ? <String>[box.path]
           : box.path.split(box.pathSeparator);
@@ -994,6 +1042,13 @@ class ImapSmtpEmailProvider extends EmailProvider {
         final last = segments.last.toLowerCase();
         if (_archiveMailboxPath == null && last == 'archive') {
           _archiveMailboxPath = box.path;
+        }
+        if (_trashMailboxPath == null &&
+            (last == 'trash' ||
+                last == 'deleted' ||
+                last == 'deleted items' ||
+                last == 'bin')) {
+          _trashMailboxPath = box.path;
         }
         if (segments.length >= 2) {
           final parent = segments[segments.length - 2].toLowerCase();
@@ -1111,8 +1166,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
     final subject = envelope.subject ?? '(No subject)';
     final messageId = envelope.messageId;
     final inReplyTo = envelope.inReplyTo;
-    final fromAddress =
-        envelope.from?.isNotEmpty == true ? envelope.from!.first : null;
+    final fromAddress = envelope.from?.isNotEmpty == true
+        ? envelope.from!.first
+        : null;
     final from = EmailAddress(
       name: fromAddress?.personalName ?? '',
       email: fromAddress?.email ?? '',
@@ -1149,13 +1205,14 @@ class ImapSmtpEmailProvider extends EmailProvider {
     final timestamp = envelope.date?.toUtc();
     const timeLabel = '';
     final isUnread = !(message.flags?.contains(MessageFlags.seen) ?? false);
-    final threadId = _resolveThreadId(
+    final threadId = _threadResolver.resolve(
       subject: subject,
       messageId: messageId,
       inReplyTo: inReplyTo,
     );
-    final (bodyText, bodyHtml) =
-        includeBody ? _decodeBodies(message) : (null, null);
+    final (bodyText, bodyHtml) = includeBody
+        ? _decodeBodies(message)
+        : (null, null);
     return EmailMessage(
       id: message.uid?.toString() ?? '${message.sequenceId}',
       threadId: threadId,
@@ -1211,8 +1268,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
   }
 
   // Phase 1: fetch headers only — returns quickly, no body decoding.
-  Future<({_MailboxData data, MessageSequence uidSequence})>
-  _fetchHeaders(String path) async {
+  Future<({_MailboxData data, MessageSequence uidSequence})> _fetchHeaders(
+    String path,
+  ) async {
     final client = _client;
     if (client == null) throw StateError('IMAP client not connected.');
     final mailbox = await client.selectMailboxByPath(path);
@@ -1236,7 +1294,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
       if (uid != null) uids.add(uid);
       messagesByThread
           .putIfAbsent(
-            _resolveThreadId(
+            _threadResolver.resolve(
               subject: message.envelope!.subject ?? '(No subject)',
               messageId: message.envelope!.messageId,
               inReplyTo: message.envelope!.inReplyTo,
@@ -1276,10 +1334,9 @@ class ImapSmtpEmailProvider extends EmailProvider {
         headerById[m.id] = m;
       }
     }
-    final messagesByThread =
-        Map<String, List<EmailMessage>>.from(headerData.messages).map(
-          (k, v) => MapEntry(k, List<EmailMessage>.from(v)),
-        );
+    final messagesByThread = Map<String, List<EmailMessage>>.from(
+      headerData.messages,
+    ).map((k, v) => MapEntry(k, List<EmailMessage>.from(v)));
     for (final message in fetchResult.messages) {
       final uid = message.uid?.toString() ?? '${message.sequenceId}';
       final header = headerById[uid];
@@ -1321,8 +1378,10 @@ class ImapSmtpEmailProvider extends EmailProvider {
     _messages
       ..clear()
       ..addAll(data.messages);
-    _folderCache[_currentMailboxPath] =
-        _FolderCacheEntry(data: data, fetchedAt: DateTime.now());
+    _folderCache[_currentMailboxPath] = _FolderCacheEntry(
+      data: data,
+      fetchedAt: DateTime.now(),
+    );
   }
 
   void _startFolderLoad(String path, {required bool showErrors}) {
@@ -1420,7 +1479,6 @@ class ImapSmtpEmailProvider extends EmailProvider {
     return parts.map((email) => MailAddress(null, email)).toList();
   }
 
-
   List<EmailThread> _outboxThreads() {
     final items = _sendQueue.items;
     if (items.isEmpty) {
@@ -1438,7 +1496,10 @@ class ImapSmtpEmailProvider extends EmailProvider {
         EmailThread(
           id: _outboxThreadId(item),
           subject: item.subject,
-          participants: [EmailAddress(name: email, email: email), ...recipients],
+          participants: [
+            EmailAddress(name: email, email: email),
+            ...recipients,
+          ],
           time: '',
           unread: false,
           starred: false,
@@ -1471,10 +1532,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
     return null;
   }
 
-  EmailMessage _outboxMessage(
-    OutboxItem item, {
-    String? threadIdOverride,
-  }) {
+  EmailMessage _outboxMessage(OutboxItem item, {String? threadIdOverride}) {
     final to = splitEmailAddresses(item.toLine);
     final cc = splitEmailAddresses(item.ccLine ?? '');
     final bcc = splitEmailAddresses(item.bccLine ?? '');
@@ -1515,10 +1573,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
     return list;
   }
 
-  void _mergeOutboxIntoMap(
-    Map<String, EmailMessage> merged,
-    String threadId,
-  ) {
+  void _mergeOutboxIntoMap(Map<String, EmailMessage> merged, String threadId) {
     for (final item in _sendQueue.items) {
       if (item.threadId != threadId) {
         continue;
@@ -1710,49 +1765,6 @@ class ImapSmtpEmailProvider extends EmailProvider {
     return null;
   }
 
-  String _resolveThreadId({
-    required String subject,
-    String? messageId,
-    String? inReplyTo,
-  }) {
-    final normalized = _normalizeSubject(subject);
-    final subjectThreadId = _subjectThreadId.putIfAbsent(
-      normalized,
-      () => 'imap-${normalized.hashCode}',
-    );
-    if (inReplyTo != null && inReplyTo.isNotEmpty) {
-      final existing = _messageIdToThreadId[inReplyTo];
-      if (existing != null) {
-        if (messageId != null && messageId.isNotEmpty) {
-          _messageIdToThreadId[messageId] = existing;
-        }
-        return existing;
-      }
-    }
-    if (messageId != null && messageId.isNotEmpty) {
-      final existing = _messageIdToThreadId[messageId];
-      if (existing != null) {
-        return existing;
-      }
-      _messageIdToThreadId[messageId] = subjectThreadId;
-      if (inReplyTo != null && inReplyTo.isNotEmpty) {
-        _messageIdToThreadId[inReplyTo] = subjectThreadId;
-      }
-      return subjectThreadId;
-    }
-    if (inReplyTo != null && inReplyTo.isNotEmpty) {
-      _messageIdToThreadId[inReplyTo] = subjectThreadId;
-    }
-    return subjectThreadId;
-  }
-
-  String _normalizeSubject(String subject) {
-    var value = subject.toLowerCase().trim();
-    value = value.replaceAll(RegExp(r'^(re|fwd|fw):\s*'), '');
-    value = value.replaceAll(RegExp(r'\s+'), ' ').trim();
-    return value;
-  }
-
   void updateCrossFolderThreading(bool enabled) {
     if (_crossFolderThreadingEnabled == enabled) {
       return;
@@ -1779,9 +1791,7 @@ class ImapSmtpEmailProvider extends EmailProvider {
     }
   }
 
-  Set<String> _threadingFolderPaths({
-    required bool includeOtherFolders,
-  }) {
+  Set<String> _threadingFolderPaths({required bool includeOtherFolders}) {
     final paths = <String>{_currentMailboxPath, 'INBOX'};
     if (_sentMailboxPath != null && _sentMailboxPath!.isNotEmpty) {
       paths.add(_sentMailboxPath!);
@@ -1823,20 +1833,14 @@ class ImapSmtpEmailProvider extends EmailProvider {
 }
 
 class _MailboxData {
-  const _MailboxData({
-    required this.threads,
-    required this.messages,
-  });
+  const _MailboxData({required this.threads, required this.messages});
 
   final List<EmailThread> threads;
   final Map<String, List<EmailMessage>> messages;
 }
 
 class _FolderCacheEntry {
-  const _FolderCacheEntry({
-    required this.data,
-    required this.fetchedAt,
-  });
+  const _FolderCacheEntry({required this.data, required this.fetchedAt});
 
   final _MailboxData data;
   final DateTime fetchedAt;

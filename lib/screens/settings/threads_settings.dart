@@ -77,6 +77,53 @@ class ThreadsSettings extends StatelessWidget {
             onChanged: settings.setShowThreadAccountPill,
           ),
         ),
+        SizedBox(height: context.space(16)),
+        SettingRow(
+          title: 'Confirm before deleting',
+          subtitle: 'Ask before moving a thread to Trash (Shift+3).',
+          trailing: AccentSwitch(
+            accent: accent,
+            value: settings.promptBeforeDeleting,
+            onChanged: settings.setPromptBeforeDeleting,
+          ),
+        ),
+        SizedBox(height: context.space(16)),
+        SettingRow(
+          title: 'Undo window',
+          subtitle: 'Time to undo an archive or move before it is applied.',
+          trailing: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: settings.undoWindowSeconds,
+              onChanged: (value) {
+                if (value != null) settings.setUndoWindowSeconds(value);
+              },
+              items:
+                  ({3, 5, 10, 15, 30, settings.undoWindowSeconds}.toList()
+                        ..sort())
+                      .map(
+                        (n) => DropdownMenuItem(value: n, child: Text('${n}s')),
+                      )
+                      .toList(),
+            ),
+          ),
+        ),
+        SizedBox(height: context.space(16)),
+        SettingRow(
+          title: 'After archive or delete',
+          subtitle: 'What the reading panel does once the thread is gone.',
+          trailing: SegmentedButton<ThreadActionFollowUp>(
+            style: segmentedStyle,
+            segments: ThreadActionFollowUp.values
+                .map(
+                  (value) =>
+                      ButtonSegment(value: value, label: Text(value.label)),
+                )
+                .toList(),
+            selected: {settings.threadActionFollowUp},
+            onSelectionChanged: (selected) =>
+                settings.setThreadActionFollowUp(selected.first),
+          ),
+        ),
         SizedBox(height: context.space(24)),
         SettingsSubheader(title: 'MESSAGE PREVIEW'),
         SizedBox(height: context.space(12)),
@@ -116,7 +163,66 @@ class ThreadsSettings extends StatelessWidget {
             ),
           ),
         ],
+        SizedBox(height: context.space(24)),
+        SettingsSubheader(title: 'SWIPE ACTIONS'),
+        SizedBox(height: context.space(12)),
+        SettingRow(
+          title: 'Swipe actions',
+          subtitle: 'Swipe a thread on touchscreens to act on it.',
+          trailing: AccentSwitch(
+            accent: accent,
+            value: settings.swipeActionsEnabled,
+            onChanged: settings.setSwipeActionsEnabled,
+          ),
+        ),
+        if (settings.swipeActionsEnabled) ...[
+          SizedBox(height: context.space(16)),
+          SettingRow(
+            title: 'Swipe right',
+            subtitle: 'Action when a thread is swiped to the right.',
+            trailing: _SwipeActionSelector(
+              value: settings.swipeRightAction,
+              onChanged: settings.setSwipeRightAction,
+            ),
+          ),
+          SizedBox(height: context.space(16)),
+          SettingRow(
+            title: 'Swipe left',
+            subtitle: 'Action when a thread is swiped to the left.',
+            trailing: _SwipeActionSelector(
+              value: settings.swipeLeftAction,
+              onChanged: settings.setSwipeLeftAction,
+            ),
+          ),
+        ],
       ],
+    );
+  }
+}
+
+class _SwipeActionSelector extends StatelessWidget {
+  const _SwipeActionSelector({required this.value, required this.onChanged});
+
+  final SwipeAction value;
+  final ValueChanged<SwipeAction> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    // A dropdown (rather than a segmented button) keeps all four actions
+    // readable without overflowing narrow phone widths.
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<SwipeAction>(
+        value: value,
+        onChanged: (selected) {
+          if (selected != null) onChanged(selected);
+        },
+        items: SwipeAction.values
+            .map(
+              (action) =>
+                  DropdownMenuItem(value: action, child: Text(action.label)),
+            )
+            .toList(),
+      ),
     );
   }
 }

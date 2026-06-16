@@ -5,12 +5,7 @@ import '../models/folder_models.dart';
 import '../search/search_query.dart';
 import '../state/send_queue.dart';
 
-enum ProviderStatus {
-  idle,
-  loading,
-  ready,
-  error,
-}
+enum ProviderStatus { idle, loading, ready, error }
 
 abstract class EmailProvider extends ChangeNotifier {
   ProviderStatus get status;
@@ -67,9 +62,59 @@ abstract class EmailProvider extends ChangeNotifier {
 
   Future<String?> archiveThread(EmailThread thread);
 
+  /// Moves the thread to Trash. Returns null on success or an error message.
+  Future<String?> deleteThread(EmailThread thread);
+
   Future<String?> moveToFolder(
     EmailThread thread,
     String targetPath, {
     EmailMessage? singleMessage,
   });
+
+  /// Optimistically removes [thread] from the list and returns a handle whose
+  /// effect is deferred so it can be undone. Nothing is sent to the server
+  /// until [PendingThreadMutation.commit]; [PendingThreadMutation.undo]
+  /// restores the thread instead.
+  PendingThreadMutation beginArchive(EmailThread thread);
+
+  /// As [beginArchive] but moves the whole thread to [targetPath].
+  PendingThreadMutation beginMoveToFolder(
+    EmailThread thread,
+    String targetPath,
+  );
+}
+
+/// A thread mutation (archive / move) that has been applied optimistically —
+/// the thread is already hidden — but whose server-side effect is deferred so
+/// the user can undo it. Either [commit] or [undo] runs exactly once; the other
+/// becomes a no-op.
+class PendingThreadMutation {
+  PendingThreadMutation({
+    required Future<String?> Function() onCommit,
+    required VoidCallback onUndo,
+  }) : _onCommit = onCommit,
+       _onUndo = onUndo;
+
+  final Future<String?> Function() _onCommit;
+  final VoidCallback _onUndo;
+  bool _settled = false;
+
+  /// Performs the deferred operation for real. Returns null on success or an
+  /// error message. Returns null without acting once already settled.
+  Future<String?> commit() async {
+    if (_settled) {
+      return null;
+    }
+    _settled = true;
+    return _onCommit();
+  }
+
+  /// Restores the optimistically-removed thread. No-op once already settled.
+  void undo() {
+    if (_settled) {
+      return;
+    }
+    _settled = true;
+    _onUndo();
+  }
 }

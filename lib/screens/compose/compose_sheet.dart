@@ -11,6 +11,7 @@ import 'compose_form.dart';
 import '../../theme/color_tokens.dart';
 import '../../widgets/tidings_background.dart';
 import '../../widgets/paper_panel.dart';
+import '../../widgets/undo_snackbar.dart';
 import 'compose_utils.dart';
 
 Future<void> showComposeSheet(
@@ -299,34 +300,27 @@ class _ComposeSheetState extends State<ComposeSheet> {
       );
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
-        messenger.showSnackBar(
-          SnackBar(
-            content: const Text('Sent'),
-            duration: kUndoSendDelay,
-            action: queued == null
-                ? null
-                : SnackBarAction(
-                    label: 'Undo',
-                    onPressed: () async {
-                      final item = queued;
-                      final messenger = ScaffoldMessenger.of(context);
-                      final hostContext =
-                          widget.hostContext ?? messenger.context;
-                      final undone =
-                          await widget.provider.cancelSend(item.id);
-                      if (!context.mounted || !hostContext.mounted) {
-                        return;
-                      }
-                      if (!undone) {
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text('Unable to undo')),
-                        );
-                        return;
-                      }
-                      await _reopenFromUndo(hostContext, item);
-                    },
-                  ),
-          ),
+        showUndoSnackBar(
+          messenger,
+          message: 'Sent',
+          window: kUndoSendDelay,
+          onUndo: queued == null
+              ? null
+              : () async {
+                  final item = queued;
+                  final hostContext = widget.hostContext ?? messenger.context;
+                  final undone = await widget.provider.cancelSend(item.id);
+                  if (!context.mounted || !hostContext.mounted) {
+                    return;
+                  }
+                  if (!undone) {
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Unable to undo')),
+                    );
+                    return;
+                  }
+                  await _reopenFromUndo(hostContext, item);
+                },
         );
       }
       if (mounted) {
@@ -334,9 +328,9 @@ class _ComposeSheetState extends State<ComposeSheet> {
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Send failed: $error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Send failed: $error')));
         setState(() {
           _sendError = error.toString();
         });
@@ -381,9 +375,9 @@ class _ComposeSheetState extends State<ComposeSheet> {
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Save draft failed: $error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Save draft failed: $error')));
         setState(() {
           _draftError = error.toString();
         });
@@ -450,8 +444,8 @@ class _ComposeSheetState extends State<ComposeSheet> {
                     Text(
                       isReply ? 'Reply' : 'Compose',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const Spacer(),
                     if (widget.allowPopOut)
@@ -466,7 +460,9 @@ class _ComposeSheetState extends State<ComposeSheet> {
                       style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         textStyle: Theme.of(context).textTheme.labelMedium,
                       ),
                       child: Text(_isSaving ? 'Saving…' : 'Save draft'),
@@ -533,7 +529,9 @@ class _ComposeSheetState extends State<ComposeSheet> {
                       style: FilledButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
                       ),
                     ),
                   ],
