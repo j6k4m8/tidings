@@ -538,8 +538,7 @@ class MockEmailProvider extends EmailProvider {
   }
 
   Future<void> _sendQueuedMessage(OutboxItem item) async {
-    final thread =
-        item.threadId == null ? null : _findThread(item.threadId!);
+    final thread = item.threadId == null ? null : _findThread(item.threadId!);
     await _sendMessageNow(
       thread: thread,
       toLine: item.toLine,
@@ -552,8 +551,7 @@ class MockEmailProvider extends EmailProvider {
   }
 
   Future<void> _saveQueuedDraft(OutboxItem item) async {
-    final thread =
-        item.threadId == null ? null : _findThread(item.threadId!);
+    final thread = item.threadId == null ? null : _findThread(item.threadId!);
     await _saveDraftNow(
       thread: thread,
       toLine: item.toLine,
@@ -894,7 +892,6 @@ class MockEmailProvider extends EmailProvider {
     return parts;
   }
 
-
   List<EmailThread> _outboxThreads() {
     final items = _sendQueue.items;
     if (items.isEmpty) {
@@ -945,10 +942,7 @@ class MockEmailProvider extends EmailProvider {
     return null;
   }
 
-  EmailMessage _outboxMessage(
-    OutboxItem item, {
-    String? threadIdOverride,
-  }) {
+  EmailMessage _outboxMessage(OutboxItem item, {String? threadIdOverride}) {
     final to = splitEmailAddresses(item.toLine);
     final cc = splitEmailAddresses(item.ccLine ?? '');
     final bcc = splitEmailAddresses(item.bccLine ?? '');
@@ -989,10 +983,7 @@ class MockEmailProvider extends EmailProvider {
     return list;
   }
 
-  void _mergeOutboxIntoMap(
-    Map<String, EmailMessage> merged,
-    String threadId,
-  ) {
+  void _mergeOutboxIntoMap(Map<String, EmailMessage> merged, String threadId) {
     for (final item in _sendQueue.items) {
       if (item.threadId != threadId) {
         continue;

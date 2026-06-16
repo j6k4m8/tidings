@@ -174,7 +174,10 @@ class ThreadListPanel extends StatelessWidget {
         // Asks the user to confirm a destructive swipe when required. Returns
         // true to proceed. Runs before the row is dismissed so a cancel snaps
         // the row back into place.
-        Future<bool> confirmSwipe(EmailThread thread, SwipeAction action) async {
+        Future<bool> confirmSwipe(
+          EmailThread thread,
+          SwipeAction action,
+        ) async {
           if (action == SwipeAction.delete && settings.promptBeforeDeleting) {
             return showConfirmDialog(
               context,
@@ -209,8 +212,7 @@ class ThreadListPanel extends StatelessWidget {
               break;
             case SwipeAction.toggleRead:
               final latest = provider.latestMessageForThread(thread.id);
-              final wasUnread =
-                  thread.unread || (latest?.isUnread ?? false);
+              final wasUnread = thread.unread || (latest?.isUnread ?? false);
               final error = await provider.setThreadUnread(thread, !wasUnread);
               message =
                   error ?? (wasUnread ? 'Marked as read' : 'Marked as unread');

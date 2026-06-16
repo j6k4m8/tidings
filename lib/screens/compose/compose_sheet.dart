@@ -328,9 +328,9 @@ class _ComposeSheetState extends State<ComposeSheet> {
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Send failed: $error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Send failed: $error')));
         setState(() {
           _sendError = error.toString();
         });
@@ -375,9 +375,9 @@ class _ComposeSheetState extends State<ComposeSheet> {
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Save draft failed: $error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Save draft failed: $error')));
         setState(() {
           _draftError = error.toString();
         });
@@ -444,8 +444,8 @@ class _ComposeSheetState extends State<ComposeSheet> {
                     Text(
                       isReply ? 'Reply' : 'Compose',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const Spacer(),
                     if (widget.allowPopOut)
@@ -460,7 +460,9 @@ class _ComposeSheetState extends State<ComposeSheet> {
                       style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         textStyle: Theme.of(context).textTheme.labelMedium,
                       ),
                       child: Text(_isSaving ? 'Saving…' : 'Save draft'),
@@ -527,7 +529,9 @@ class _ComposeSheetState extends State<ComposeSheet> {
                       style: FilledButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
                       ),
                     ),
                   ],

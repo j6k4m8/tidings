@@ -5,12 +5,7 @@ import '../models/folder_models.dart';
 import '../search/search_query.dart';
 import '../state/send_queue.dart';
 
-enum ProviderStatus {
-  idle,
-  loading,
-  ready,
-  error,
-}
+enum ProviderStatus { idle, loading, ready, error }
 
 abstract class EmailProvider extends ChangeNotifier {
   ProviderStatus get status;
@@ -83,7 +78,10 @@ abstract class EmailProvider extends ChangeNotifier {
   PendingThreadMutation beginArchive(EmailThread thread);
 
   /// As [beginArchive] but moves the whole thread to [targetPath].
-  PendingThreadMutation beginMoveToFolder(EmailThread thread, String targetPath);
+  PendingThreadMutation beginMoveToFolder(
+    EmailThread thread,
+    String targetPath,
+  );
 }
 
 /// A thread mutation (archive / move) that has been applied optimistically —

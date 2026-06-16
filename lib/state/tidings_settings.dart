@@ -31,7 +31,8 @@ class TidingsSettings extends ChangeNotifier {
   bool _moveEntireThreadByDefault = true;
   bool _promptBeforeDeleting = true;
   int _undoWindowSeconds = 5;
-  ThreadActionFollowUp _threadActionFollowUp = ThreadActionFollowUp.advanceToNext;
+  ThreadActionFollowUp _threadActionFollowUp =
+      ThreadActionFollowUp.advanceToNext;
   bool _showMessageFolderSource = false;
   DateOrder _dateOrder = DateOrder.mdy;
   bool _use24HourTime = false;

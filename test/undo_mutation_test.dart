@@ -97,16 +97,19 @@ void main() {
       );
     });
 
-    test('commit keeps the thread removed and a later undo is a no-op', () async {
-      final provider = MockEmailProvider(accountId: 'test');
-      final thread = provider.threads.first;
+    test(
+      'commit keeps the thread removed and a later undo is a no-op',
+      () async {
+        final provider = MockEmailProvider(accountId: 'test');
+        final thread = provider.threads.first;
 
-      final mutation = provider.beginArchive(thread);
-      expect(await mutation.commit(), isNull);
-      expect(provider.threads.any((t) => t.id == thread.id), isFalse);
+        final mutation = provider.beginArchive(thread);
+        expect(await mutation.commit(), isNull);
+        expect(provider.threads.any((t) => t.id == thread.id), isFalse);
 
-      mutation.undo(); // settled — must not resurrect the thread
-      expect(provider.threads.any((t) => t.id == thread.id), isFalse);
-    });
+        mutation.undo(); // settled — must not resurrect the thread
+        expect(provider.threads.any((t) => t.id == thread.id), isFalse);
+      },
+    );
   });
 }

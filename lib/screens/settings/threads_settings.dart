@@ -218,10 +218,8 @@ class _SwipeActionSelector extends StatelessWidget {
         },
         items: SwipeAction.values
             .map(
-              (action) => DropdownMenuItem(
-                value: action,
-                child: Text(action.label),
-              ),
+              (action) =>
+                  DropdownMenuItem(value: action, child: Text(action.label)),
             )
             .toList(),
       ),
